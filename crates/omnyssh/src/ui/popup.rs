@@ -7,8 +7,9 @@ use ratatui::{
 };
 
 use crate::app::{
-    FormField, HostForm, SnippetForm, SnippetResultEntry, UpdateButton, UpdatePopup,
-    UpdatePopupPhase, FORM_FIELD_LABELS, SNIPPET_FORM_FIELD_LABELS, UPDATE_BUTTONS,
+    AutomationForm, AutomationResultEntry, FormField, HostForm, SnippetForm, SnippetResultEntry,
+    UpdateButton, UpdatePopup, UpdatePopupPhase, AUTOMATION_FORM_FIELD_LABELS, FORM_FIELD_LABELS,
+    SNIPPET_FORM_FIELD_LABELS, UPDATE_BUTTONS,
 };
 use crate::ui::theme::Theme;
 use omnyssh_core::ssh::client::Host;
@@ -1242,6 +1243,420 @@ fn render_single_result(
 
     frame.render_widget(Paragraph::new(lines), text_area);
     frame.render_widget(Paragraph::new(hint), hint_area);
+}
+
+// ---------------------------------------------------------------------------
+// Automation popups
+// ---------------------------------------------------------------------------
+
+/// Renders the automation add/edit form (Name / Host / Params). Steps are
+/// edited out-of-line via the steps editor (Ctrl+S), so only a step count is
+/// shown here rather than the full list.
+pub fn render_automation_form(
+    frame: &mut Frame,
+    form: &AutomationForm,
+    title: &str,
+    theme: &Theme,
+) {
+    let area = centred_rect(70, 60, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(format!(" {} ", title))
+        .title_alignment(Alignment::Center)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.success_border));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let num_fields = AUTOMATION_FORM_FIELD_LABELS.len();
+    let mut constraints: Vec<Constraint> = Vec::with_capacity(num_fields * 2 + 5);
+    constraints.push(Constraint::Length(1));
+    for _ in 0..num_fields {
+        constraints.push(Constraint::Length(1));
+        constraints.push(Constraint::Length(1));
+    }
+    constraints.push(Constraint::Length(1));
+    constraints.push(Constraint::Length(1));
+    constraints.push(Constraint::Length(1));
+    constraints.push(Constraint::Min(0));
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(inner);
+
+    let focused_style = Style::default()
+        .fg(theme.form_focused_fg)
+        .bg(theme.accent)
+        .add_modifier(Modifier::BOLD);
+    let normal_style = Style::default()
+        .fg(theme.text_primary)
+        .bg(theme.selected_bg);
+    let label_style = Style::default().fg(theme.text_secondary);
+    let focused_label_style = Style::default()
+        .fg(theme.accent)
+        .add_modifier(Modifier::BOLD);
+
+    for (i, label) in AUTOMATION_FORM_FIELD_LABELS.iter().enumerate() {
+        let label_row = rows[1 + i * 2];
+        let input_row = rows[2 + i * 2];
+        let is_focused = i == form.focused_field;
+
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                format!("  {}: ", label),
+                if is_focused {
+                    focused_label_style
+                } else {
+                    label_style
+                },
+            ))),
+            label_row,
+        );
+
+        let field = &form.fields[i];
+        let display = if is_focused {
+            let (before, after) = field.value.split_at(field.cursor.min(field.value.len()));
+            format!("  {}|{} ", before, after)
+        } else {
+            format!("  {} ", field.value)
+        };
+
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                display,
+                if is_focused {
+                    focused_style
+                } else {
+                    normal_style
+                },
+            ))),
+            input_row,
+        );
+    }
+
+    let steps_row_idx = 1 + num_fields * 2;
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("  Steps: ", label_style),
+            Span::styled(
+                format!("{} ", form.steps.len()),
+                Style::default()
+                    .fg(theme.text_primary)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("(Ctrl+S to edit)", Style::default().fg(theme.text_muted)),
+        ])),
+        rows[steps_row_idx],
+    );
+
+    let hint_row_idx = steps_row_idx + 2;
+    if hint_row_idx < rows.len() {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    "  Tab",
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(":next  ", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    "Enter",
+                    Style::default()
+                        .fg(theme.text_success)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(":save  ", Style::default().fg(theme.text_muted)),
+                Span::styled(
+                    "Esc",
+                    Style::default()
+                        .fg(theme.text_warning)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(":cancel", Style::default().fg(theme.text_muted)),
+            ])),
+            rows[hint_row_idx],
+        );
+    }
+}
+
+/// Renders a delete-confirmation popup for an automation.
+pub fn render_automation_delete_confirm(frame: &mut Frame, automation_name: &str, theme: &Theme) {
+    let area = centred_rect(55, 25, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Confirm Delete Automation ")
+        .title_alignment(Alignment::Center)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.danger_border));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            format!("  Delete automation '{}'?", automation_name),
+            Style::default()
+                .fg(theme.text_primary)
+                .add_modifier(Modifier::BOLD),
+        ))),
+        rows[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "  This cannot be undone.",
+            Style::default().fg(theme.text_muted),
+        ))),
+        rows[2],
+    );
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(
+                "y",
+                Style::default()
+                    .fg(theme.text_error)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":Yes  ", Style::default().fg(theme.text_muted)),
+            Span::styled(
+                "n / Esc",
+                Style::default()
+                    .fg(theme.text_success)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":No", Style::default().fg(theme.text_muted)),
+        ])),
+        rows[3],
+    );
+}
+
+/// Renders the freeform steps text editor (one step per line).
+pub fn render_automation_steps_editor(
+    frame: &mut Frame,
+    lines: &[String],
+    cursor_line: usize,
+    cursor_col: usize,
+    error: Option<&str>,
+    theme: &Theme,
+) {
+    let area = centred_rect(80, 75, frame.area());
+    frame.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Steps — local: / remote: / upload: a -> b / download: a -> b ")
+        .title_alignment(Alignment::Center)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.warning_border));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let has_error = error.is_some();
+    let text_height = inner.height.saturating_sub(if has_error { 2 } else { 1 });
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(text_height),
+            Constraint::Length(if has_error { 1 } else { 0 }),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let body: Vec<Line> = lines
+        .iter()
+        .enumerate()
+        .map(|(i, line)| {
+            if i == cursor_line {
+                let col = cursor_col.min(line.len());
+                let (before, after) = line.split_at(col);
+                Line::from(Span::styled(
+                    format!(" {}|{}", before, after),
+                    Style::default()
+                        .fg(theme.text_primary)
+                        .bg(theme.selected_bg),
+                ))
+            } else {
+                Line::from(Span::styled(
+                    format!(" {}", line),
+                    Style::default().fg(theme.text_secondary),
+                ))
+            }
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(body), rows[0]);
+
+    if let Some(msg) = error {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                format!(" {msg}"),
+                Style::default().fg(theme.text_error),
+            ))),
+            rows[1],
+        );
+    }
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                " Enter",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":newline  ", Style::default().fg(theme.text_muted)),
+            Span::styled(
+                "Tab",
+                Style::default()
+                    .fg(theme.text_success)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":done  ", Style::default().fg(theme.text_muted)),
+            Span::styled(
+                "Esc",
+                Style::default()
+                    .fg(theme.text_warning)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(":cancel", Style::default().fg(theme.text_muted)),
+        ])),
+        rows[2],
+    );
+}
+
+/// Renders the automation run results — every step in execution order.
+pub fn render_automation_results(
+    frame: &mut Frame,
+    automation_name: &str,
+    entries: &[AutomationResultEntry],
+    scroll: usize,
+    tick_count: u64,
+    theme: &Theme,
+) {
+    let area = centred_rect(80, 85, frame.area());
+    frame.render_widget(Clear, area);
+
+    let spinner = SPINNER_FRAMES[(tick_count as usize / 2) % SPINNER_FRAMES.len()];
+
+    let block = Block::default()
+        .title(format!(" Results — {automation_name} "))
+        .title_alignment(Alignment::Center)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.popup_border));
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    if entries.is_empty() {
+        return;
+    }
+
+    if entries.len() == 1 {
+        render_single_automation_result(frame, inner, &entries[0], scroll, spinner, theme);
+    } else {
+        let n = entries.len().min(8);
+        let constraints: Vec<Constraint> = (0..n).map(|_| Constraint::Min(2)).collect();
+        let sections = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(inner);
+        for (i, entry) in entries.iter().take(n).enumerate() {
+            render_single_automation_result(frame, sections[i], entry, 0, spinner, theme);
+        }
+    }
+}
+
+fn render_single_automation_result(
+    frame: &mut Frame,
+    area: Rect,
+    entry: &AutomationResultEntry,
+    scroll: usize,
+    spinner: char,
+    theme: &Theme,
+) {
+    if area.height < 1 {
+        return;
+    }
+
+    let header_area = Rect { height: 1, ..area };
+
+    let status_span = if !entry.started {
+        Span::styled(" ⋯ Queued ", Style::default().fg(theme.text_muted))
+    } else if entry.pending {
+        Span::styled(
+            format!(" {} Running… ", spinner),
+            Style::default().fg(theme.text_warning),
+        )
+    } else if entry.output.is_ok() {
+        Span::styled(" ✓ Done ", Style::default().fg(theme.text_success))
+    } else {
+        Span::styled(" ✗ Error ", Style::default().fg(theme.text_error))
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(" {} ", entry.description),
+                Style::default().fg(theme.text_primary),
+            ),
+            status_span,
+        ])),
+        header_area,
+    );
+
+    if area.height < 2 {
+        return;
+    }
+
+    let body_area = Rect {
+        y: area.y + 1,
+        height: area.height.saturating_sub(1),
+        ..area
+    };
+
+    let text = match &entry.output {
+        Ok(out) if !out.is_empty() => out.as_str(),
+        Ok(_) => "",
+        Err(err) => err.as_str(),
+    };
+    let text_color = if entry.output.is_err() {
+        theme.text_error
+    } else {
+        theme.text_secondary
+    };
+
+    let lines: Vec<Line> = text
+        .lines()
+        .skip(scroll)
+        .map(|l| {
+            Line::from(Span::styled(
+                format!(" {}", l),
+                Style::default().fg(text_color),
+            ))
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), body_area);
 }
 
 // ---------------------------------------------------------------------------

@@ -56,12 +56,29 @@ impl App {
             return Ok(ui::snippets::handle_input(key, &mut self.view));
         }
 
+        // Automation Results overlay is likewise visible on any screen.
+        let automation_overlay_active = matches!(
+            self.view.automations_view.popup,
+            Some(AutomationPopup::Results { .. })
+        );
+        if automation_overlay_active {
+            return Ok(ui::automations::handle_input(key, &mut self.view));
+        }
+
         // Snippet screen popups (Add/Edit/Delete/ParamInput/BroadcastPicker)
         // or search mode on the snippets screen — delegate to snippets handler.
         let snippet_popup_or_search =
             self.view.snippets_view.popup.is_some() || self.view.snippets_view.search_mode;
         if snippet_popup_or_search && matches!(screen, Screen::Snippets) {
             return Ok(ui::snippets::handle_input(key, &mut self.view));
+        }
+
+        // Automation screen popups (Add/Edit/Delete/StepsEditor/ParamInput) or
+        // search mode on the Automations screen — delegate to its handler.
+        let automation_popup_or_search =
+            self.view.automations_view.popup.is_some() || self.view.automations_view.search_mode;
+        if automation_popup_or_search && matches!(screen, Screen::Automations) {
+            return Ok(ui::automations::handle_input(key, &mut self.view));
         }
 
         // When a host-list popup is open or the user is searching, the screen
@@ -72,9 +89,11 @@ impl App {
         if popup_or_search {
             return Ok(match screen {
                 Screen::Dashboard => ui::dashboard::handle_input(key, &mut self.view),
-                Screen::FileManager | Screen::Snippets | Screen::Terminal | Screen::DetailView => {
-                    None
-                }
+                Screen::FileManager
+                | Screen::Snippets
+                | Screen::Automations
+                | Screen::Terminal
+                | Screen::DetailView => None,
             });
         }
 
@@ -99,6 +118,11 @@ impl App {
             }
             if key.code == kb.snippets || key.code == KeyCode::Char('3') {
                 self.state.write().await.screen = Screen::Snippets;
+                self.view.status_message = None;
+                return Ok(None);
+            }
+            if key.code == kb.automations || key.code == KeyCode::Char('5') {
+                self.state.write().await.screen = Screen::Automations;
                 self.view.status_message = None;
                 return Ok(None);
             }
@@ -137,7 +161,8 @@ impl App {
                         Screen::Dashboard => Screen::FileManager,
                         Screen::DetailView => Screen::Dashboard, // Detail View → Dashboard
                         Screen::FileManager => Screen::Snippets,
-                        Screen::Snippets => Screen::Terminal,
+                        Screen::Snippets => Screen::Automations,
+                        Screen::Automations => Screen::Terminal,
                         Screen::Terminal => Screen::Dashboard, // unreachable here (handled above)
                     };
                     state.screen.clone()
@@ -179,6 +204,7 @@ impl App {
                     Screen::Dashboard => ui::dashboard::handle_input(key, &mut self.view),
                     Screen::DetailView => ui::detail_view::handle_input(key, &mut self.view),
                     Screen::Snippets => ui::snippets::handle_input(key, &mut self.view),
+                    Screen::Automations => ui::automations::handle_input(key, &mut self.view),
                     Screen::FileManager => ui::file_manager::handle_input(key, &mut self.view),
                     Screen::Terminal => None,
                 });
@@ -190,6 +216,7 @@ impl App {
                     Screen::Dashboard => ui::dashboard::handle_input(key, &mut self.view),
                     Screen::DetailView => ui::detail_view::handle_input(key, &mut self.view),
                     Screen::Snippets => ui::snippets::handle_input(key, &mut self.view),
+                    Screen::Automations => ui::automations::handle_input(key, &mut self.view),
                     Screen::FileManager => ui::file_manager::handle_input(key, &mut self.view),
                     // Terminal is handled at the very top of handle_key; unreachable here.
                     Screen::Terminal => None,
@@ -223,6 +250,7 @@ impl App {
             KeyCode::F(1) => return Some(AppAction::SwitchScreen(Screen::Dashboard)),
             KeyCode::F(2) => return Some(AppAction::SwitchScreen(Screen::FileManager)),
             KeyCode::F(3) => return Some(AppAction::SwitchScreen(Screen::Snippets)),
+            KeyCode::F(5) => return Some(AppAction::SwitchScreen(Screen::Automations)),
             _ => {}
         }
 

@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 use omnyssh_core::config::app_config::UpdateConfig;
+use omnyssh_core::config::automations::{Automation, AutomationStep, AutomationStepKind};
 use omnyssh_core::config::snippets::{Snippet, SnippetScope};
 use omnyssh_core::event::{
     DetectedService, MetricValue, Metrics, ProcessInfo, ServiceKind, ServiceMetric,
@@ -198,6 +199,119 @@ pub struct SnippetDto {
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub params: Option<Vec<String>>,
+}
+
+/// An automation step's kind, mirrors `omnyssh_core::config::automations::AutomationStepKind`.
+/// Wire names are lowercase (`local`, `remote`, `upload`, `download`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum AutomationStepKindDto {
+    Local,
+    Remote,
+    Upload,
+    Download,
+}
+
+impl From<AutomationStepKind> for AutomationStepKindDto {
+    fn from(kind: AutomationStepKind) -> Self {
+        match kind {
+            AutomationStepKind::Local => Self::Local,
+            AutomationStepKind::Remote => Self::Remote,
+            AutomationStepKind::Upload => Self::Upload,
+            AutomationStepKind::Download => Self::Download,
+        }
+    }
+}
+
+impl From<AutomationStepKindDto> for AutomationStepKind {
+    fn from(kind: AutomationStepKindDto) -> Self {
+        match kind {
+            AutomationStepKindDto::Local => Self::Local,
+            AutomationStepKindDto::Remote => Self::Remote,
+            AutomationStepKindDto::Upload => Self::Upload,
+            AutomationStepKindDto::Download => Self::Download,
+        }
+    }
+}
+
+/// One step of an automation, mirrors `omnyssh_core::config::automations::AutomationStep`.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationStepDto {
+    pub kind: AutomationStepKindDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_path: Option<String>,
+    pub continue_on_error: bool,
+    pub timeout_secs: u64,
+}
+
+impl From<&AutomationStep> for AutomationStepDto {
+    fn from(step: &AutomationStep) -> Self {
+        Self {
+            kind: step.kind.into(),
+            command: step.command.clone(),
+            local_path: step.local_path.clone(),
+            remote_path: step.remote_path.clone(),
+            continue_on_error: step.continue_on_error,
+            timeout_secs: step.timeout_secs,
+        }
+    }
+}
+
+impl From<AutomationStepDto> for AutomationStep {
+    fn from(dto: AutomationStepDto) -> Self {
+        Self {
+            kind: dto.kind.into(),
+            command: dto.command,
+            local_path: dto.local_path,
+            remote_path: dto.remote_path,
+            continue_on_error: dto.continue_on_error,
+            timeout_secs: dto.timeout_secs,
+        }
+    }
+}
+
+/// A saved local automation as the frontend sees it. Crosses the boundary both
+/// ways — outbound for `list_automations`, inbound for `save_automation`.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationDto {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    pub steps: Vec<AutomationStepDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<Vec<String>>,
+}
+
+impl From<&Automation> for AutomationDto {
+    fn from(automation: &Automation) -> Self {
+        Self {
+            name: automation.name.clone(),
+            host: automation.host.clone(),
+            steps: automation
+                .steps
+                .iter()
+                .map(AutomationStepDto::from)
+                .collect(),
+            params: automation.params.clone(),
+        }
+    }
+}
+
+impl From<AutomationDto> for Automation {
+    fn from(dto: AutomationDto) -> Self {
+        Self {
+            name: dto.name,
+            host: dto.host,
+            steps: dto.steps.into_iter().map(AutomationStep::from).collect(),
+            params: dto.params,
+        }
+    }
 }
 
 /// A file or directory in an SFTP panel listing (tech-gui.md §4.1). Maps from the
@@ -830,6 +944,105 @@ mod tests {
         assert!(dto.host.is_none());
         assert!(dto.tags.is_none());
         assert!(dto.params.is_none());
+    }
+
+    fn full_automation() -> Automation {
+        Automation {
+            name: "deploy-image".to_string(),
+            host: Some("web-1".to_string()),
+            steps: vec![
+                AutomationStep {
+                    kind: AutomationStepKind::Local,
+                    command: Some("docker save {{tag}} -o image.tar".to_string()),
+                    local_path: None,
+                    remote_path: None,
+                    continue_on_error: false,
+                    timeout_secs: 300,
+                },
+                AutomationStep {
+                    kind: AutomationStepKind::Upload,
+                    command: None,
+                    local_path: Some("image.tar".to_string()),
+                    remote_path: Some("/srv/deploy/image.tar".to_string()),
+                    continue_on_error: false,
+                    timeout_secs: 300,
+                },
+            ],
+            params: Some(vec!["tag".to_string()]),
+        }
+    }
+
+    #[test]
+    fn automation_step_kind_dto_uses_lowercase_wire_names() {
+        let names = [
+            (AutomationStepKindDto::Local, r#""local""#),
+            (AutomationStepKindDto::Remote, r#""remote""#),
+            (AutomationStepKindDto::Upload, r#""upload""#),
+            (AutomationStepKindDto::Download, r#""download""#),
+        ];
+        for (kind, wire) in names {
+            let json = serde_json::to_string(&kind).expect("serialise kind");
+            assert_eq!(json, wire, "kind {kind:?} must map to {wire}");
+        }
+    }
+
+    #[test]
+    fn automation_dto_maps_every_field() {
+        let dto = AutomationDto::from(&full_automation());
+        assert_eq!(dto.name, "deploy-image");
+        assert_eq!(dto.host.as_deref(), Some("web-1"));
+        assert_eq!(dto.steps.len(), 2);
+        assert!(matches!(dto.steps[0].kind, AutomationStepKindDto::Local));
+        assert_eq!(
+            dto.steps[0].command.as_deref(),
+            Some("docker save {{tag}} -o image.tar")
+        );
+        assert!(matches!(dto.steps[1].kind, AutomationStepKindDto::Upload));
+        assert_eq!(dto.steps[1].local_path.as_deref(), Some("image.tar"));
+        assert_eq!(
+            dto.steps[1].remote_path.as_deref(),
+            Some("/srv/deploy/image.tar")
+        );
+        assert_eq!(dto.params, Some(vec!["tag".to_string()]));
+    }
+
+    #[test]
+    fn automation_dto_uses_camel_case_wire_names() {
+        let json = serde_json::to_string(&AutomationDto::from(&full_automation()))
+            .expect("serialise AutomationDto");
+        assert!(json.contains(r#""localPath":"image.tar""#), "{json}");
+        assert!(
+            json.contains(r#""remotePath":"/srv/deploy/image.tar""#),
+            "{json}"
+        );
+        assert!(json.contains(r#""continueOnError":false"#), "{json}");
+        assert!(json.contains(r#""timeoutSecs":300"#), "{json}");
+    }
+
+    #[test]
+    fn automation_dto_omits_absent_optionals_on_the_wire() {
+        let dto = AutomationDto::from(&Automation {
+            name: "local-only".to_string(),
+            host: None,
+            steps: vec![],
+            params: None,
+        });
+        let json = serde_json::to_string(&dto).unwrap();
+        assert_eq!(json, r#"{"name":"local-only","steps":[]}"#);
+    }
+
+    #[test]
+    fn automation_dto_round_trips_through_automation() {
+        let original = full_automation();
+        let back: Automation = AutomationDto::from(&original).into();
+        assert_eq!(back.name, original.name);
+        assert_eq!(back.host, original.host);
+        assert_eq!(back.steps.len(), original.steps.len());
+        assert_eq!(back.steps[0].kind, original.steps[0].kind);
+        assert_eq!(back.steps[0].command, original.steps[0].command);
+        assert_eq!(back.steps[1].local_path, original.steps[1].local_path);
+        assert_eq!(back.steps[1].remote_path, original.steps[1].remote_path);
+        assert_eq!(back.params, original.params);
     }
 
     #[test]

@@ -394,6 +394,65 @@ async fn do_read_preview(
 }
 
 // ---------------------------------------------------------------------------
+// One-shot transfers (used by the automation engine — no persistent session)
+// ---------------------------------------------------------------------------
+
+/// Opens a fresh SSH+SFTP session to `host`, uploads `local` to `remote`, and
+/// disconnects. For a single one-off transfer (e.g. an automation step) where
+/// keeping a persistent [`SftpManager`] around isn't warranted.
+///
+/// # Errors
+/// Returns an error if the connection, SFTP handshake, or upload fails.
+pub async fn upload_file_once(host: &Host, local: &str, remote: &str) -> anyhow::Result<()> {
+    let (session, sftp) = connect_sftp_once(host).await?;
+    let (tx, rx) = mpsc::channel(16);
+    spawn_progress_drain(rx);
+    let transfer_id: TransferId = 0;
+    let result = do_upload(local, &sftp, remote, transfer_id, &tx).await;
+    session.disconnect().await;
+    result
+}
+
+/// Opens a fresh SSH+SFTP session to `host`, downloads `remote` to `local`, and
+/// disconnects. Mirrors [`upload_file_once`] for the reverse direction.
+///
+/// # Errors
+/// Returns an error if the connection, SFTP handshake, or download fails.
+pub async fn download_file_once(host: &Host, remote: &str, local: &str) -> anyhow::Result<()> {
+    let (session, sftp) = connect_sftp_once(host).await?;
+    let (tx, rx) = mpsc::channel(16);
+    spawn_progress_drain(rx);
+    let transfer_id: TransferId = 0;
+    let result = do_download(&sftp, remote, local, transfer_id, &tx).await;
+    session.disconnect().await;
+    result
+}
+
+/// Drains a one-shot transfer's progress events so `do_upload`/`do_download`
+/// never blocks on backpressure from a channel nothing is reading — callers of
+/// [`upload_file_once`]/[`download_file_once`] don't observe per-chunk
+/// progress, only the final result.
+fn spawn_progress_drain(mut rx: mpsc::Receiver<CoreEvent>) {
+    tokio::spawn(async move { while rx.recv().await.is_some() {} });
+}
+
+async fn connect_sftp_once(
+    host: &Host,
+) -> anyhow::Result<(SshSession, russh_sftp::client::SftpSession)> {
+    let session = SshSession::connect(host)
+        .await
+        .context("SFTP SSH connect")?;
+    let stream = session
+        .open_sftp_channel()
+        .await
+        .context("open SFTP channel")?;
+    let sftp = russh_sftp::client::SftpSession::new(stream)
+        .await
+        .context("create SFTP session")?;
+    Ok((session, sftp))
+}
+
+// ---------------------------------------------------------------------------
 // Local filesystem helpers (called via inline tokio::spawn in App)
 // ---------------------------------------------------------------------------
 

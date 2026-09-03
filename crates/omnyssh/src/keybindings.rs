@@ -37,6 +37,8 @@ pub struct ParsedKeybindings {
     pub file_manager: KeyCode,
     /// Key that switches to the Snippets screen (default: `F3`).
     pub snippets: KeyCode,
+    /// Key that switches to the Automations screen (default: `F5`).
+    pub automations: KeyCode,
     /// Key that cycles to the next screen / switches FM panels (default: `Tab`).
     pub next_screen: KeyBind,
     /// Key that cycles terminal tabs / split panes (default: `Ctrl+N`).
@@ -62,6 +64,9 @@ impl ParsedKeybindings {
             }),
             snippets: parse_keycode(&cfg.snippets)
                 .unwrap_or_else(|| parse_keycode(&defaults.snippets).expect("default snippets")),
+            automations: parse_keycode(&cfg.automations).unwrap_or_else(|| {
+                parse_keycode(&defaults.automations).expect("default automations")
+            }),
             next_screen: parse_keybind(&cfg.next_screen).unwrap_or_else(|| {
                 parse_keybind(&defaults.next_screen).expect("default next_screen")
             }),

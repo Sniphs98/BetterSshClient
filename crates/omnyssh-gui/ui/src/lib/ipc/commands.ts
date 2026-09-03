@@ -4,6 +4,7 @@
 import type { Channel } from '@tauri-apps/api/core';
 import { commands } from '$lib/bindings';
 import type {
+  AutomationDto,
   FileEntryDto,
   HostDto,
   HostInputDto,
@@ -63,6 +64,35 @@ export async function executeSnippet(
   params: Record<string, string>
 ): Promise<void> {
   const res = await commands.executeSnippet(snippetName, hostNames, params);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Read the saved automations from the shared `automations.toml`. */
+export async function listAutomations(): Promise<AutomationDto[]> {
+  const res = await commands.listAutomations();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Upsert one automation by name and persist the whole list. */
+export async function saveAutomation(automation: AutomationDto): Promise<void> {
+  const res = await commands.saveAutomation(automation);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Delete the automation named `name` and persist. */
+export async function deleteAutomation(name: string): Promise<void> {
+  const res = await commands.deleteAutomation(name);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Run an automation; progress and results arrive as `automation-step-started` /
+ *  `automation-step-result` / `automation-finished` events. */
+export async function executeAutomation(
+  automationName: string,
+  params: Record<string, string>
+): Promise<void> {
+  const res = await commands.executeAutomation(automationName, params);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 

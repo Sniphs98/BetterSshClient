@@ -41,6 +41,11 @@ pub fn snippets_config_path() -> Option<PathBuf> {
     app_config_dir().map(|d| d.join("snippets.toml"))
 }
 
+/// Returns the path to the automations config file.
+pub fn automations_config_path() -> Option<PathBuf> {
+    app_config_dir().map(|d| d.join("automations.toml"))
+}
+
 /// Removes rolling log files in `log_dir` older than `max_age_days`.
 ///
 /// Best-effort and fault-tolerant: a missing directory, an unreadable entry,

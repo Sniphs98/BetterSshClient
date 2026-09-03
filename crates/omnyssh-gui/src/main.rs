@@ -13,6 +13,9 @@ mod error;
 mod events;
 mod state;
 
+use commands::automations::{
+    delete_automation, execute_automation, list_automations, save_automation,
+};
 use commands::hosts::{delete_host, list_hosts, refresh_metrics, reload_hosts, save_host};
 use commands::keysetup::start_key_setup;
 use commands::sftp::{
@@ -93,6 +96,10 @@ fn specta_builder() -> Builder<tauri::Wry> {
             save_snippet,
             delete_snippet,
             execute_snippet,
+            list_automations,
+            save_automation,
+            delete_automation,
+            execute_automation,
             terminal_open,
             terminal_write,
             terminal_resize,
@@ -122,6 +129,9 @@ fn specta_builder() -> Builder<tauri::Wry> {
             events::ServicesDetected,
             events::ServicesFailed,
             events::SnippetResult,
+            events::AutomationStepStarted,
+            events::AutomationStepResult,
+            events::AutomationFinished,
             events::TerminalExited,
             events::SftpConnected,
             events::SftpDirListed,

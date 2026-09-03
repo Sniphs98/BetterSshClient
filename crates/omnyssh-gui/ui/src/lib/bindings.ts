@@ -109,6 +109,56 @@ async executeSnippet(snippetName: string, hostNames: string[], params: Partial<{
 }
 },
 /**
+ * List saved automations from the shared `automations.toml`.
+ */
+async listAutomations() : Promise<Result<AutomationDto[], CommandError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_automations") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Upsert an automation by name and persist the whole list. A new name appends; an
+ * existing name is replaced in place.
+ */
+async saveAutomation(automation: AutomationDto) : Promise<Result<null, CommandError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_automation", { automation }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Delete the automation named `name` and persist. A missing name is a no-op
+ * success — the desired end state (absent) already holds.
+ */
+async deleteAutomation(name: string) : Promise<Result<null, CommandError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_automation", { name }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run the automation named `automation_name`. Resolves the target host (if the
+ * automation declares one) here — secret material stays backend-side — then
+ * fires the run in the background. Fire-and-forget: progress and results arrive
+ * as `automation-step-started` / `automation-step-result` / `automation-finished`
+ * events.
+ */
+async executeAutomation(automationName: string, params: Partial<{ [key in string]: string }>) : Promise<Result<null, CommandError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("execute_automation", { automationName, params }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Open a terminal for `host_name`, streaming raw output into `on_output`. Returns
  * the public session id used by the write/resize/close commands (tech-gui.md §4.2).
  */
@@ -364,6 +414,9 @@ async saveUpdateConfig(config: UpdateConfigDto) : Promise<Result<null, CommandEr
 
 
 export const events = __makeEvents__<{
+automationFinished: AutomationFinished,
+automationStepResult: AutomationStepResult,
+automationStepStarted: AutomationStepStarted,
 error: Error,
 filePreview: FilePreview,
 hostStatusChanged: HostStatusChanged,
@@ -384,6 +437,9 @@ terminalExited: TerminalExited,
 transferProgress: TransferProgress,
 updateAvailable: UpdateAvailable
 }>({
+automationFinished: "automation-finished",
+automationStepResult: "automation-step-result",
+automationStepStarted: "automation-step-started",
 error: "error",
 filePreview: "file-preview",
 hostStatusChanged: "host-status-changed",
@@ -411,6 +467,36 @@ updateAvailable: "update-available"
 
 /** user-defined types **/
 
+/**
+ * A saved local automation as the frontend sees it. Crosses the boundary both
+ * ways — outbound for `list_automations`, inbound for `save_automation`.
+ */
+export type AutomationDto = { name: string; host?: string | null; steps: AutomationStepDto[]; params?: string[] | null }
+/**
+ * The whole automation run finished (tech-gui.md §4.3). `ok` is `false` if any
+ * non-tolerant step failed.
+ */
+export type AutomationFinished = { automationName: string; ok: boolean }
+/**
+ * One step of an automation, mirrors `omnyssh_core::config::automations::AutomationStep`.
+ */
+export type AutomationStepDto = { kind: AutomationStepKindDto; command?: string | null; localPath?: string | null; remotePath?: string | null; continueOnError: boolean; timeoutSecs: number }
+/**
+ * An automation step's kind, mirrors `omnyssh_core::config::automations::AutomationStepKind`.
+ * Wire names are lowercase (`local`, `remote`, `upload`, `download`).
+ */
+export type AutomationStepKindDto = "local" | "remote" | "upload" | "download"
+/**
+ * One automation step finished (tech-gui.md §4.3). `output` is combined
+ * stdout(+stderr) on success or the error message on failure.
+ */
+export type AutomationStepResult = { automationName: string; stepIndex: number; ok: boolean; output: string }
+/**
+ * An automation step started running (tech-gui.md §4.3). Emitted directly by
+ * `execute_automation`'s forwarder task, not via the shared bridge — same
+ * "the command owns the result" pattern `SnippetResult` uses.
+ */
+export type AutomationStepStarted = { automationName: string; stepIndex: number; totalSteps: number }
 export type CommandError = { message: string }
 /**
  * Live connection state for a host (tech-gui.md §4.1). Internally tagged so the

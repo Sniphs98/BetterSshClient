@@ -61,6 +61,37 @@ pub struct SnippetResult {
     pub output: String,
 }
 
+/// An automation step started running (tech-gui.md §4.3). Emitted directly by
+/// `execute_automation`'s forwarder task, not via the shared bridge — same
+/// "the command owns the result" pattern `SnippetResult` uses.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationStepStarted {
+    pub automation_name: String,
+    pub step_index: u32,
+    pub total_steps: u32,
+}
+
+/// One automation step finished (tech-gui.md §4.3). `output` is combined
+/// stdout(+stderr) on success or the error message on failure.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationStepResult {
+    pub automation_name: String,
+    pub step_index: u32,
+    pub ok: bool,
+    pub output: String,
+}
+
+/// The whole automation run finished (tech-gui.md §4.3). `ok` is `false` if any
+/// non-tolerant step failed.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationFinished {
+    pub automation_name: String,
+    pub ok: bool,
+}
+
 /// A terminal session's remote shell exited or its connection dropped (tech-gui.md
 /// §4.3). Carries the **public** registry id (the bridge maps the core's inner PTY
 /// id, §3.4); the frontend tears the tab down. User-initiated closes never emit this.

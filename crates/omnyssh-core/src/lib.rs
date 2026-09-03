@@ -5,8 +5,10 @@
 //! this crate and never the other way around: nothing here may depend on
 //! terminal-rendering, input, or CLI crates.
 
+pub mod automation;
 pub mod config;
 pub mod event;
+pub mod local_exec;
 pub mod ssh;
 pub mod update;
 pub mod utils;

@@ -99,8 +99,10 @@ pub struct KeybindingsConfig {
     pub dashboard: String,
     pub file_manager: String,
     pub snippets: String,
+    /// Key that switches to the Automations screen. Default: `"F5"`.
+    pub automations: String,
     /// Key to cycle to the next app screen (dashboard → files → snippets →
-    /// terminal).  Also used to switch panels in File Manager.
+    /// automations → terminal).  Also used to switch panels in File Manager.
     /// Default: `"Tab"`.
     pub next_screen: String,
     /// Key to cycle terminal tabs / split panes.
@@ -169,6 +171,7 @@ impl Default for KeybindingsConfig {
             dashboard: String::from("F1"),
             file_manager: String::from("F2"),
             snippets: String::from("F3"),
+            automations: String::from("F5"),
             next_screen: String::from("Tab"),
             next_tab: String::from("Ctrl+N"),
         }

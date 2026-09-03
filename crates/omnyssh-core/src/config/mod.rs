@@ -1,13 +1,15 @@
 //! Application configuration modules.
 //!
-//! - [`app_config`]  — main `~/.config/omnyssh/config.toml`
-//! - [`ssh_config`]  — parser for `~/.ssh/config`
-//! - [`snippets`]    — `~/.config/omnyssh/snippets.toml`
+//! - [`app_config`]    — main `~/.config/omnyssh/config.toml`
+//! - [`ssh_config`]    — parser for `~/.ssh/config`
+//! - [`snippets`]      — `~/.config/omnyssh/snippets.toml`
+//! - [`automations`]   — `~/.config/omnyssh/automations.toml`
 //!
 //! Top-level functions in this module handle loading and persisting the
 //! host list (`hosts.toml`).
 
 pub mod app_config;
+pub mod automations;
 pub mod snippets;
 pub mod ssh_config;
 

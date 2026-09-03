@@ -41,6 +41,8 @@
   {:else if name === 'snippets'}
     <polyline points="8 8 4 12 8 16" />
     <polyline points="16 8 20 12 16 16" />
+  {:else if name === 'automations'}
+    <polygon points="13 2 3 14 11 14 9 22 21 10 13 10 13 2" />
   {:else if name === 'sftp'}
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
   {:else if name === 'terminal'}

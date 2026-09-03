@@ -22,6 +22,9 @@ vi.mock('$lib/bindings', () => {
       servicesDetected: channel('servicesDetected'),
       servicesFailed: channel('servicesFailed'),
       snippetResult: channel('snippetResult'),
+      automationStepStarted: channel('automationStepStarted'),
+      automationStepResult: channel('automationStepResult'),
+      automationFinished: channel('automationFinished'),
       terminalExited: channel('terminalExited'),
       sftpConnected: channel('sftpConnected'),
       sftpDirListed: channel('sftpDirListed'),
@@ -44,6 +47,7 @@ import { statuses } from '$lib/stores/statuses';
 import { metrics } from '$lib/stores/metrics';
 import { services } from '$lib/stores/services';
 import { snippetRun, beginRun, clearRun } from '$lib/stores/snippets';
+import { automationRun, beginAutomationRun, clearAutomationRun } from '$lib/stores/automations';
 import { sessions } from '$lib/stores/sessions';
 import { sftp } from '$lib/stores/sftp';
 import { lastError } from '$lib/stores/notifications';
@@ -57,6 +61,7 @@ describe('startEventBridge', () => {
     services.set(new Map());
     lastError.set(null);
     clearRun();
+    clearAutomationRun();
   });
 
   it('routes each event to its matching store', async () => {
@@ -78,6 +83,11 @@ describe('startEventBridge', () => {
     listeners.snippetResult({
       payload: { hostName: 'web-1', snippetName: 'deploy', ok: true, output: 'done' }
     });
+    beginAutomationRun('deploy-image', ['Local: docker save x']);
+    listeners.automationStepStarted({ payload: { automationName: 'deploy-image', stepIndex: 0, totalSteps: 1 } });
+    listeners.automationStepResult({
+      payload: { automationName: 'deploy-image', stepIndex: 0, ok: true, output: 'saved' }
+    });
     listeners.error({ payload: { message: 'nope' } });
 
     expect(get(hosts)).toHaveLength(1);
@@ -85,6 +95,13 @@ describe('startEventBridge', () => {
     expect(get(metrics).get('web-1')?.cpuPercent).toBe(5);
     expect(get(services).get('web-1')).toEqual({ kind: 'detected', services: [{ kind: 'redis', metrics: [] }] });
     expect(get(snippetRun)?.entries[0]).toEqual({ hostName: 'web-1', pending: false, ok: true, output: 'done' });
+    expect(get(automationRun)?.entries[0]).toEqual({
+      description: 'Local: docker save x',
+      started: true,
+      pending: false,
+      ok: true,
+      output: 'saved'
+    });
     expect(get(lastError)).toBe('nope');
   });
 

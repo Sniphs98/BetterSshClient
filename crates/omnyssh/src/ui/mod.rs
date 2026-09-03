@@ -3,8 +3,9 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{AppState, Screen, SnippetPopup, ViewState};
+use crate::app::{AppState, AutomationPopup, Screen, SnippetPopup, ViewState};
 
+pub mod automations;
 pub mod card;
 pub mod dashboard;
 pub mod detail_view;
@@ -48,6 +49,7 @@ pub fn render(frame: &mut Frame, state: &AppState, view: &ViewState) {
         Screen::DetailView => detail_view::render(frame, content_area, state, view),
         Screen::FileManager => file_manager::render(frame, content_area, state, view),
         Screen::Snippets => snippets::render(frame, content_area, state, view),
+        Screen::Automations => automations::render(frame, content_area, state, view),
         Screen::Terminal => terminal::render(frame, content_area, state, view),
     }
 
@@ -77,6 +79,24 @@ pub fn render(frame: &mut Frame, state: &AppState, view: &ViewState) {
             // All other snippet popups are rendered inside snippets::render.
             _ => {}
         }
+    }
+
+    // Automation results overlay — visible regardless of active screen, same
+    // reasoning as the snippet results overlay above.
+    if let Some(AutomationPopup::Results {
+        automation_name,
+        entries,
+        scroll,
+    }) = &view.automations_view.popup
+    {
+        popup::render_automation_results(
+            frame,
+            automation_name,
+            entries,
+            *scroll,
+            view.tick_count,
+            &view.theme,
+        );
     }
 
     // Render help popup on top if requested.

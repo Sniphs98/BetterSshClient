@@ -92,6 +92,28 @@ pub enum AppAction {
     DismissSnippetResult,
 
     // -----------------------------------------------------------------------
+    // Automations actions
+    // -----------------------------------------------------------------------
+    /// Open the automation add form on the Automations screen.
+    OpenAutomationAdd,
+    /// Open the automation edit form for the selected automation.
+    OpenAutomationEdit,
+    /// Open the delete-confirm popup for the selected automation.
+    OpenAutomationDeleteConfirm,
+    /// User confirmed the automation add/edit form.
+    ConfirmAutomationForm,
+    /// User confirmed automation deletion.
+    ConfirmAutomationDelete,
+    /// The automation search query changed — rebuild filtered list.
+    AutomationSearchChanged,
+    /// Run the automation at `automation_idx`.
+    ExecuteAutomation { automation_idx: usize },
+    /// Confirm parameterized automation inputs and run.
+    ConfirmAutomationParamInput,
+    /// Dismiss the automation results popup.
+    DismissAutomationResult,
+
+    // -----------------------------------------------------------------------
     // File Manager actions
     // -----------------------------------------------------------------------
     /// Navigate the cursor up (k / Up arrow) in the active panel.

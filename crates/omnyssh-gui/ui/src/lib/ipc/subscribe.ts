@@ -5,6 +5,9 @@
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { events } from '$lib/bindings';
 import {
+  applyAutomationFinished,
+  applyAutomationStepResult,
+  applyAutomationStepStarted,
   applyError,
   applyFilePreview,
   applyHostStatusChanged,
@@ -35,6 +38,9 @@ export async function startEventBridge(): Promise<() => void> {
     offs.push(await events.servicesDetected.listen((e) => applyServicesDetected(e.payload)));
     offs.push(await events.servicesFailed.listen((e) => applyServicesFailed(e.payload)));
     offs.push(await events.snippetResult.listen((e) => applySnippetResult(e.payload)));
+    offs.push(await events.automationStepStarted.listen((e) => applyAutomationStepStarted(e.payload)));
+    offs.push(await events.automationStepResult.listen((e) => applyAutomationStepResult(e.payload)));
+    offs.push(await events.automationFinished.listen((e) => applyAutomationFinished(e.payload)));
     offs.push(await events.terminalExited.listen((e) => applyTerminalExited(e.payload.sessionId)));
     offs.push(await events.sftpConnected.listen((e) => applySftpConnected(e.payload)));
     offs.push(await events.sftpDirListed.listen((e) => applySftpDirListed(e.payload)));

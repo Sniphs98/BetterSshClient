@@ -21,6 +21,7 @@ use crate::ui;
 use crate::ui::theme::Theme;
 use omnyssh_core::config;
 use omnyssh_core::config::app_config::AppConfig;
+use omnyssh_core::config::automations::Automation;
 use omnyssh_core::config::snippets::Snippet;
 use omnyssh_core::event::{CoreEvent, Metrics, ServiceKind, TransferId};
 use omnyssh_core::ssh::client::{ConnectionStatus, Host};
@@ -30,6 +31,7 @@ use omnyssh_core::ssh::sftp::{SftpCommand, SftpManager};
 
 mod action;
 mod actions;
+mod automations;
 mod file_manager;
 mod host;
 mod input;
@@ -38,6 +40,7 @@ mod terminal;
 mod update;
 
 pub use action::*;
+pub use automations::*;
 pub use file_manager::*;
 pub use host::*;
 pub use snippets::*;
@@ -57,6 +60,9 @@ pub enum Screen {
     DetailView,
     FileManager,
     Snippets,
+    /// Local automations — multi-step pipelines (local command / remote
+    /// command / SFTP upload / SFTP download).
+    Automations,
     /// PTY-backed multi-session terminal.
     Terminal,
 }
@@ -119,6 +125,8 @@ pub struct AppState {
     pub metrics: HashMap<String, Metrics>,
     /// Saved command snippets.
     pub snippets: Vec<Snippet>,
+    /// Saved local automations.
+    pub automations: Vec<Automation>,
     /// Detected services per host.
     pub services: HashMap<String, Vec<omnyssh_core::event::DetectedService>>,
 }
@@ -139,6 +147,8 @@ pub struct ViewState {
     pub host_list: HostListView,
     /// State for the Snippets screen.
     pub snippets_view: SnippetsView,
+    /// State for the Automations screen.
+    pub automations_view: AutomationsView,
     /// State for the File Manager screen.
     pub file_manager: FileManagerView,
     /// State for the Terminal multi-session screen.
@@ -163,6 +173,7 @@ impl ViewState {
             status_message: None,
             host_list: HostListView::default(),
             snippets_view: SnippetsView::default(),
+            automations_view: AutomationsView::default(),
             file_manager: FileManagerView::default(),
             terminal_view: TerminalView::default(),
             theme: Theme::default(),
@@ -309,6 +320,19 @@ impl App {
                         let _ = tx.send(CoreEvent::SnippetsLoaded(snippets)).await;
                     }
                     Err(e) => tracing::warn!("Failed to load snippets: {}", e),
+                }
+            });
+        }
+
+        // Load automations in a background task.
+        {
+            let tx = self.core_tx.clone();
+            tokio::spawn(async move {
+                match config::automations::load_automations() {
+                    Ok(automations) => {
+                        let _ = tx.send(CoreEvent::AutomationsLoaded(automations)).await;
+                    }
+                    Err(e) => tracing::warn!("Failed to load automations: {}", e),
                 }
             });
         }
@@ -974,6 +998,60 @@ impl App {
                             break;
                         }
                     }
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // Automation events
+            // ----------------------------------------------------------------
+            CoreEvent::AutomationsLoaded(automations) => {
+                let n = automations.len();
+                {
+                    let mut state = self.state.write().await;
+                    state.automations = automations;
+                }
+                let state = self.state.read().await;
+                let q = self.view.automations_view.search_query.clone();
+                self.view
+                    .automations_view
+                    .rebuild_filter(&state.automations, &q);
+                tracing::info!("Loaded {} automation(s)", n);
+            }
+
+            CoreEvent::AutomationStepStarted { step_index, .. } => {
+                if let Some(AutomationPopup::Results { entries, .. }) =
+                    &mut self.view.automations_view.popup
+                {
+                    if let Some(entry) = entries.get_mut(step_index) {
+                        entry.started = true;
+                    }
+                }
+            }
+
+            CoreEvent::AutomationStepDone {
+                step_index,
+                ok,
+                output,
+                ..
+            } => {
+                if let Some(AutomationPopup::Results { entries, .. }) =
+                    &mut self.view.automations_view.popup
+                {
+                    if let Some(entry) = entries.get_mut(step_index) {
+                        entry.started = true;
+                        entry.pending = false;
+                        entry.output = if ok { Ok(output) } else { Err(output) };
+                    }
+                }
+            }
+
+            CoreEvent::AutomationFinished {
+                automation_name,
+                ok,
+            } => {
+                if !ok {
+                    self.view.status_message =
+                        Some(format!("Automation '{automation_name}' failed."));
                 }
             }
         }

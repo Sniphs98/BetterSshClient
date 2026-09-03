@@ -7,6 +7,7 @@
 
 use std::time::Instant;
 
+use crate::config::automations::Automation;
 use crate::config::snippets::Snippet;
 use crate::ssh::client::{ConnectionStatus, Host};
 use crate::ssh::key_setup::KeySetupStep;
@@ -150,6 +151,29 @@ pub enum CoreEvent {
     UpdateAvailable(crate::update::UpdateInfo),
     /// A self-update finished — `Ok` on success, `Err` with a message on failure.
     UpdateInstalled(Result<(), String>),
+
+    // -----------------------------------------------------------------------
+    // Automation events
+    // -----------------------------------------------------------------------
+    /// Automation list loaded from disk in a background task.
+    AutomationsLoaded(Vec<Automation>),
+    /// An automation step started running (1-based `step_index` for display).
+    AutomationStepStarted {
+        automation_name: String,
+        step_index: usize,
+        total_steps: usize,
+    },
+    /// An automation step finished. `output` is combined stdout(+stderr) on
+    /// success or the error message on failure.
+    AutomationStepDone {
+        automation_name: String,
+        step_index: usize,
+        ok: bool,
+        output: String,
+    },
+    /// The whole automation run finished — `ok` is `false` if any non-tolerant
+    /// step failed.
+    AutomationFinished { automation_name: String, ok: bool },
 }
 
 // ---------------------------------------------------------------------------

@@ -30,4 +30,10 @@ describe('activeEntity — exactly one active', () => {
     activeEntity.selectDashboard();
     expect(get(activeEntity)).toEqual({ kind: 'dashboard' });
   });
+
+  it('automations is a selector like dashboard/snippets', () => {
+    activeEntity.activateSession(7);
+    activeEntity.selectAutomations();
+    expect(get(activeEntity)).toEqual({ kind: 'automations' });
+  });
 });

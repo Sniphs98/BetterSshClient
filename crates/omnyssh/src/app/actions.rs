@@ -427,6 +427,67 @@ impl App {
             }
 
             // ---------------------------------------------------------------
+            // Automation actions
+            // ---------------------------------------------------------------
+            AppAction::OpenAutomationAdd => {
+                self.view.automations_view.popup =
+                    Some(AutomationPopup::Add(AutomationForm::empty()));
+            }
+
+            AppAction::OpenAutomationEdit => {
+                let idx = self.view.automations_view.selected_automation_idx();
+                if let Some(i) = idx {
+                    let automation = self.state.read().await.automations.get(i).cloned();
+                    if let Some(a) = automation {
+                        let form = AutomationForm::from_automation(&a);
+                        self.view.automations_view.popup = Some(AutomationPopup::Edit {
+                            automation_idx: i,
+                            form,
+                        });
+                    }
+                }
+            }
+
+            AppAction::OpenAutomationDeleteConfirm => {
+                if let Some(idx) = self.view.automations_view.selected_automation_idx() {
+                    self.view.automations_view.popup = Some(AutomationPopup::DeleteConfirm(idx));
+                }
+            }
+
+            AppAction::ConfirmAutomationForm => {
+                self.handle_confirm_automation_form().await;
+            }
+
+            AppAction::ConfirmAutomationDelete => {
+                self.handle_confirm_automation_delete().await;
+            }
+
+            AppAction::AutomationSearchChanged => {
+                let state = self.state.read().await;
+                let q = self.view.automations_view.search_query.clone();
+                self.view
+                    .automations_view
+                    .rebuild_filter(&state.automations, &q);
+            }
+
+            AppAction::ExecuteAutomation { automation_idx } => {
+                self.execute_automation(automation_idx).await;
+            }
+
+            AppAction::ConfirmAutomationParamInput => {
+                self.handle_confirm_automation_param_input().await;
+            }
+
+            AppAction::DismissAutomationResult => {
+                if matches!(
+                    self.view.automations_view.popup,
+                    Some(AutomationPopup::Results { .. })
+                ) {
+                    self.view.automations_view.popup = None;
+                }
+            }
+
+            // ---------------------------------------------------------------
             // File Manager actions
             // ---------------------------------------------------------------
             AppAction::FmNavUp => {

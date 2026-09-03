@@ -3,6 +3,8 @@
 
 import { get } from 'svelte/store';
 import type {
+  AutomationFinished,
+  AutomationStepResult,
   ConnectionStatusDto,
   FilePreview,
   HostDto,
@@ -24,6 +26,7 @@ import { statuses } from '$lib/stores/statuses';
 import { metrics, mergeMetrics } from '$lib/stores/metrics';
 import { services } from '$lib/stores/services';
 import { snippetRun, reduceRunResult } from '$lib/stores/snippets';
+import { automationRun, reduceStepStarted, reduceStepResult } from '$lib/stores/automations';
 import { sessions } from '$lib/stores/sessions';
 import { sftp } from '$lib/stores/sftp';
 import { closeSession } from '$lib/stores/navigation';
@@ -73,6 +76,21 @@ export function applyServicesFailed(payload: { hostName: string; message: string
 export function applySnippetResult(payload: SnippetResult): void {
   snippetRun.update((run) => reduceRunResult(run, payload));
 }
+
+export function applyAutomationStepStarted(payload: {
+  automationName: string;
+  stepIndex: number;
+}): void {
+  automationRun.update((run) => reduceStepStarted(run, payload));
+}
+
+export function applyAutomationStepResult(payload: AutomationStepResult): void {
+  automationRun.update((run) => reduceStepResult(run, payload));
+}
+
+// The whole run finished; per-step state already reflects the outcome, so this
+// is only a hook for future summary UI — nothing to fold into the store today.
+export function applyAutomationFinished(_payload: AutomationFinished): void {}
 
 // A terminal's remote shell exited or its connection dropped (tech-gui.md §3.4). The
 // backend already tore down its session; drop the matching tab (by its backend id).

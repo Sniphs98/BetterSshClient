@@ -27,12 +27,13 @@
     if (host) spawnSession(kind, host.name);
   }
 
-  type Selector = { kind: 'dashboard' | 'snippets'; label: string; icon: IconName };
+  type Selector = { kind: 'dashboard' | 'snippets' | 'automations'; label: string; icon: IconName };
   type Spawner = { kind: SessionKind; label: string; icon: IconName };
 
   const selectors: Selector[] = [
     { kind: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { kind: 'snippets', label: 'Snippets', icon: 'snippets' }
+    { kind: 'snippets', label: 'Snippets', icon: 'snippets' },
+    { kind: 'automations', label: 'Automations', icon: 'automations' }
   ];
   const spawners: Spawner[] = [
     { kind: 'sftp', label: 'SFTP', icon: 'sftp' },
@@ -78,8 +79,11 @@
               : ''}"
             title={sel.label}
             aria-current={$activeEntity.kind === sel.kind ? 'page' : undefined}
-            onclick={() =>
-              sel.kind === 'dashboard' ? activeEntity.selectDashboard() : activeEntity.selectSnippets()}
+            onclick={() => {
+              if (sel.kind === 'dashboard') activeEntity.selectDashboard();
+              else if (sel.kind === 'snippets') activeEntity.selectSnippets();
+              else activeEntity.selectAutomations();
+            }}
           >
             <Icon name={sel.icon} />
             {#if !$sidebarCollapsed}<span class="truncate">{sel.label}</span>{/if}
