@@ -6,7 +6,7 @@
   // `sftp-*` events, §3.4). Local browsing uses list_local_dir (returns directly);
   // remote uses sftp_list (arrives as an event). Semantic tokens only (§5.1).
   import { onMount, onDestroy } from 'svelte';
-  import { Icon } from '$lib/theme';
+  import { Button, Icon } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import SftpPane from './SftpPane.svelte';
@@ -67,6 +67,11 @@
   let fileEditor = $state<{ side: PaneSide; path: string; language: string; content: string } | null>(
     null
   );
+
+  // Delete is destructive and irreversible (no trash can over SFTP), so — unlike the
+  // other mutations here — it asks first. Reads the live `remoteMarked` selection at
+  // confirm time rather than snapshotting it, same as `remove()` already did.
+  let deleteConfirm = $state(false);
 
   const view = $derived(backendId != null ? $sftp.get(backendId) : undefined);
   const transfer = $derived(view?.transfer);
@@ -347,6 +352,11 @@
     );
   }
 
+  function confirmRemove(): void {
+    remove();
+    deleteConfirm = false;
+  }
+
   function openPrompt(kind: 'mkdir' | 'rename'): void {
     if (kind === 'rename' && singleRemoteMark) {
       prompt = { kind, value: singleRemoteMark.name, target: singleRemoteMark };
@@ -406,7 +416,7 @@
       { label: 'Edit', icon: 'edit', onSelect: () => void openEditor('remote', entry), disabled: !editable },
       { label: files > 1 ? `Download ${files} files` : 'Download', icon: 'download', onSelect: download, disabled: files === 0 },
       { label: 'Rename', icon: 'edit', onSelect: () => openPrompt('rename'), disabled: !singleRemoteMark },
-      { label: count > 1 ? `Delete ${count} items` : 'Delete', icon: 'trash', danger: true, onSelect: remove, disabled: count === 0 },
+      { label: count > 1 ? `Delete ${count} items` : 'Delete', icon: 'trash', danger: true, onSelect: () => (deleteConfirm = true), disabled: count === 0 },
       { label: 'New folder', icon: 'plus', onSelect: () => openPrompt('mkdir') },
       { label: 'Refresh', icon: 'refresh', onSelect: () => refreshRemote(currentView.remote.path) }
     ];
@@ -582,7 +592,7 @@
             title="Delete marked entries"
             aria-label="Delete marked entries"
             disabled={remoteMarked.length === 0}
-            onclick={remove}
+            onclick={() => (deleteConfirm = true)}
           >
             <Icon name="trash" size={13} />
           </button>
@@ -714,4 +724,22 @@
     onSave={saveEditor}
     onClose={closeEditor}
   />
+{/if}
+
+{#if active && deleteConfirm}
+  {@const count = remoteMarked.length}
+  <Modal label="Delete" onClose={() => (deleteConfirm = false)}>
+    <div class="space-y-3 px-5 py-4">
+      <h2 class="text-sm font-semibold">
+        Delete {count > 1 ? `${count} items` : `“${remoteMarked[0]?.name}”`}?
+      </h2>
+      <p class="text-sm text-muted">
+        This removes {count > 1 ? 'them' : 'it'} from {session.hostName}. There's no undo.
+      </p>
+      <div class="flex justify-end gap-2 pt-1">
+        <Button variant="ghost" onclick={() => (deleteConfirm = false)}>Cancel</Button>
+        <Button variant="primary" onclick={confirmRemove}>Delete</Button>
+      </div>
+    </div>
+  </Modal>
 {/if}

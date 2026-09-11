@@ -314,7 +314,9 @@ test('a single click navigates into a folder; on a file it only selects', async 
   await expect(remotePane.getByText('config.yml')).toHaveCount(0);
 });
 
-test('right-click opens a context menu; Delete removes the entry', async ({ page }) => {
+test('right-click opens a context menu; Delete asks for confirmation, then removes the entry', async ({
+  page
+}) => {
   await boot(page);
   await page.getByTitle('files on web-1').click();
   const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
@@ -328,8 +330,32 @@ test('right-click opens a context menu; Delete removes the entry', async ({ page
 
   await menu.getByRole('menuitem', { name: 'Delete' }).click();
   await expect(page.getByRole('menu')).toHaveCount(0);
+
+  // Deleting is destructive with no undo, so it's confirmed before anything happens.
+  const confirm = page.getByRole('dialog', { name: 'Delete' });
+  await expect(confirm).toBeVisible();
+  await expect(confirm.getByText('“app.log”')).toBeVisible();
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+
+  await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(remotePane.getByText('app.log')).toHaveCount(0);
   await expect(remotePane.getByText('config.yml')).toBeVisible();
+});
+
+test('cancelling the delete confirmation leaves the entry alone', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+
+  await remotePane.getByTitle('app.log').click({ button: 'right' });
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Delete' }).click();
+
+  const confirm = page.getByRole('dialog', { name: 'Delete' });
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(remotePane.getByText('app.log')).toBeVisible();
 });
 
 test('right-click on empty pane space offers New folder without selecting anything', async ({
