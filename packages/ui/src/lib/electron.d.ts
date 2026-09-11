@@ -1,0 +1,21 @@
+// Ambient type for the bridge `packages/electron/src/preload.ts` exposes via
+// `contextBridge.exposeInMainWorld('omnyssh', ...)`. Kept independent of the
+// electron package (a renderer build has no business depending on it) —
+// change one, mirror the other.
+export interface OmnysshBridge {
+  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  on(channel: string, callback: (payload: unknown) => void): () => void;
+  settings: {
+    get(key: string): Promise<unknown>;
+    set(key: string, value: unknown): Promise<void>;
+  };
+  openExternal(url: string): Promise<void>;
+  homeDir(): Promise<string>;
+  getPathForFile(file: File): string;
+}
+
+declare global {
+  interface Window {
+    omnyssh?: OmnysshBridge;
+  }
+}

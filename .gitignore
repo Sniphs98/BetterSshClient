@@ -1,10 +1,6 @@
-/target
 .claude
 demo.tape
 .DS_Store
-
-# Local symlink created by `nix build`.
-/result
 
 # Instruction
 /CLAUDE.md
@@ -13,12 +9,18 @@ demo.tape
 /instruction.md
 /DISTRIBUTION.md
 
-# GUI: node + Tauri build outputs, updater signing key.
+# Node dependencies, code-signing certificates.
 node_modules/
-crates/omnyssh-gui/gen/
-crates/omnyssh-gui/ui/build/
-crates/omnyssh-gui/ui/.svelte-kit/
-crates/omnyssh-gui/ui/test-results/
-crates/omnyssh-gui/ui/playwright-report/
-crates/omnyssh-gui/ui/playwright/.cache/
-*.tauri.key
+*.p12
+*.pfx
+
+# Electron + SvelteKit build outputs.
+packages/ui/build/
+packages/ui/.svelte-kit/
+packages/ui/test-results/
+packages/ui/playwright-report/
+packages/ui/playwright/.cache/
+packages/electron/dist/
+
+# electron-builder packaging output.
+/release/

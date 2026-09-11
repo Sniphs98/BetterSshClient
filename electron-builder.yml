@@ -1,0 +1,57 @@
+# electron-builder packaging config. Mirrors the target set the old
+# crates/omnyssh-gui/tauri.conf.json shipped (dmg, AppImage, deb, rpm, nsis).
+#
+# `directories.app` points at the Electron package (its package.json's
+# `main`/`version`/`name` become the packaged app's); `packages/ui/build`
+# (the SvelteKit static output) lives outside it, so it's copied in via
+# `extraResources` at the same relative depth the dev-time app:// protocol
+# handler already expects (`dist/../../ui/build`) — two levels above
+# `app.asar` is exactly `resources/`, where `extraResources` lands it.
+appId: com.sniphs.omnyssh
+productName: OmnySSH
+copyright: Copyright © OmnySSH contributors
+
+publish:
+  provider: github
+  owner: Sniphs98
+  repo: omnyssh
+
+directories:
+  app: packages/electron
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+  - "!**/*.test.js"
+  - "!**/*.test.js.map"
+
+extraResources:
+  - from: packages/ui/build
+    to: ui/build
+
+asarUnpack:
+  - "**/*.node"
+
+mac:
+  target: [dmg]
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+
+win:
+  target: [nsis]
+  icon: build/icon.ico
+
+linux:
+  target: [AppImage, deb, rpm]
+  icon: build/icons
+  category: Utility
+  desktop:
+    entry:
+      Comment: SSH dashboard, terminal, and SFTP file manager
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false

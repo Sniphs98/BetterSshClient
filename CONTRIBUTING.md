@@ -23,123 +23,86 @@ development workflow, coding conventions, and review process.
 
 | Tool | Minimum version | Install |
 |------|----------------|---------|
-| Rust | stable (1.76+) | `rustup install stable` |
+| Node.js | 22+ | [nodejs.org](https://nodejs.org) or `nvm` |
 | Git  | any recent     | OS package manager |
-| Node.js *(GUI only)* | 20+ | [nodejs.org](https://nodejs.org) or `nvm` |
-| Tauri CLI *(GUI only)* | v2 | `npm i -g @tauri-apps/cli@^2` or `cargo install tauri-cli` |
 
-**Clone and build:**
+**Clone and install:**
 
 ```bash
-git clone https://github.com/timhartmann7/omnyssh.git
+git clone https://github.com/Sniphs98/omnyssh.git
 cd omnyssh
-cargo build
+npm install
 ```
 
-The first build fetches all dependencies from crates.io and may take a few
-minutes.  Subsequent builds are incremental.
-
-**Repository layout:** the repo is a cargo workspace with three crates:
-
-| Crate | Path | Contents |
-|-------|------|----------|
-| `omnyssh-core` | `crates/omnyssh-core` | SSH engine, configs, metrics, domain events, updater — no UI dependencies |
-| `omnyssh` | `crates/omnyssh` | The TUI application (binary `omny`), depends on `omnyssh-core` |
-| `omnyssh-gui` | `crates/omnyssh-gui` | The desktop GUI (Tauri 2 + SvelteKit): Rust IPC in `src/`, the web frontend in `ui/` |
-
-Bare `cargo build` / `test` / `install` at the root build **core + TUI only**
-(the GUI is excluded via `default-members`), so contributors without the
-Node/Tauri toolchain are unaffected.  All `cargo` commands below work from the
-repository root; use `-p omnyssh-core` / `-p omnyssh` / `-p omnyssh-gui` to
-target one crate.
-
-**Recommended tools:**
+`npm install` pulls in `ssh2` and `electron`, both of which run a postinstall
+step (native module rebuild / Electron binary download). If your npm config
+blocks install scripts, approve them explicitly:
 
 ```bash
-rustup component add clippy rustfmt
-cargo install cargo-watch   # optional: auto-rebuild on file changes
+npm install-scripts approve electron esbuild ssh2 cpu-features
+npm rebuild electron ssh2 cpu-features
 ```
+
+**Repository layout:** an npm workspace with two packages:
+
+| Package | Path | Contents |
+|---------|------|----------|
+| `omnyssh-electron` | `packages/electron` | Main process + preload + the ported SSH engine (connect/auth, PTY, SFTP, key setup, metrics, config) — no UI dependencies |
+| `omnyssh-desktop-ui` | `packages/ui` | The SvelteKit renderer: dashboard, terminal, SFTP browser, snippets, settings |
 
 ---
 
 ## 2. Running the project
 
 ```bash
-# Debug build (fast compile, slower runtime)
-cargo run
+# Renderer only, in a browser (fast iteration on screens/stores; no IPC backend)
+npm run dev
 
-# With a custom config file
-cargo run -- --config ./my-config.toml
+# Full Electron app (builds the main process, then launches it)
+npm run dev:electron
 
-# Verbose logging to stderr
-cargo run -- --verbose
+# Production build (renderer + main process)
+npm run build
 
-# Release build
-cargo build --release
-./target/release/omny
+# Package an installer for the current platform (.dmg / .AppImage+.deb+.rpm / .exe)
+npm run package
+
+# Package into an unpacked directory only, for a quick local smoke test
+npm run package:dir
 ```
 
-During development you can use `cargo watch` to rebuild on every save:
-
-```bash
-cargo watch -x run
-```
-
-### The desktop GUI
-
-The GUI needs the Node/Tauri toolchain (see prerequisites).  From
-`crates/omnyssh-gui`:
-
-```bash
-cd crates/omnyssh-gui/ui && npm ci && cd ..
-
-# Dev: hot-reloads the frontend and rebuilds the Rust side on change
-cargo tauri dev
-
-# Release bundles (.dmg / .AppImage + .deb / .msi|.exe) into target/release/bundle
-cargo tauri build
-```
+`npm run dev` alone only starts the SvelteKit dev server — screens that call
+into the Electron bridge (`window.omnyssh`) will reject with "the Electron
+bridge is unavailable" outside a real Electron window, which is expected;
+use `npm run dev:electron` to exercise the whole app.
 
 ---
 
 ## 3. Running tests
 
 ```bash
-# All tests
-cargo test
+# Everything (electron package, then ui package)
+npm test
 
-# Only unit tests of one crate (no integration tests)
-cargo test -p omnyssh-core --lib
-cargo test -p omnyssh --lib
+# One workspace only
+npm run test --workspace packages/electron
+npm run test --workspace packages/ui
 
-# Only integration tests in crates/omnyssh-core/tests/
-cargo test -p omnyssh-core --test metrics_parser
-cargo test -p omnyssh-core --test ssh_config_parser
-
-# With output (useful when debugging a failing test)
-cargo test -- --nocapture
+# Type-check + svelte-check
+npm run check
 ```
 
-### GUI tests
-
-The GUI has its own Rust and frontend suites (not part of the bare workspace
-build):
+### End-to-end tests
 
 ```bash
-cargo test -p omnyssh-gui                       # Rust IPC / DTO tests
-cd crates/omnyssh-gui/ui
-npm run check                                   # svelte-check + tsc
-npm test                                        # vitest unit tests
+npm run test:e2e --workspace packages/ui
 ```
 
-### Linting
-
-All CI checks must pass before a pull request can be merged:
-
-```bash
-cargo clippy -- -D warnings   # no warnings allowed
-cargo fmt --check             # formatting must match rustfmt defaults
-```
+`packages/ui/e2e/*.spec.ts` are Playwright specs that run against the built
+static SPA (`vite preview`) with a `window.omnyssh` stub installed via
+`page.addInitScript` — see `packages/ui/src/lib/electron.d.ts` for the
+bridge shape a stub must match, and the module comment at the top of each
+spec file for what it fakes.
 
 ---
 
@@ -149,44 +112,52 @@ These conventions are enforced in code review and by CI.
 
 ### Architecture
 
-- **The engine stays UI-free.**  Code in `crates/omnyssh-core` must not depend
-  on terminal-rendering, input, or CLI crates; frontend-specific types and
-  logic belong in `crates/omnyssh`.
-- **Never block the UI thread with SSH operations.**  All network I/O runs in
-  background `tokio::spawn` tasks and communicates via `mpsc` channels.
-- **Use `Arc<RwLock<T>>` for shared state**, not `Arc<Mutex<T>>`.  The UI
-  reads state ~30 times per second; SSH tasks write rarely.
-- **One event loop**, many event sources.  Don't create per-screen loops.
-- **Separate `AppState` (data) from `ViewState` (UI).**  Background tasks
-  only touch `AppState`.
+- **The engine stays UI-free.** Code in `packages/electron/src/core` must
+  not import from Svelte or `packages/ui`; it's plain TypeScript the main
+  process runs.
+- **Never block the main process with SSH operations.** All network I/O is
+  `async`/`await`; nothing synchronous should touch the network or disk on
+  a hot path.
+- **IPC is the only bridge between renderer and main process.** The
+  renderer never reaches `ssh2`, `node:fs`, or any other Node API directly
+  — only through `ipcMain.handle` calls registered in `packages/electron/src/ipc/*`
+  and exposed to the renderer via `packages/electron/src/preload.ts`'s
+  `contextBridge`.
+- **One session-id space for terminal and SFTP** (`state/sessionRegistry.ts`),
+  so a terminal tab and an SFTP tab can never collide on the same id.
+- **Ported logic keeps its original module boundaries.** When porting a
+  piece of engine logic, mirror the shape of what it was ported from rather
+  than inventing new structure, so the two stay easy to compare.
 
 ### Error handling
 
-- No `.unwrap()` in production code — use `?`, `anyhow`, or `.expect("reason")`
-  only where a panic is provably impossible.
 - Every SSH error (timeout, auth failure, host key mismatch) must be shown
-  to the user via the status bar or a popup.
+  to the user via the status bar or a modal — never swallowed silently.
+- Prefer throwing/rejecting over sentinel return values; `ipc/*` handlers
+  convert a thrown `Error` into the `{ message }` shape the renderer expects.
 
-### UI
+### Frontend
 
-- `render()` functions must never panic.  Use `Option<T>` and show
-  `"Loading…"` placeholders when data is not yet available.
-- Destructive operations (delete host, delete file) require a confirmation
-  popup.
-- Every screen has its own `handle_input()` function.
+- Components call `$lib/ipc/commands.ts` wrappers, never `window.omnyssh`
+  directly.
+- Store updates from backend events go through `$lib/ipc/router.ts`'s pure
+  `applyXxx` functions, which stay framework- and transport-agnostic and
+  unit-testable without a running Electron instance.
+- Only semantic color tokens — no hardcoded hex/rgb/hsl in `.svelte` files
+  (enforced by `theme/no-hardcoded-hex.test.ts`).
 
 ### Cross-platform
 
-- Use `dirs::home_dir()` / `dirs::config_dir()` for all user-directory paths
-  — never hardcode `~`.
-- Use crossterm for all terminal I/O — no raw ANSI escape codes.
-- Parse SSH command output with `.lines()` to handle both `\n` and `\r\n`.
+- Use `node:os`/`node:path` for all user-directory paths — never hardcode
+  `~` or a platform-specific separator.
+- Parse SSH command output with a normalize-newlines step to handle both
+  `\n` and `\r\n`.
 
 ### Dependencies
 
-Before adding a new crate, check whether the feature can be implemented in
-~10 lines of Rust.  Every new dependency increases compile time and binary
-size.
+Before adding a new package, check whether the feature can be implemented
+in a small amount of plain TypeScript. Every new dependency increases
+install time and the packaged app's size.
 
 ---
 
@@ -217,13 +188,13 @@ OmnySSH uses [Conventional Commits](https://www.conventionalcommits.org/).
 **Examples:**
 
 ```
-feat(themes): add gruvbox colour scheme
+feat(sftp): add drag and drop file transfers
 
 fix(ssh): respect connection timeout when host is unreachable
 
 docs: update README with installation instructions
 
-chore: bump ratatui to 0.29
+chore: bump ssh2 to 1.17
 ```
 
 ---
@@ -235,9 +206,9 @@ chore: bump ratatui to 0.29
    git checkout -b feat/my-feature
    ```
 2. Make your changes following the conventions above.
-3. Run the full test suite and linter:
+3. Run the full test suite and checks:
    ```bash
-   cargo test && cargo clippy -- -D warnings && cargo fmt --check
+   npm test && npm run check
    ```
 4. Push and open a PR against the `main` branch.
 5. Fill in the PR template (problem, solution, test plan).
@@ -245,9 +216,8 @@ chore: bump ratatui to 0.29
 
 **PR checklist:**
 
-- [ ] All tests pass (`cargo test`)
-- [ ] No clippy warnings (`cargo clippy -- -D warnings`)
-- [ ] Code is formatted (`cargo fmt`)
+- [ ] All tests pass (`npm test`)
+- [ ] `npm run check` passes (svelte-check + tsc, both packages)
 - [ ] Relevant tests added (parsers, new features)
 - [ ] CHANGELOG entry added
 - [ ] README updated if the change is user-visible
@@ -258,11 +228,11 @@ chore: bump ratatui to 0.29
 
 Please open a GitHub Issue with:
 
-- OmnySSH version (`omny --version`)
-- OS and terminal emulator
+- OmnySSH version (Settings screen, or the app's About info)
+- OS
 - Steps to reproduce
 - Expected behaviour vs. actual behaviour
-- Relevant log output (run with `--verbose 2>omnyssh.log` and attach the log)
+- Relevant log output
 
-For security issues, please **do not** open a public issue.  Email the
+For security issues, please **do not** open a public issue. Email the
 maintainers directly.

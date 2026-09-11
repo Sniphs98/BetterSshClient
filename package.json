@@ -1,0 +1,27 @@
+{
+  "name": "omnyssh",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace packages/ui",
+    "dev:electron": "npm run build --workspace packages/electron && electron packages/electron/dist/main.js",
+    "build": "npm run build --workspace packages/ui && npm run build --workspace packages/electron",
+    "check": "npm run check --workspace packages/ui && npm run check --workspace packages/electron",
+    "test": "npm run test --workspace packages/electron && npm run test --workspace packages/ui",
+    "test:e2e": "npm run build && npm run test:e2e --workspace packages/ui",
+    "package": "npm run build && electron-builder",
+    "package:dir": "npm run build && electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron-builder": "^25.1.8"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.21.5": true,
+    "ssh2@1.17.0": true,
+    "cpu-features@0.0.10": true
+  }
+}
