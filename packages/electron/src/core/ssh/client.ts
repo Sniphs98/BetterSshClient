@@ -27,6 +27,9 @@ export interface Host {
   monitorPort?: number;
   keySetupDate?: string;
   passwordAuthDisabled?: boolean;
+  /** Remote directory to land in on connect — `cd`'d into for a terminal, and the
+   *  SFTP browser's initial remote listing. Unset means the login default / `/`. */
+  defaultPath?: string;
 }
 
 export function defaultUser(): string {
@@ -81,7 +84,8 @@ export function hostFromToml(raw: Record<string, unknown>): Host {
     monitorPort: typeof raw.monitor_port === 'number' ? raw.monitor_port : undefined,
     keySetupDate: typeof raw.key_setup_date === 'string' ? raw.key_setup_date : undefined,
     passwordAuthDisabled:
-      typeof raw.password_auth_disabled === 'boolean' ? raw.password_auth_disabled : undefined
+      typeof raw.password_auth_disabled === 'boolean' ? raw.password_auth_disabled : undefined,
+    defaultPath: typeof raw.default_path === 'string' ? raw.default_path : undefined
   };
 }
 
@@ -109,5 +113,6 @@ export function hostToToml(host: Host): Record<string, unknown> {
   if (host.monitorPort !== undefined) out.monitor_port = host.monitorPort;
   if (host.keySetupDate !== undefined) out.key_setup_date = host.keySetupDate;
   if (host.passwordAuthDisabled !== undefined) out.password_auth_disabled = host.passwordAuthDisabled;
+  if (host.defaultPath !== undefined) out.default_path = host.defaultPath;
   return out;
 }

@@ -94,7 +94,7 @@ export class PtyManager {
     let channel: ClientChannel;
     try {
       sshSession = await SshSession.connect(host);
-      channel = await sshSession.openShell(cols, rows, processLocaleEnv());
+      channel = await sshSession.openShell(cols, rows, processLocaleEnv(), host.defaultPath);
     } catch (e) {
       emit({ type: 'error', message: `Terminal: ${(e as Error).message}` });
       emit({ type: 'ptyExited', sessionId: id });

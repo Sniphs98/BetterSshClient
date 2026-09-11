@@ -42,7 +42,8 @@ async function boot(page: Page): Promise<void> {
                 tags: (h.tags as string[]) ?? [],
                 notes: h.notes,
                 source: 'manual',
-                hasKey: !!h.identityFile
+                hasKey: !!h.identityFile,
+                defaultPath: h.defaultPath
               };
               const i = state.hosts.findIndex((x) => (x as { name: string }).name === view.name);
               if (i >= 0) state.hosts[i] = { ...state.hosts[i], ...view };
@@ -90,6 +91,24 @@ test('adds a host and it appears as a card', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('db-1', { exact: true })).toBeVisible();
   await expect(page.getByText('postgres@db-1.example.com:22')).toBeVisible();
+});
+
+test('a default path set on add is there again when the host is reopened for edit', async ({
+  page
+}) => {
+  await boot(page);
+
+  await page.getByRole('button', { name: 'Add host' }).click();
+  let editor = page.getByRole('dialog', { name: 'Add host' });
+  await editor.getByLabel('Name', { exact: true }).fill('db-1');
+  await editor.getByLabel('Hostname / IP').fill('db-1.example.com');
+  await editor.getByLabel('Default path').fill('/var/lib/postgresql');
+  await editor.getByRole('button', { name: 'Add host' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Edit db-1' }).click();
+  editor = page.getByRole('dialog', { name: 'Edit host' });
+  await expect(editor.getByLabel('Default path')).toHaveValue('/var/lib/postgresql');
 });
 
 test('edits a manual host in place', async ({ page }) => {

@@ -31,6 +31,16 @@ const EXEC_TIMEOUT_MS = 30_000;
 export class SshCommandError extends Error {}
 export class SshAuthError extends Error {}
 
+/** The command run (with a PTY attached) to open a terminal already inside a host's
+ *  configured default path: `cd` there, then `exec` the user's shell as a login shell
+ *  so it replaces the `cd` process rather than leaving it as a parent — indistinguishable
+ *  from a plain `ssh -t host` shell once running. `cd` failing (a deleted/renamed
+ *  directory) falls through to the login default instead of aborting the connection. */
+export function buildCdShellCommand(path: string): string {
+  const escaped = path.replaceAll("'", "'\\''");
+  return `cd '${escaped}' 2>/dev/null; exec "$SHELL" -l`;
+}
+
 /** An authenticated connection to one host, plus the jump-host connections
  *  it is tunnelled through (empty for a direct connection). The bastions
  *  are kept alive for the whole lifetime of the connection; disconnecting
@@ -76,10 +86,22 @@ export class SshSession {
   /** Opens a channel with a remote PTY + shell (the `ssh -t` equivalent),
    *  for the terminal (pty.ts). `env` forwards the locale, mirroring an ssh
    *  client's default `SendEnv LANG LC_*` (best-effort — servers without
-   *  `AcceptEnv` ignore it). */
-  async openShell(cols: number, rows: number, env?: Record<string, string>): Promise<ClientChannel> {
+   *  `AcceptEnv` ignore it). A `cwd` (the host's configured default path)
+   *  runs as an explicit `exec` command instead of a bare `shell` request —
+   *  see `buildCdShellCommand` — so the terminal opens already there rather
+   *  than landing on the login default and having a visible `cd` typed at it. */
+  async openShell(cols: number, rows: number, env?: Record<string, string>, cwd?: string): Promise<ClientChannel> {
+    const pty = { term: 'xterm-256color', cols, rows };
+    if (cwd === undefined || cwd.trim() === '') {
+      return new Promise((resolve, reject) => {
+        this.connection.client.shell(pty, { env }, (err, channel) => {
+          if (err) reject(err);
+          else resolve(channel);
+        });
+      });
+    }
     return new Promise((resolve, reject) => {
-      this.connection.client.shell({ term: 'xterm-256color', cols, rows }, { env }, (err, channel) => {
+      this.connection.client.exec(buildCdShellCommand(cwd), { pty, env }, (err, channel) => {
         if (err) reject(err);
         else resolve(channel);
       });

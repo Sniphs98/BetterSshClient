@@ -218,6 +218,7 @@ export type HostDto = {
   passwordAuthDisabled?: boolean | null;
   monitoring: MonitorModeDto;
   monitorPort?: number | null;
+  defaultPath?: string | null;
 };
 /** Inbound host form payload for `save_host`. */
 export type HostInputDto = {
@@ -232,6 +233,7 @@ export type HostInputDto = {
   notes?: string | null;
   monitoring?: MonitorModeDto | null;
   monitorPort?: number | null;
+  defaultPath?: string | null;
 };
 /** Host origin. */
 export type HostSourceDto = 'sshConfig' | 'manual';

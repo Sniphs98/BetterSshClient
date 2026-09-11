@@ -25,6 +25,7 @@ export interface HostDto {
   passwordAuthDisabled?: boolean;
   monitoring: MonitorModeDto;
   monitorPort?: number;
+  defaultPath?: string;
 }
 
 /** Inbound host form payload for `save_host`. Always builds a manual `Host`:
@@ -42,6 +43,7 @@ export interface HostInputDto {
   notes?: string;
   monitoring?: MonitorModeDto;
   monitorPort?: number;
+  defaultPath?: string;
 }
 
 function sourceToDto(source: HostSource): HostSourceDto {
@@ -73,7 +75,8 @@ export function hostToDto(host: Host): HostDto {
     hasKey: host.identityFile !== undefined,
     passwordAuthDisabled: host.passwordAuthDisabled,
     monitoring: monitorModeToDto(host.monitoring),
-    monitorPort: host.monitorPort
+    monitorPort: host.monitorPort,
+    defaultPath: host.defaultPath
   };
 }
 
@@ -93,7 +96,8 @@ export function hostFromInputDto(input: HostInputDto): Host {
     notes: input.notes,
     source: 'manual',
     monitoring: input.monitoring !== undefined ? monitorModeFromDto(input.monitoring) : 'ssh',
-    monitorPort: input.monitorPort
+    monitorPort: input.monitorPort,
+    defaultPath: input.defaultPath
   };
 }
 

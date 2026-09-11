@@ -137,6 +137,19 @@
       </label>
 
       <label class={label}>
+        <span>Default path</span>
+        <input
+          bind:value={fields.defaultPath}
+          class="{field} font-mono"
+          placeholder="/var/www (optional)"
+        />
+      </label>
+      <p class="-mt-2.5 text-xs text-faint">
+        Opens a terminal or the SFTP browser already here, instead of the login directory /
+        server root.
+      </p>
+
+      <label class={label}>
         <span>Tags</span>
         <input bind:value={fields.tags} class={field} placeholder="prod, web" />
       </label>

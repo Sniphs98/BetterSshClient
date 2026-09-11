@@ -48,4 +48,15 @@ describe('hostFromToml / hostToToml round trip', () => {
     const read = hostFromToml(written);
     expect(read.password).toBe('secret');
   });
+
+  it('round-trips a default connection path, and omits it when unset', () => {
+    const withPath = { ...defaultHost(), name: 'a', hostname: 'a', defaultPath: '/var/www' };
+    const written = hostToToml(withPath);
+    expect(written.default_path).toBe('/var/www');
+    expect(hostFromToml(written).defaultPath).toBe('/var/www');
+
+    const withoutPath = hostFromToml({ name: 'b', hostname: 'b' });
+    expect(withoutPath.defaultPath).toBeUndefined();
+    expect(hostToToml(withoutPath)).not.toHaveProperty('default_path');
+  });
 });

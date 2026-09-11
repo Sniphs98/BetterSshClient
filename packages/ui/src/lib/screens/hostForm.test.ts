@@ -85,6 +85,14 @@ describe('formToInput — mirrors the TUI to_host', () => {
     expect(r.ok && r.input.notes).toBeUndefined();
   });
 
+  it('drops a blank default path to undefined, keeps a trimmed one', () => {
+    const blank = formToInput(fields({ name: 'n', hostname: 'h', defaultPath: '   ' }));
+    expect(blank.ok && blank.input.defaultPath).toBeUndefined();
+
+    const set = formToInput(fields({ name: 'n', hostname: 'h', defaultPath: ' /var/www ' }));
+    expect(set.ok && set.input.defaultPath).toBe('/var/www');
+  });
+
   it('keeps identity/password/notes when provided', () => {
     const r = formToInput(
       fields({ name: 'n', hostname: 'h', identityFile: '~/.ssh/id', password: 's3cret', notes: 'prod box' })
@@ -112,6 +120,11 @@ describe('formFromHost', () => {
     // Backend-only fields are never shown — blank means "keep the stored value".
     expect(f.identityFile).toBe('');
     expect(f.password).toBe('');
+  });
+
+  it('seeds the default connection path, blank when unset', () => {
+    expect(formFromHost(host({ defaultPath: '/srv/app' })).defaultPath).toBe('/srv/app');
+    expect(formFromHost(host({})).defaultPath).toBe('');
   });
 
   it('round-trips the observable fields back through formToInput', () => {

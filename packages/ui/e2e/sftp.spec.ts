@@ -13,10 +13,13 @@ const HOSTS = [
   { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false }
 ];
 
-async function boot(page: Page): Promise<void> {
+async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Promise<void> {
   await page.addInitScript(
-    ({ hosts }) => {
+    ({ hosts, webOneDefaultPath }) => {
       const win = window as unknown as Record<string, unknown>;
+      const seededHosts = webOneDefaultPath
+        ? hosts.map((h) => (h.name === 'web-1' ? { ...h, defaultPath: webOneDefaultPath } : h))
+        : hosts;
       const listeners: Record<string, Array<(payload: unknown) => void>> = {};
       let nextSession = 0;
       let nextTransfer = 0;
@@ -36,7 +39,8 @@ async function boot(page: Page): Promise<void> {
           { name: 'config.yml', path: '/config.yml', size: 64, isDir: false },
           { name: 'var', path: '/var', size: 0, isDir: true },
           { name: 'app.log', path: '/app.log', size: 12, isDir: false }
-        ]
+        ],
+        '/var/www': [{ name: 'index.html', path: '/var/www/index.html', size: 10, isDir: false }]
       };
 
       function parentOf(p: string): string {
@@ -68,7 +72,7 @@ async function boot(page: Page): Promise<void> {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':
-              return Promise.resolve(hosts);
+              return Promise.resolve(seededHosts);
             case 'reload_hosts':
               return Promise.resolve(null);
             case 'list_local_dir': {
@@ -153,7 +157,7 @@ async function boot(page: Page): Promise<void> {
         getPathForFile: () => ''
       };
     },
-    { hosts: HOSTS }
+    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath }
   );
 
   await page.goto('/');
@@ -329,4 +333,15 @@ test('right-click on empty pane space offers New folder without selecting anythi
 
   await menu.getByRole('menuitem', { name: 'New folder' }).click();
   await expect(page.getByRole('dialog', { name: 'New folder' })).toBeVisible();
+});
+
+test("a host's default path opens the remote pane there instead of the server root", async ({
+  page
+}) => {
+  await boot(page, { webOneDefaultPath: '/var/www' });
+  await page.getByTitle('files on web-1').click();
+
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('index.html')).toBeVisible();
+  await expect(remotePane.getByText('config.yml')).toHaveCount(0);
 });

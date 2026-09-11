@@ -18,6 +18,8 @@ export interface HostFormFields {
   monitoring: MonitorModeDto;
   /** Probe port; blank means "the host's SSH port". Only read for `tcpPort`. */
   monitorPort: string;
+  /** Remote directory to land in on connect. Blank means the login default / `/`. */
+  defaultPath: string;
 }
 
 export function emptyForm(): HostFormFields {
@@ -33,7 +35,8 @@ export function emptyForm(): HostFormFields {
     tags: '',
     notes: '',
     monitoring: 'ssh',
-    monitorPort: ''
+    monitorPort: '',
+    defaultPath: ''
   };
 }
 
@@ -51,7 +54,8 @@ export function formFromHost(h: HostDto): HostFormFields {
     tags: h.tags.join(', '),
     notes: h.notes ?? '',
     monitoring: h.monitoring,
-    monitorPort: h.monitorPort == null ? '' : String(h.monitorPort)
+    monitorPort: h.monitorPort == null ? '' : String(h.monitorPort),
+    defaultPath: h.defaultPath ?? ''
   };
 }
 
@@ -105,6 +109,7 @@ export function formToInput(f: HostFormFields): HostFormResult {
   const password = f.password.trim();
   const notes = f.notes.trim();
   const tags = splitCsv(f.tags);
+  const defaultPath = f.defaultPath.trim();
   return {
     ok: true,
     input: {
@@ -117,7 +122,8 @@ export function formToInput(f: HostFormFields): HostFormResult {
       tags,
       notes: notes || undefined,
       monitoring: f.monitoring,
-      monitorPort
+      monitorPort,
+      defaultPath: defaultPath || undefined
     }
   };
 }

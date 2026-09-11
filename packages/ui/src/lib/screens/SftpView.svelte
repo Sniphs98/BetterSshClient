@@ -11,7 +11,9 @@
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import SftpPane from './SftpPane.svelte';
   import type { FileEntryDto } from '$lib/bindings';
+  import { get } from 'svelte/store';
   import { sessions, type Session } from '$lib/stores/sessions';
+  import { hosts } from '$lib/stores/hosts';
   import { sftp, markedEntries, formatBytes, type PaneSide } from '$lib/stores/sftp';
   import { lastError } from '$lib/stores/notifications';
   import {
@@ -153,7 +155,10 @@
         stopExternalDrop = undefined;
       }
       void refreshLocal(home);
-      refreshRemote('/');
+      // The host's configured default path, if any (tech-gui.md §4.1) — otherwise the
+      // server root, as before.
+      const host = get(hosts).find((h) => h.name === session.hostName);
+      refreshRemote(host?.defaultPath || '/');
     })();
   });
 
