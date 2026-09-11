@@ -8,6 +8,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { Icon } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
+  import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import SftpPane from './SftpPane.svelte';
   import type { FileEntryDto } from '$lib/bindings';
   import { sessions, type Session } from '$lib/stores/sessions';
@@ -44,6 +45,12 @@
 
   // A pending mkdir/rename input. Rename carries the entry being renamed.
   let prompt = $state<{ kind: 'mkdir' | 'rename'; value: string; target?: FileEntryDto } | null>(
+    null
+  );
+
+  // The open right-click menu, if any — built fresh from the current selection each time
+  // it opens (see openEntryMenu/openEmptyMenu), so its items always match what's marked.
+  let contextMenu = $state<{ side: PaneSide; x: number; y: number; items: ContextMenuItem[] } | null>(
     null
   );
 
@@ -197,6 +204,18 @@
     if (backendId != null) sftp.toggleMark(backendId, side, path);
   }
 
+  function selectOnly(side: PaneSide, path: string): void {
+    if (backendId != null) sftp.selectOnly(backendId, side, path);
+  }
+
+  function selectRange(side: PaneSide, path: string): void {
+    if (backendId != null) sftp.selectRange(backendId, side, path);
+  }
+
+  function clearMarks(side: PaneSide): void {
+    if (backendId != null) sftp.clearMarks(backendId, side);
+  }
+
   async function preview(side: PaneSide, entry: FileEntryDto): Promise<void> {
     const id = backendId;
     if (id == null) return;
@@ -319,6 +338,62 @@
     }
   }
 
+  function openEntry(side: PaneSide, entry: FileEntryDto): void {
+    if (entry.isDir) navigate(side, entry);
+    else void preview(side, entry);
+  }
+
+  // Right-click menus (tech-gui.md §3.2): built fresh from the current selection each
+  // time one opens, so a batch right-click (an entry inside an existing multi-mark, see
+  // SftpPane's oncontextmenu) offers the batch actions rather than just the one entry.
+  // The remote side already supports rename/delete via the core; the local side is
+  // browse + upload only — there's no local filesystem mutation command (yet).
+  function remoteEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto): ContextMenuItem[] {
+    const count = remoteMarked.length;
+    const files = remoteMarkedFiles.length;
+    return [
+      { label: 'Open', icon: entry.isDir ? 'folder' : 'file', onSelect: () => openEntry('remote', entry), disabled: count > 1 },
+      { label: files > 1 ? `Download ${files} files` : 'Download', icon: 'download', onSelect: download, disabled: files === 0 },
+      { label: 'Rename', icon: 'edit', onSelect: () => openPrompt('rename'), disabled: !singleRemoteMark },
+      { label: count > 1 ? `Delete ${count} items` : 'Delete', icon: 'trash', danger: true, onSelect: remove, disabled: count === 0 },
+      { label: 'New folder', icon: 'plus', onSelect: () => openPrompt('mkdir') },
+      { label: 'Refresh', icon: 'refresh', onSelect: () => refreshRemote(currentView.remote.path) }
+    ];
+  }
+
+  function remoteEmptyMenuItems(currentView: NonNullable<typeof view>): ContextMenuItem[] {
+    return [
+      { label: 'New folder', icon: 'plus', onSelect: () => openPrompt('mkdir') },
+      { label: 'Refresh', icon: 'refresh', onSelect: () => refreshRemote(currentView.remote.path) }
+    ];
+  }
+
+  function localEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto): ContextMenuItem[] {
+    const marked = markedEntries(currentView.local).length;
+    const files = localMarkedFiles.length;
+    return [
+      { label: 'Open', icon: entry.isDir ? 'folder' : 'file', onSelect: () => openEntry('local', entry), disabled: marked > 1 },
+      { label: files > 1 ? `Upload ${files} files` : 'Upload', icon: 'upload', onSelect: upload, disabled: files === 0 },
+      { label: 'Refresh', icon: 'refresh', onSelect: () => void refreshLocal(currentView.local.path) }
+    ];
+  }
+
+  function localEmptyMenuItems(currentView: NonNullable<typeof view>): ContextMenuItem[] {
+    return [{ label: 'Refresh', icon: 'refresh', onSelect: () => void refreshLocal(currentView.local.path) }];
+  }
+
+  function openEntryContextMenu(side: PaneSide, entry: FileEntryDto, event: MouseEvent): void {
+    if (!view) return;
+    const items = side === 'remote' ? remoteEntryMenuItems(view, entry) : localEntryMenuItems(view, entry);
+    contextMenu = { side, x: event.clientX, y: event.clientY, items };
+  }
+
+  function openEmptyContextMenu(side: PaneSide, event: MouseEvent): void {
+    if (!view) return;
+    const items = side === 'remote' ? remoteEmptyMenuItems(view) : localEmptyMenuItems(view);
+    contextMenu = { side, x: event.clientX, y: event.clientY, items };
+  }
+
   function submitPrompt(): void {
     const id = backendId;
     if (id == null || !view || !prompt) return;
@@ -378,9 +453,14 @@
         pane={view.local}
         onNavigate={(e) => navigate('local', e)}
         onToggleMark={(p) => toggleMark('local', p)}
+        onSelectOnly={(p) => selectOnly('local', p)}
+        onSelectRange={(p) => selectRange('local', p)}
+        onClearMarks={() => clearMarks('local')}
         onPreview={(e) => preview('local', e)}
         onDragStart={(e) => startDrag('local', e)}
         onDrop={() => dropOn('local')}
+        onEntryContextMenu={(e, event) => openEntryContextMenu('local', e, event)}
+        onEmptyContextMenu={(event) => openEmptyContextMenu('local', event)}
       >
         {#snippet toolbar()}
           <button
@@ -410,9 +490,14 @@
         pane={view.remote}
         onNavigate={(e) => navigate('remote', e)}
         onToggleMark={(p) => toggleMark('remote', p)}
+        onSelectOnly={(p) => selectOnly('remote', p)}
+        onSelectRange={(p) => selectRange('remote', p)}
+        onClearMarks={() => clearMarks('remote')}
         onPreview={(e) => preview('remote', e)}
         onDragStart={(e) => startDrag('remote', e)}
         onDrop={() => dropOn('remote')}
+        onEntryContextMenu={(e, event) => openEntryContextMenu('remote', e, event)}
+        onEmptyContextMenu={(event) => openEmptyContextMenu('remote', event)}
       >
         {#snippet toolbar()}
           <button
@@ -488,6 +573,15 @@
     {/if}
   {/if}
 </div>
+
+{#if active && contextMenu}
+  <ContextMenu
+    x={contextMenu.x}
+    y={contextMenu.y}
+    items={contextMenu.items}
+    onClose={() => (contextMenu = null)}
+  />
+{/if}
 
 {#if active && prompt}
   <Modal label={prompt.kind === 'mkdir' ? 'New folder' : 'Rename'} onClose={() => (prompt = null)}>

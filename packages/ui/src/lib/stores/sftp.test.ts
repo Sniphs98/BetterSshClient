@@ -6,6 +6,9 @@ import {
   newSession,
   applyListing,
   toggleMark,
+  selectOnly,
+  selectRange,
+  clearMarks,
   markedEntries,
   mergeRefresh,
   applyProgress,
@@ -54,6 +57,63 @@ describe('sftp reducers', () => {
     // Toggling an already-marked path removes it.
     pane = toggleMark(pane, '/srv/a');
     expect(markedEntries(pane).map((e) => e.name)).toEqual(['c']);
+  });
+
+  it('toggleMark sets the anchor to the touched entry, for a later shift-click', () => {
+    let pane = paneWith([entry('a'), entry('b'), entry('c')]);
+    pane = toggleMark(pane, '/srv/b');
+    expect(pane.anchor).toBe('/srv/b');
+  });
+
+  it('selectOnly replaces the whole selection with one entry and anchors there', () => {
+    let pane = paneWith([entry('a'), entry('b'), entry('c')], ['/srv/a', '/srv/c']);
+    pane = selectOnly(pane, '/srv/b');
+    expect(markedEntries(pane).map((e) => e.name)).toEqual(['b']);
+    expect(pane.anchor).toBe('/srv/b');
+  });
+
+  it('selectRange selects the contiguous run from the anchor to the clicked entry, forward', () => {
+    let pane = paneWith([entry('a'), entry('b'), entry('c'), entry('d')]);
+    pane = selectOnly(pane, '/srv/a');
+    pane = selectRange(pane, '/srv/c');
+    expect(markedEntries(pane).map((e) => e.name)).toEqual(['a', 'b', 'c']);
+    // The anchor stays put, so a second shift-click re-ranges from the same origin.
+    expect(pane.anchor).toBe('/srv/a');
+  });
+
+  it('selectRange works backward from the anchor too', () => {
+    let pane = paneWith([entry('a'), entry('b'), entry('c'), entry('d')]);
+    pane = selectOnly(pane, '/srv/d');
+    pane = selectRange(pane, '/srv/b');
+    expect(markedEntries(pane).map((e) => e.name)).toEqual(['b', 'c', 'd']);
+  });
+
+  it('selectRange replaces, not extends, a prior discontiguous selection', () => {
+    let pane = paneWith([entry('a'), entry('b'), entry('c'), entry('d')]);
+    pane = toggleMark(pane, '/srv/d'); // an unrelated prior mark, also sets anchor to d
+    pane = selectOnly(pane, '/srv/a'); // fresh anchor
+    pane = selectRange(pane, '/srv/b');
+    expect(markedEntries(pane).map((e) => e.name)).toEqual(['a', 'b']);
+  });
+
+  it('selectRange with no prior anchor falls back to a plain select', () => {
+    let pane = paneWith([entry('a'), entry('b'), entry('c')]);
+    pane = selectRange(pane, '/srv/b');
+    expect(markedEntries(pane).map((e) => e.name)).toEqual(['b']);
+    expect(pane.anchor).toBe('/srv/b');
+  });
+
+  it('clearMarks empties the selection', () => {
+    let pane = paneWith([entry('a'), entry('b')], ['/srv/a', '/srv/b']);
+    pane = clearMarks(pane);
+    expect(pane.marked.size).toBe(0);
+  });
+
+  it('applyListing resets the anchor along with the marks (a new directory)', () => {
+    let pane = paneWith([entry('a')]);
+    pane = selectOnly(pane, '/srv/a');
+    const next = applyListing(pane, '/etc', [entry('b')]);
+    expect(next.anchor).toBeUndefined();
   });
 
   it('mergeRefresh widens two different sides to both', () => {

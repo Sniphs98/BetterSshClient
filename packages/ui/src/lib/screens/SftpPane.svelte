@@ -1,8 +1,13 @@
 <script lang="ts">
   // One side of the dual-pane SFTP browser (tech-gui.md §3.2): a current-path header
-  // with a parent-supplied toolbar, then the entry list. Clicking a directory (or the
-  // `..` row) navigates; clicking a file previews; the leading checkbox marks it for a
-  // batch transfer/delete. Semantic tokens only — no colour literals (§5.1).
+  // with a parent-supplied toolbar, then the entry list. Selection follows the OS file
+  // manager convention: a plain click selects just that entry, ctrl/cmd-click toggles it
+  // into the selection, shift-click selects the range from the last touched entry, and a
+  // double-click opens it (navigates into a directory, previews a file) — the `..` row is
+  // the one exception, navigating on a single click since it's never a selection target.
+  // The leading checkbox stays as an explicit, always-additive toggle for touch/trackpad
+  // use. Right-click opens a context menu with the equivalent actions; the parent owns
+  // building and positioning it. Semantic tokens only — no colour literals (§5.1).
   import type { Snippet } from 'svelte';
   import { Icon } from '$lib/theme';
   import type { FileEntryDto } from '$lib/bindings';
@@ -13,22 +18,52 @@
     pane,
     onNavigate,
     onToggleMark,
+    onSelectOnly,
+    onSelectRange,
+    onClearMarks,
     onPreview,
     onDragStart,
     onDrop,
+    onEntryContextMenu,
+    onEmptyContextMenu,
     toolbar
   }: {
     title: string;
     pane: Pane;
     onNavigate: (entry: FileEntryDto) => void;
     onToggleMark: (path: string) => void;
+    onSelectOnly: (path: string) => void;
+    onSelectRange: (path: string) => void;
+    onClearMarks: () => void;
     onPreview: (entry: FileEntryDto) => void;
     onDragStart: (entry: FileEntryDto) => void;
     onDrop: () => void;
+    onEntryContextMenu: (entry: FileEntryDto, event: MouseEvent) => void;
+    onEmptyContextMenu: (event: MouseEvent) => void;
     toolbar?: Snippet;
   } = $props();
 
   let dragActive = $state(false);
+
+  function open(entry: FileEntryDto): void {
+    if (entry.isDir) onNavigate(entry);
+    else onPreview(entry);
+  }
+
+  function click(entry: FileEntryDto, event: MouseEvent): void {
+    if (event.shiftKey) onSelectRange(entry.path);
+    else if (event.ctrlKey || event.metaKey) onToggleMark(entry.path);
+    else onSelectOnly(entry.path);
+  }
+
+  function keydown(entry: FileEntryDto, event: KeyboardEvent): void {
+    // Enter opens, matching every OS file manager; Space still selects via the button's
+    // native click activation.
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      open(entry);
+    }
+  }
 
   const rowBase =
     'flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition ' +
@@ -53,6 +88,12 @@
     </div>
   </header>
 
+  <!-- The click/contextmenu handlers here are a deselect-empty-space convenience, not
+       the only way to change selection (clicking a different entry already replaces
+       it), and this region carries no tabindex — so there's no keyboard-reachable
+       interaction to lose. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     role="region"
     aria-label="{title} file list"
@@ -69,6 +110,15 @@
       dragActive = false;
       onDrop();
     }}
+    onclick={(event) => {
+      if (event.currentTarget === event.target) onClearMarks();
+    }}
+    oncontextmenu={(event) => {
+      if (event.currentTarget === event.target) {
+        event.preventDefault();
+        onEmptyContextMenu(event);
+      }
+    }}
   >
     {#if pane.error}
       <p class="px-2 py-6 text-center text-sm text-status-crit">{pane.error}</p>
@@ -81,7 +131,19 @@
         {#each pane.entries as entry, i (i)}
           {@const isParent = entry.name === '..'}
           {@const marked = pane.marked.has(entry.path)}
-          <li class="flex items-center gap-1.5">
+          <li
+            class="flex items-center gap-1.5"
+            oncontextmenu={(event) => {
+              if (isParent) return;
+              event.preventDefault();
+              event.stopPropagation();
+              // Right-clicking an entry outside the current selection replaces it (so the
+              // menu always acts on what's under the cursor); right-clicking inside an
+              // existing multi-selection keeps it, so the menu can act on the whole batch.
+              if (!marked) onSelectOnly(entry.path);
+              onEntryContextMenu(entry, event);
+            }}
+          >
             {#if isParent}
               <span class="h-4 w-4 shrink-0"></span>
             {:else}
@@ -100,13 +162,15 @@
             {/if}
             <button
               type="button"
-              class="{rowBase} text-muted hover:bg-surface-inset hover:text-fg"
+              class="{rowBase} {marked ? 'bg-accent/15 text-fg' : 'text-muted hover:bg-surface-inset hover:text-fg'}"
               title={entry.name}
               draggable={!isParent && !entry.isDir}
               ondragstart={() => {
                 if (!isParent && !entry.isDir) onDragStart(entry);
               }}
-              onclick={() => (entry.isDir ? onNavigate(entry) : onPreview(entry))}
+              onclick={(event) => (isParent ? onNavigate(entry) : click(entry, event))}
+              ondblclick={() => open(entry)}
+              onkeydown={(event) => keydown(entry, event)}
             >
               <Icon name={entry.isDir ? 'folder' : 'file'} size={15} />
               <span class="min-w-0 flex-1 truncate {entry.isDir ? 'font-medium text-fg' : ''}">

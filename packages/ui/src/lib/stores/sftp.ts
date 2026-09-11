@@ -17,6 +17,9 @@ export interface Pane {
   loading: boolean;
   /** Marked entry paths — the batch transfer/delete targets. */
   marked: Set<string>;
+  /** The last entry a plain or ctrl-click landed on — a shift-click range runs from
+   *  here to the newly clicked entry, mirroring the OS file manager convention. */
+  anchor?: string;
   error?: string;
 }
 
@@ -76,15 +79,40 @@ export function newSession(hostName: string): SftpSession {
 
 /** A directory listing landed for a pane: replace entries at `path`, clear marks. */
 export function applyListing(pane: Pane, path: string, entries: FileEntryDto[]): Pane {
-  return { ...pane, path, entries, loading: false, marked: new Set(), error: undefined };
+  return { ...pane, path, entries, loading: false, marked: new Set(), anchor: undefined, error: undefined };
 }
 
-/** Toggle an entry's marked state (the batch transfer/delete set). */
+/** Toggle an entry's marked state (the batch transfer/delete set) — the checkbox's
+ *  behaviour, and a ctrl/cmd-click's. Also becomes the new shift-click anchor, mirroring
+ *  the OS convention that the most recently touched entry anchors the next range. */
 export function toggleMark(pane: Pane, path: string): Pane {
   const marked = new Set(pane.marked);
   if (marked.has(path)) marked.delete(path);
   else marked.add(path);
-  return { ...pane, marked };
+  return { ...pane, marked, anchor: path };
+}
+
+/** A plain click: replace the whole selection with just this entry, and anchor here. */
+export function selectOnly(pane: Pane, path: string): Pane {
+  return { ...pane, marked: new Set([path]), anchor: path };
+}
+
+/** A shift-click: select the contiguous run between the anchor and `path` (inclusive),
+ *  in listing order — replacing, not extending, the prior selection, same as Explorer/
+ *  Finder. Falls back to a plain select when there's no anchor yet (first click). */
+export function selectRange(pane: Pane, path: string): Pane {
+  const order = pane.entries.filter((e) => e.name !== '..').map((e) => e.path);
+  const anchor = pane.anchor !== undefined && order.includes(pane.anchor) ? pane.anchor : path;
+  const from = order.indexOf(anchor);
+  const to = order.indexOf(path);
+  if (from === -1 || to === -1) return selectOnly(pane, path);
+  const [lo, hi] = from <= to ? [from, to] : [to, from];
+  return { ...pane, marked: new Set(order.slice(lo, hi + 1)), anchor };
+}
+
+/** Clicking empty space deselects everything, same as the OS file managers. */
+export function clearMarks(pane: Pane): Pane {
+  return pane.marked.size === 0 ? pane : { ...pane, marked: new Set() };
 }
 
 /** The marked entries in listing order — the stable sequence a batch transfer follows. */
@@ -179,6 +207,15 @@ function createSftp() {
     },
     toggleMark(id: number, side: PaneSide, path: string): void {
       mut(id, (s) => ({ ...s, [side]: toggleMark(s[side], path) }));
+    },
+    selectOnly(id: number, side: PaneSide, path: string): void {
+      mut(id, (s) => ({ ...s, [side]: selectOnly(s[side], path) }));
+    },
+    selectRange(id: number, side: PaneSide, path: string): void {
+      mut(id, (s) => ({ ...s, [side]: selectRange(s[side], path) }));
+    },
+    clearMarks(id: number, side: PaneSide): void {
+      mut(id, (s) => ({ ...s, [side]: clearMarks(s[side]) }));
     },
     pushOp(id: number, op: PendingOp): void {
       mut(id, (s) => ({ ...s, pending: [...s.pending, op] }));

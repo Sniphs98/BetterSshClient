@@ -34,7 +34,8 @@ async function boot(page: Page): Promise<void> {
       const remote: Record<string, Entry[]> = {
         '/': [
           { name: 'config.yml', path: '/config.yml', size: 64, isDir: false },
-          { name: 'var', path: '/var', size: 0, isDir: true }
+          { name: 'var', path: '/var', size: 0, isDir: true },
+          { name: 'app.log', path: '/app.log', size: 12, isDir: false }
         ]
       };
 
@@ -106,6 +107,32 @@ async function boot(page: Page): Promise<void> {
                 addFile(local, parentOf(dest), baseName(dest));
                 fire('sftp-op-done', { sessionId, ok: true });
               });
+              return Promise.resolve(null);
+            }
+            case 'sftp_delete': {
+              const [sessionId, path] = args as [number, string];
+              const dir = parentOf(path);
+              remote[dir] = (remote[dir] ?? []).filter((e) => e.path !== path);
+              setTimeout(() => fire('sftp-op-done', { sessionId, ok: true }), 0);
+              return Promise.resolve(null);
+            }
+            case 'sftp_rename': {
+              const [sessionId, from, to] = args as [number, string, string];
+              const e = (remote[parentOf(from)] ?? []).find((x) => x.path === from);
+              if (e) {
+                e.path = to;
+                e.name = baseName(to);
+              }
+              setTimeout(() => fire('sftp-op-done', { sessionId, ok: true }), 0);
+              return Promise.resolve(null);
+            }
+            case 'sftp_mkdir': {
+              const [sessionId, path] = args as [number, string];
+              const dir = parentOf(path);
+              const list = (remote[dir] ||= []);
+              const name = baseName(path);
+              if (!list.some((e) => e.name === name)) list.push({ name, path, size: 0, isDir: true });
+              setTimeout(() => fire('sftp-op-done', { sessionId, ok: true }), 0);
               return Promise.resolve(null);
             }
             case 'sftp_close':
@@ -212,4 +239,94 @@ test('action-first: the SFTP spawner opens the host picker, then a live session'
 
   await expect(page.getByRole('button', { name: 'web-1 · sftp', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'web-1' }).getByText('config.yml')).toBeVisible();
+});
+
+test('click selects a single entry; shift-click ranges; ctrl-click toggles within it', async ({
+  page
+}) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+  const mark = (name: string) => remotePane.getByRole('checkbox', { name: `Mark ${name}` });
+
+  // A plain click selects just that entry.
+  await remotePane.getByTitle('config.yml').click();
+  await expect(mark('config.yml')).toHaveAttribute('aria-checked', 'true');
+  await expect(mark('var')).toHaveAttribute('aria-checked', 'false');
+  await expect(mark('app.log')).toHaveAttribute('aria-checked', 'false');
+
+  // Shift-clicking the last entry selects the whole run in between too, not just the
+  // two ends — config.yml, var, app.log are contiguous in the listing.
+  await remotePane.getByTitle('app.log').click({ modifiers: ['Shift'] });
+  await expect(mark('config.yml')).toHaveAttribute('aria-checked', 'true');
+  await expect(mark('var')).toHaveAttribute('aria-checked', 'true');
+  await expect(mark('app.log')).toHaveAttribute('aria-checked', 'true');
+
+  // Ctrl-click removes just that one entry from the selection, leaving the rest marked.
+  await remotePane.getByTitle('var').click({ modifiers: ['Control'] });
+  await expect(mark('config.yml')).toHaveAttribute('aria-checked', 'true');
+  await expect(mark('var')).toHaveAttribute('aria-checked', 'false');
+  await expect(mark('app.log')).toHaveAttribute('aria-checked', 'true');
+
+  // A later plain click elsewhere replaces the whole selection again.
+  await remotePane.getByTitle('var').click();
+  await expect(mark('config.yml')).toHaveAttribute('aria-checked', 'false');
+  await expect(mark('var')).toHaveAttribute('aria-checked', 'true');
+  await expect(mark('app.log')).toHaveAttribute('aria-checked', 'false');
+});
+
+test('double-click opens an entry (navigates a folder, previews a file)', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('var')).toBeVisible();
+
+  // A single click only selects — it must not navigate.
+  await remotePane.getByTitle('var').click();
+  await expect(remotePane.getByText('config.yml')).toBeVisible();
+
+  await remotePane.getByTitle('var').dblclick();
+  await expect(remotePane.getByText('..')).toBeVisible();
+  await expect(remotePane.getByText('config.yml')).toHaveCount(0);
+});
+
+test('right-click opens a context menu; Delete removes the entry', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+
+  await remotePane.getByTitle('app.log').click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  // Right-clicking an unselected entry selects just it, so Rename (single-only) is offered.
+  await expect(menu.getByRole('menuitem', { name: 'Rename' })).toBeEnabled();
+
+  await menu.getByRole('menuitem', { name: 'Delete' }).click();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(remotePane.getByText('app.log')).toHaveCount(0);
+  await expect(remotePane.getByText('config.yml')).toBeVisible();
+});
+
+test('right-click on empty pane space offers New folder without selecting anything', async ({
+  page
+}) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('config.yml')).toBeVisible();
+
+  // Right-click the region below the listed rows, not any specific entry. The three
+  // short rows don't fill the scrollable pane, so its own bottom edge is always clear.
+  const region = page.getByRole('region', { name: 'web-1 file list' });
+  const box = await region.boundingBox();
+  await region.click({ button: 'right', position: { x: 10, y: (box?.height ?? 200) - 10 } });
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'New folder' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Rename' })).toHaveCount(0);
+
+  await menu.getByRole('menuitem', { name: 'New folder' }).click();
+  await expect(page.getByRole('dialog', { name: 'New folder' })).toBeVisible();
 });
