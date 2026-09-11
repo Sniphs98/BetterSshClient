@@ -1,6 +1,6 @@
 import type { IpcMain } from 'electron';
 
-import { listLocalDir, previewLocalFile, SftpManager } from '../core/ssh/sftp.js';
+import { listLocalDir, previewLocalFile, readLocalFile, writeLocalFile, SftpManager } from '../core/ssh/sftp.js';
 import { toCommandError } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
 
@@ -82,6 +82,30 @@ export function registerSftpIpc(ipcMain: IpcMain, state: GuiState): void {
       .catch((err: Error) => state.emit('sftp-op-done', { sessionId, ok: false, error: err.message }));
   });
 
+  ipcMain.handle('sftp_read_file', async (_event, sessionId: number, path: string) => {
+    const manager = state.getSftp(sessionId);
+    if (manager === undefined) throw toCommandError(new Error('SFTP session is no longer open'));
+    try {
+      return await manager.readFile(path);
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
+  // Unlike the other mutating sftp_* commands, this resolves/rejects its call directly
+  // rather than firing a fire-and-forget `sftp-op-done` — the editor already knows what
+  // it wrote and needs to know synchronously whether the save succeeded, and it re-lists
+  // the pane itself afterward rather than riding the pending-op refresh queue.
+  ipcMain.handle('sftp_write_file', async (_event, sessionId: number, path: string, content: string) => {
+    const manager = state.getSftp(sessionId);
+    if (manager === undefined) throw toCommandError(new Error('SFTP session is no longer open'));
+    try {
+      await manager.writeFile(path, content);
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
   ipcMain.handle('sftp_preview', (_event, sessionId: number, path: string) => {
     const manager = state.getSftp(sessionId);
     if (manager === undefined) return;
@@ -109,6 +133,22 @@ export function registerSftpIpc(ipcMain: IpcMain, state: GuiState): void {
   ipcMain.handle('preview_local_file', async (_event, path: string) => {
     try {
       return await previewLocalFile(path);
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
+  ipcMain.handle('read_local_file', async (_event, path: string) => {
+    try {
+      return await readLocalFile(path);
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
+  ipcMain.handle('write_local_file', async (_event, path: string, content: string) => {
+    try {
+      await writeLocalFile(path, content);
     } catch (err) {
       throw toCommandError(err);
     }

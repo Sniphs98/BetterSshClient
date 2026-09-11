@@ -150,6 +150,20 @@ export async function sftpPreview(sessionId: number, path: string): Promise<void
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
+/** Read a remote file's full content for the editor (unlike `sftpPreview`, not
+ *  truncated) — returns directly rather than riding an event. */
+export async function sftpReadFile(sessionId: number, path: string): Promise<string> {
+  const res = await commands.sftpReadFile(sessionId, path);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Overwrite a remote file's full content from the editor. */
+export async function sftpWriteFile(sessionId: number, path: string, content: string): Promise<void> {
+  const res = await commands.sftpWriteFile(sessionId, path, content);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
 /** Close an SFTP session and its connection. Idempotent for an already-closed id. */
 export async function sftpClose(sessionId: number): Promise<void> {
   const res = await commands.sftpClose(sessionId);
@@ -168,6 +182,20 @@ export async function previewLocalFile(path: string): Promise<string> {
   const res = await commands.previewLocalFile(path);
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
+}
+
+/** Read a local file's full content for the editor (unlike `previewLocalFile`, not
+ *  truncated). */
+export async function readLocalFile(path: string): Promise<string> {
+  const res = await commands.readLocalFile(path);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Overwrite a local file's full content from the editor. */
+export async function writeLocalFile(path: string, content: string): Promise<void> {
+  const res = await commands.writeLocalFile(path, content);
+  if (res.status === 'error') throw new Error(res.error.message);
 }
 
 /** Start auto SSH-key setup for a host; progress + the outcome arrive as `key-setup-*`

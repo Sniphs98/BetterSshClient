@@ -18,6 +18,9 @@
   "devDependencies": {
     "electron-builder": "^25.1.8"
   },
+  "overrides": {
+    "dompurify": "^3.4.13"
+  },
   "allowScripts": {
     "electron@33.4.11": true,
     "esbuild@0.21.5": true,

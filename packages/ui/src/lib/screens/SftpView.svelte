@@ -10,6 +10,8 @@
   import Modal from '$lib/components/Modal.svelte';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import SftpPane from './SftpPane.svelte';
+  import FileEditor from './FileEditor.svelte';
+  import { isEditableFile, languageForFile } from './fileEdit';
   import type { FileEntryDto } from '$lib/bindings';
   import { get } from 'svelte/store';
   import { sessions, type Session } from '$lib/stores/sessions';
@@ -26,8 +28,12 @@
     sftpRename,
     sftpDelete,
     sftpPreview,
+    sftpReadFile,
+    sftpWriteFile,
     listLocalDir,
-    previewLocalFile
+    previewLocalFile,
+    readLocalFile,
+    writeLocalFile
   } from '$lib/ipc/commands';
 
   let { session, active }: { session: Session; active: boolean } = $props();
@@ -53,6 +59,12 @@
   // The open right-click menu, if any — built fresh from the current selection each time
   // it opens (see openEntryMenu/openEmptyMenu), so its items always match what's marked.
   let contextMenu = $state<{ side: PaneSide; x: number; y: number; items: ContextMenuItem[] } | null>(
+    null
+  );
+
+  // The open file editor, if any (one at a time, §2) — holds the content already read
+  // from disk, so the editor mounts with it ready rather than loading async itself.
+  let fileEditor = $state<{ side: PaneSide; path: string; language: string; content: string } | null>(
     null
   );
 
@@ -348,6 +360,38 @@
     else void preview(side, entry);
   }
 
+  // Opens the file editor (tech-gui.md §3.2): reads the file whole up front — unlike the
+  // preview, which is deliberately truncated — so the editor mounts with content already
+  // in hand. `fileEdit.ts`'s isEditableFile already gated this to a size the process can
+  // hold comfortably.
+  async function openEditor(side: PaneSide, entry: FileEntryDto): Promise<void> {
+    const id = backendId;
+    if (id == null) return;
+    try {
+      const content = side === 'remote' ? await sftpReadFile(id, entry.path) : await readLocalFile(entry.path);
+      fileEditor = { side, path: entry.path, language: languageForFile(entry.name), content };
+    } catch (err) {
+      lastError.set(errMsg(err));
+    }
+  }
+
+  async function saveEditor(content: string): Promise<void> {
+    const id = backendId;
+    const editing = fileEditor;
+    if (id == null || !editing || !view) return;
+    if (editing.side === 'remote') {
+      await sftpWriteFile(id, editing.path, content);
+      refreshRemote(view.remote.path);
+    } else {
+      await writeLocalFile(editing.path, content);
+      void refreshLocal(view.local.path);
+    }
+  }
+
+  function closeEditor(): void {
+    fileEditor = null;
+  }
+
   // Right-click menus (tech-gui.md §3.2): built fresh from the current selection each
   // time one opens, so a batch right-click (an entry inside an existing multi-mark, see
   // SftpPane's oncontextmenu) offers the batch actions rather than just the one entry.
@@ -356,8 +400,10 @@
   function remoteEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto): ContextMenuItem[] {
     const count = remoteMarked.length;
     const files = remoteMarkedFiles.length;
+    const editable = count === 1 && !entry.isDir && isEditableFile(entry.name, entry.size);
     return [
       { label: 'Open', icon: entry.isDir ? 'folder' : 'file', onSelect: () => openEntry('remote', entry), disabled: count > 1 },
+      { label: 'Edit', icon: 'edit', onSelect: () => void openEditor('remote', entry), disabled: !editable },
       { label: files > 1 ? `Download ${files} files` : 'Download', icon: 'download', onSelect: download, disabled: files === 0 },
       { label: 'Rename', icon: 'edit', onSelect: () => openPrompt('rename'), disabled: !singleRemoteMark },
       { label: count > 1 ? `Delete ${count} items` : 'Delete', icon: 'trash', danger: true, onSelect: remove, disabled: count === 0 },
@@ -376,8 +422,10 @@
   function localEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto): ContextMenuItem[] {
     const marked = markedEntries(currentView.local).length;
     const files = localMarkedFiles.length;
+    const editable = marked === 1 && !entry.isDir && isEditableFile(entry.name, entry.size);
     return [
       { label: 'Open', icon: entry.isDir ? 'folder' : 'file', onSelect: () => openEntry('local', entry), disabled: marked > 1 },
+      { label: 'Edit', icon: 'edit', onSelect: () => void openEditor('local', entry), disabled: !editable },
       { label: files > 1 ? `Upload ${files} files` : 'Upload', icon: 'upload', onSelect: upload, disabled: files === 0 },
       { label: 'Refresh', icon: 'refresh', onSelect: () => void refreshLocal(currentView.local.path) }
     ];
@@ -656,4 +704,14 @@
       </button>
     </footer>
   </Modal>
+{/if}
+
+{#if active && fileEditor}
+  <FileEditor
+    path={fileEditor.path}
+    language={fileEditor.language}
+    initialContent={fileEditor.content}
+    onSave={saveEditor}
+    onClose={closeEditor}
+  />
 {/if}

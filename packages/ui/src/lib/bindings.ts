@@ -85,6 +85,12 @@ export const commands = {
   async sftpPreview(sessionId: number, path: string): Promise<Result<null, CommandError>> {
     return call('sftp_preview', sessionId, path);
   },
+  async sftpReadFile(sessionId: number, path: string): Promise<Result<string, CommandError>> {
+    return call('sftp_read_file', sessionId, path);
+  },
+  async sftpWriteFile(sessionId: number, path: string, content: string): Promise<Result<null, CommandError>> {
+    return call('sftp_write_file', sessionId, path, content);
+  },
   async sftpClose(sessionId: number): Promise<Result<null, CommandError>> {
     return call('sftp_close', sessionId);
   },
@@ -93,6 +99,12 @@ export const commands = {
   },
   async previewLocalFile(path: string): Promise<Result<string, CommandError>> {
     return call('preview_local_file', path);
+  },
+  async readLocalFile(path: string): Promise<Result<string, CommandError>> {
+    return call('read_local_file', path);
+  },
+  async writeLocalFile(path: string, content: string): Promise<Result<null, CommandError>> {
+    return call('write_local_file', path, content);
   },
   async startKeySetup(hostName: string, disablePasswordAuth: boolean): Promise<Result<null, CommandError>> {
     return call('start_key_setup', hostName, disablePasswordAuth);

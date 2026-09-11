@@ -38,10 +38,12 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
         '/': [
           { name: 'config.yml', path: '/config.yml', size: 64, isDir: false },
           { name: 'var', path: '/var', size: 0, isDir: true },
-          { name: 'app.log', path: '/app.log', size: 12, isDir: false }
+          { name: 'app.log', path: '/app.log', size: 12, isDir: false },
+          { name: 'photo.png', path: '/photo.png', size: 2048, isDir: false }
         ],
         '/var/www': [{ name: 'index.html', path: '/var/www/index.html', size: 10, isDir: false }]
       };
+      const remoteContents: Record<string, string> = { '/config.yml': 'key: value\n' };
 
       function parentOf(p: string): string {
         const i = p.lastIndexOf('/');
@@ -137,6 +139,17 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
               const name = baseName(path);
               if (!list.some((e) => e.name === name)) list.push({ name, path, size: 0, isDir: true });
               setTimeout(() => fire('sftp-op-done', { sessionId, ok: true }), 0);
+              return Promise.resolve(null);
+            }
+            case 'sftp_read_file': {
+              const [, path] = args as [number, string];
+              return Promise.resolve(remoteContents[path] ?? '');
+            }
+            case 'sftp_write_file': {
+              const [, path, content] = args as [number, string, string];
+              remoteContents[path] = content;
+              win.__lastWrittenPath = path;
+              win.__lastWrittenContent = content;
               return Promise.resolve(null);
             }
             case 'sftp_close':
@@ -344,4 +357,48 @@ test("a host's default path opens the remote pane there instead of the server ro
   const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
   await expect(remotePane.getByText('index.html')).toBeVisible();
   await expect(remotePane.getByText('config.yml')).toHaveCount(0);
+});
+
+test('editing a text file opens Monaco, and Save writes the content back', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('config.yml')).toBeVisible();
+
+  await remotePane.getByTitle('config.yml').click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await menu.getByRole('menuitem', { name: 'Edit' }).click();
+
+  const editorDialog = page.getByRole('dialog', { name: 'Edit /config.yml' });
+  await expect(editorDialog).toBeVisible();
+  // Monaco is dynamically imported and boots a real worker — give it real time.
+  await expect(editorDialog.locator('.monaco-editor')).toBeVisible({ timeout: 15_000 });
+
+  // Click the rendered text surface, not Monaco's hidden EditContext input target (it
+  // has no visible box of its own) — exactly what a real user clicks, which focuses the
+  // input as a side effect.
+  await editorDialog.locator('.monaco-editor .view-lines').click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('key: changed');
+
+  const saveButton = editorDialog.getByRole('button', { name: 'Save' });
+  await expect(saveButton).toBeEnabled();
+  await saveButton.click();
+  await expect(editorDialog).toHaveCount(0);
+
+  const written = await page.evaluate(
+    () => (window as unknown as { __lastWrittenPath?: string; __lastWrittenContent?: string }).__lastWrittenContent
+  );
+  expect(written).toBe('key: changed');
+});
+
+test("Edit is disabled for a file type the editor doesn't recognise", async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('photo.png')).toBeVisible();
+
+  await remotePane.getByTitle('photo.png').click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await expect(menu.getByRole('menuitem', { name: 'Edit' })).toBeDisabled();
 });
