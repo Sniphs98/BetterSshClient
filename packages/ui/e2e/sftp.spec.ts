@@ -286,24 +286,30 @@ test('click selects a single entry; shift-click ranges; ctrl-click toggles withi
   await expect(mark('var')).toHaveAttribute('aria-checked', 'false');
   await expect(mark('app.log')).toHaveAttribute('aria-checked', 'true');
 
-  // A later plain click elsewhere replaces the whole selection again.
-  await remotePane.getByTitle('var').click();
-  await expect(mark('config.yml')).toHaveAttribute('aria-checked', 'false');
-  await expect(mark('var')).toHaveAttribute('aria-checked', 'true');
+  // A later plain click elsewhere replaces the whole selection again. A directory would
+  // navigate on a plain click instead (tested separately), so this uses a file.
+  await remotePane.getByTitle('config.yml').click();
+  await expect(mark('config.yml')).toHaveAttribute('aria-checked', 'true');
+  await expect(mark('var')).toHaveAttribute('aria-checked', 'false');
   await expect(mark('app.log')).toHaveAttribute('aria-checked', 'false');
 });
 
-test('double-click opens an entry (navigates a folder, previews a file)', async ({ page }) => {
+test('a single click navigates into a folder; on a file it only selects', async ({ page }) => {
   await boot(page);
   await page.getByTitle('files on web-1').click();
   const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
-  await expect(remotePane.getByText('var')).toBeVisible();
-
-  // A single click only selects — it must not navigate.
-  await remotePane.getByTitle('var').click();
   await expect(remotePane.getByText('config.yml')).toBeVisible();
 
-  await remotePane.getByTitle('var').dblclick();
+  // A file click selects it — it must not navigate or open anything.
+  await remotePane.getByTitle('config.yml').click();
+  await expect(remotePane.getByRole('checkbox', { name: 'Mark config.yml' })).toHaveAttribute(
+    'aria-checked',
+    'true'
+  );
+  await expect(remotePane.getByText('var')).toBeVisible();
+
+  // A folder click navigates straight in — no double-click needed.
+  await remotePane.getByTitle('var').click();
   await expect(remotePane.getByText('..')).toBeVisible();
   await expect(remotePane.getByText('config.yml')).toHaveCount(0);
 });

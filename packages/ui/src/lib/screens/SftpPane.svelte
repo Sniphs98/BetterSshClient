@@ -1,13 +1,15 @@
 <script lang="ts">
   // One side of the dual-pane SFTP browser (tech-gui.md §3.2): a current-path header
-  // with a parent-supplied toolbar, then the entry list. Selection follows the OS file
-  // manager convention: a plain click selects just that entry, ctrl/cmd-click toggles it
-  // into the selection, shift-click selects the range from the last touched entry, and a
-  // double-click opens it (navigates into a directory, previews a file) — the `..` row is
-  // the one exception, navigating on a single click since it's never a selection target.
-  // The leading checkbox stays as an explicit, always-additive toggle for touch/trackpad
-  // use. Right-click opens a context menu with the equivalent actions; the parent owns
-  // building and positioning it. Semantic tokens only — no colour literals (§5.1).
+  // with a parent-supplied toolbar, then the entry list. A plain click on a directory
+  // navigates straight into it (and on a file, selects it — a file has nothing to
+  // "open" on a single click); ctrl/cmd-click toggles the clicked entry into the
+  // selection without navigating, and shift-click selects the range from the last
+  // touched entry — both work the same on files and directories, so a batch of folders
+  // can still be marked for delete/download. A double-click (or Enter) opens the
+  // clicked entry either way (previews a file; navigating a directory again is a
+  // harmless no-op there). The leading checkbox stays as an explicit, always-additive
+  // toggle for touch/trackpad use. Right-click opens a context menu with the equivalent
+  // actions; the parent owns building and positioning it. Semantic tokens only (§5.1).
   import type { Snippet } from 'svelte';
   import { Icon } from '$lib/theme';
   import type { FileEntryDto } from '$lib/bindings';
@@ -53,6 +55,7 @@
   function click(entry: FileEntryDto, event: MouseEvent): void {
     if (event.shiftKey) onSelectRange(entry.path);
     else if (event.ctrlKey || event.metaKey) onToggleMark(entry.path);
+    else if (entry.isDir) onNavigate(entry);
     else onSelectOnly(entry.path);
   }
 

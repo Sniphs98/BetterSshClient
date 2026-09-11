@@ -102,3 +102,37 @@ textarea {
   background: var(--accent);
   color: var(--accent-fg);
 }
+
+/* Scrollbars, themed with the same semantic tokens as everything else (§5.1) instead
+   of the OS default — this only ever runs in Electron's Chromium, so the WebKit
+   pseudo-elements are all that's needed (the standard `scrollbar-*` properties are
+   included too, harmlessly, for anywhere else the app happens to render, e.g. a
+   browser preview during development). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
