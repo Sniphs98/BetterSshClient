@@ -69,6 +69,17 @@ describe('KeySetupMachine', () => {
     expect(machine.passwordDisabled).toBe(false);
   });
 
+  it('markKeyOnlySuccess reaches success without disabling the password (user opted out)', () => {
+    const machine = new KeySetupMachine();
+    machine.stepResult('generateKey', undefined);
+    machine.stepResult('copyPublicKey', undefined);
+    machine.stepResult('verifyKeyAuth', undefined);
+    machine.markKeyOnlySuccess();
+
+    expect(machine.state).toBe('success');
+    expect(machine.passwordDisabled).toBe(false);
+  });
+
   it('a FinalCheck failure after DisablePassword triggers rollback', () => {
     const machine = new KeySetupMachine();
     machine.stepResult('generateKey', undefined);

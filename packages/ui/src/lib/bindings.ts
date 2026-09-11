@@ -94,8 +94,8 @@ export const commands = {
   async previewLocalFile(path: string): Promise<Result<string, CommandError>> {
     return call('preview_local_file', path);
   },
-  async startKeySetup(hostName: string): Promise<Result<null, CommandError>> {
-    return call('start_key_setup', hostName);
+  async startKeySetup(hostName: string, disablePasswordAuth: boolean): Promise<Result<null, CommandError>> {
+    return call('start_key_setup', hostName, disablePasswordAuth);
   },
   async refreshMetrics(): Promise<Result<null, CommandError>> {
     return call('refresh_metrics');

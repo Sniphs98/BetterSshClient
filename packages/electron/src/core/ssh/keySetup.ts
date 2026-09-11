@@ -105,6 +105,12 @@ export class KeySetupMachine {
     this._state = 'rolledBack';
     this.passwordDisabled = false;
   }
+
+  /** Key auth is verified and that's all the caller asked for — password auth was
+   *  deliberately left untouched, so there's nothing left to check or roll back. */
+  markKeyOnlySuccess(): void {
+    this._state = 'success';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +251,7 @@ export function buildRollbackCommand(): string {
 export interface KeySetupResult {
   keyPath: string;
   state: KeySetupState;
+  passwordDisabled: boolean;
 }
 
 class KeySetupTimeout extends Error {}
@@ -270,8 +277,18 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  * `setup_key_for_host`'s doc comment in the Rust source for why this
  * duplicates a latent quirk rather than "fixing" it out from under the
  * ported behaviour).
+ *
+ * `disablePasswordAuth` is a user choice, not a capability probe: when
+ * false, the flow stops right after key auth is verified (step 3) and
+ * never touches sshd_config at all — no sudo probe, no backup, nothing to
+ * roll back.
  */
-export async function setupKeyForHost(host: Host, passwordSession: SshSession, onProgress?: (step: KeySetupStep) => void): Promise<KeySetupResult> {
+export async function setupKeyForHost(
+  host: Host,
+  passwordSession: SshSession,
+  disablePasswordAuth: boolean,
+  onProgress?: (step: KeySetupStep) => void
+): Promise<KeySetupResult> {
   const machine = new KeySetupMachine();
 
   const verifyTimeoutMs = Math.max(STEP_TIMEOUT_MS, await connectBudgetMs(host));
@@ -279,8 +296,8 @@ export async function setupKeyForHost(host: Host, passwordSession: SshSession, o
 
   let error: Error;
   try {
-    const keyPath = await withTimeout(setupKeyInternal(host, passwordSession, verifyTimeoutMs, machine, onProgress), totalTimeoutMs);
-    return { keyPath, state: machine.state };
+    const keyPath = await withTimeout(setupKeyInternal(host, passwordSession, verifyTimeoutMs, machine, disablePasswordAuth, onProgress), totalTimeoutMs);
+    return { keyPath, state: machine.state, passwordDisabled: machine.passwordDisabled };
   } catch (e) {
     if (e instanceof KeySetupTimeout) {
       // Running out of time is only safe before the point of no return.
@@ -310,6 +327,7 @@ async function setupKeyInternal(
   passwordSession: SshSession,
   verifyTimeoutMs: number,
   machine: KeySetupMachine,
+  disablePasswordAuth: boolean,
   onProgress?: (step: KeySetupStep) => void
 ): Promise<string> {
   // Step 1: generate key pair.
@@ -356,6 +374,13 @@ async function setupKeyInternal(
       throw new Error('Key authentication verification timed out. Password NOT disabled.');
     }
     throw new Error(`Key authentication verification failed: ${(e as Error).message}. Password NOT disabled.`);
+  }
+
+  // The user chose to keep password auth as-is — key auth is verified, so we're done.
+  // Skip the sudo probe entirely; nothing below this needs it.
+  if (!disablePasswordAuth) {
+    machine.markKeyOnlySuccess();
+    return privateKeyPath;
   }
 
   // Sudo availability. `runCommandChecked` is required — the probe's exit

@@ -171,9 +171,12 @@ export async function previewLocalFile(path: string): Promise<string> {
 }
 
 /** Start auto SSH-key setup for a host; progress + the outcome arrive as `key-setup-*`
- *  events (tech-gui.md §4.2). Fire-and-forget — only an unknown host rejects here. */
-export async function startKeySetup(hostName: string): Promise<void> {
-  const res = await commands.startKeySetup(hostName);
+ *  events (tech-gui.md §4.2). `disablePasswordAuth` is the user's choice, made in the
+ *  confirm dialog before this fires — false stops the flow right after key auth is
+ *  verified and never touches sshd_config. Fire-and-forget — only an unknown host
+ *  rejects here. */
+export async function startKeySetup(hostName: string, disablePasswordAuth: boolean): Promise<void> {
+  const res = await commands.startKeySetup(hostName, disablePasswordAuth);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 

@@ -21,9 +21,16 @@
   import HostEditor from './HostEditor.svelte';
   import Modal from '$lib/components/Modal.svelte';
 
-  type Dialog = { kind: 'add' } | { kind: 'edit'; host: HostDto } | { kind: 'delete'; host: HostDto };
+  type Dialog =
+    | { kind: 'add' }
+    | { kind: 'edit'; host: HostDto }
+    | { kind: 'delete'; host: HostDto }
+    | { kind: 'keySetupConfirm'; host: HostDto };
 
   let dialog = $state<Dialog | null>(null);
+  // Reset to the safer default (disable password login) each time the confirm dialog
+  // opens, so a prior run's choice never silently carries over to a different host.
+  let disablePasswordAuth = $state(true);
 
   // Host search (task 6): a round toggle slides a filter field out to its left and the
   // grid filters live. Frontend-only, like the snippet search — the core stays untouched.
@@ -81,13 +88,18 @@
     dialog = null;
   }
 
-  // Host-first auto key-setup (tech-gui.md §4.2). Open the progress panel immediately,
-  // then kick the backend flow; its progress/outcome arrive as `key-setup-*` events.
-  // A synchronous reject (unknown host) closes the panel and surfaces the error.
-  async function setupKey(host: HostDto): Promise<void> {
+  // Host-first auto key-setup (tech-gui.md §4.2). The icon button opens a small confirm
+  // dialog asking whether to also disable password login once the key is verified —
+  // that choice travels through to the backend so it can skip the sshd_config steps
+  // entirely when declined. Confirming opens the progress panel immediately, then kicks
+  // the backend flow; its progress/outcome arrive as `key-setup-*` events. A synchronous
+  // reject (unknown host) closes the panel and surfaces the error.
+  async function confirmKeySetup(host: HostDto): Promise<void> {
+    const disable = disablePasswordAuth;
+    dialog = null;
     beginKeySetup(host.name);
     try {
-      await startKeySetup(host.name);
+      await startKeySetup(host.name, disable);
     } catch (e) {
       dismissKeySetup();
       lastError.set(message(e));
@@ -258,7 +270,10 @@
                   class={iconBtn}
                   title="Set up an SSH key for {card.host.name}"
                   aria-label="Set up an SSH key for {card.host.name}"
-                  onclick={() => setupKey(card.host)}
+                  onclick={() => {
+                    disablePasswordAuth = true;
+                    dialog = { kind: 'keySetupConfirm', host: card.host };
+                  }}
                 >
                   <Icon name="key" size={14} />
                 </button>
@@ -383,6 +398,45 @@
       <div class="flex justify-end gap-2 pt-1">
         <Button variant="ghost" onclick={() => (dialog = null)}>Cancel</Button>
         <Button variant="primary" onclick={() => confirmDelete(host.name)}>Delete</Button>
+      </div>
+    </div>
+  </Modal>
+{:else if dialog?.kind === 'keySetupConfirm'}
+  {@const host = dialog.host}
+  <Modal label="Set up SSH key" onClose={() => (dialog = null)}>
+    <div class="space-y-3 px-5 py-4">
+      <h2 class="text-sm font-semibold">Set up an SSH key for {host.name}</h2>
+      <p class="text-sm text-muted">
+        Generates an Ed25519 key, copies it to the server, and verifies it works — nothing
+        else changes until that's confirmed.
+      </p>
+      <div class="flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm">Disable password login</p>
+          <p class="text-xs text-muted">
+            Once the key is verified, turn password authentication off on the server too.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={disablePasswordAuth}
+          aria-label="Disable password login after setup"
+          onclick={() => (disablePasswordAuth = !disablePasswordAuth)}
+          class="relative h-6 w-11 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus {disablePasswordAuth
+            ? 'bg-accent'
+            : 'bg-surface-inset'}"
+        >
+          <span
+            class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow-soft transition-[left] {disablePasswordAuth
+              ? 'left-[1.375rem]'
+              : 'left-0.5'}"
+          ></span>
+        </button>
+      </div>
+      <div class="flex justify-end gap-2 pt-1">
+        <Button variant="ghost" onclick={() => (dialog = null)}>Cancel</Button>
+        <Button variant="primary" onclick={() => confirmKeySetup(host)}>Set up key</Button>
       </div>
     </div>
   </Modal>

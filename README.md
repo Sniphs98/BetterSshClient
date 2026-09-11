@@ -66,7 +66,7 @@ Both ship in the app. Switch from the sidebar.
 
 Password auth on a fresh VPS is the thing you always mean to fix and never do. OmnySSH does it in one click.
 
-Pick a host you added yourself that has no key configured, hit **Set up SSH key**, and the app generates an Ed25519 key, appends the public half to `authorized_keys`, and switches the host over to key auth. It then opens a fresh connection with the new key to prove the key works, and only after that does it turn password login off. There is no confirmation step in between: starting the flow means going through with it.
+Pick a host you added yourself that has no key configured, hit **Set up SSH key**, and choose whether it should also turn password login off once the key is verified — on by default, but you can leave password auth as a fallback. Confirm, and the app generates an Ed25519 key, appends the public half to `authorized_keys`, and opens a fresh connection with the new key to prove it works. Only after that — and only if you asked for it — does it turn password login off. There is no further confirmation step in between: from there on it goes through with it.
 
 Before touching `sshd_config` it saves a backup on the server. If any step fails, it restores the backup and leaves your access exactly as it was. Your private key never leaves your machine, and nothing gets sent anywhere except the server you chose.
 

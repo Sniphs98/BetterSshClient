@@ -15,7 +15,7 @@ import type { GuiState } from '../state/guiState.js';
  * `hosts.toml` write.
  */
 export function registerKeySetupIpc(ipcMain: IpcMain, state: GuiState): void {
-  ipcMain.handle('start_key_setup', (_event, hostName: string) => {
+  ipcMain.handle('start_key_setup', (_event, hostName: string, disablePasswordAuth: boolean) => {
     const host = state.hostByName(hostName);
     if (host === undefined) throw toCommandError(new Error(`unknown host '${hostName}'`));
     try {
@@ -23,11 +23,11 @@ export function registerKeySetupIpc(ipcMain: IpcMain, state: GuiState): void {
     } catch (err) {
       throw toCommandError(err);
     }
-    void runKeySetup(state, host);
+    void runKeySetup(state, host, disablePasswordAuth);
   });
 }
 
-async function runKeySetup(state: GuiState, host: Host): Promise<void> {
+async function runKeySetup(state: GuiState, host: Host, disablePasswordAuth: boolean): Promise<void> {
   try {
     let passwordSession: SshSession;
     try {
@@ -38,19 +38,19 @@ async function runKeySetup(state: GuiState, host: Host): Promise<void> {
     }
 
     try {
-      const result = await setupKeyForHost(host, passwordSession, (step: KeySetupStep) => {
+      const result = await setupKeyForHost(host, passwordSession, disablePasswordAuth, (step: KeySetupStep) => {
         state.emit('key-setup-progress', {
           hostName: host.name,
           step: { index: stepIndex(step), total: ALL_STEPS.length, description: stepDescription(step) }
         });
       });
 
-      // Both `success` and `partialSuccess` mean the key is generated,
-      // copied, and verified — the card should show `hasKey`. Only full
-      // success disabled password auth. Persist BEFORE emitting so a
-      // following `reload_hosts` observes the write.
-      const passwordDisabled = result.state === 'success';
-      await persistKey(host.name, result.keyPath, passwordDisabled);
+      // Key generated, copied, and verified either way — the card should show
+      // `hasKey`. Whether password auth actually got disabled is `machine
+      // .passwordDisabled` itself now, not inferred from the terminal state
+      // (a user who declined to disable it also ends in `success`). Persist
+      // BEFORE emitting so a following `reload_hosts` observes the write.
+      await persistKey(host.name, result.keyPath, result.passwordDisabled);
       state.emit('key-setup-complete', { hostName: host.name, keyPath: result.keyPath });
     } catch (e) {
       state.emit('key-setup-failed', { hostName: host.name, error: (e as Error).message });

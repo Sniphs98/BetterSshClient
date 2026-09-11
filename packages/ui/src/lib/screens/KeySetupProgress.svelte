@@ -56,8 +56,9 @@
           </div>
         </div>
         <p class="text-xs text-faint">
-          Generating a key, authorising it on the server, and — with sudo — disabling
-          password auth. Password auth is never disabled before key auth is verified.
+          Generating a key, authorising it on the server, and verifying it works. Password
+          auth is only touched if you chose to disable it, and never before key auth is
+          verified.
         </p>
       {:else if phase.kind === 'complete'}
         <div class="flex items-start gap-2.5">
