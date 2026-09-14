@@ -104,6 +104,23 @@ static SPA (`vite preview`) with a `window.omnyssh` stub installed via
 bridge shape a stub must match, and the module comment at the top of each
 spec file for what it fakes.
 
+### Integration tests (a real SSH server)
+
+Everything above tests pure logic or a stubbed IPC boundary — nothing
+actually speaks SSH. `packages/electron/src/**/*.integration.test.ts` does,
+against a disposable local container:
+
+```bash
+docker compose up -d --build   # once, from the repo root
+npm run test:integration
+```
+
+See [`docker/ssh-test-target/README.md`](docker/ssh-test-target/README.md)
+for what the container is, its (intentionally public, test-only)
+credentials, and how to point OmnySSH itself at it to try a feature by
+hand. These tests are opt-in and excluded from `npm test` — they need
+Docker running, and touch a live TCP connection.
+
 ---
 
 ## 4. Code conventions

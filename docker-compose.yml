@@ -1,0 +1,10 @@
+# Disposable local SSH test target — for trying OmnySSH against a real server and for
+# the electron package's integration tests (`npm run test:integration`). See
+# docker/ssh-test-target/README.md. Never expose this beyond your own machine: password
+# auth is on, and the credentials are fixed and public.
+services:
+  ssh-test-target:
+    build: ./docker/ssh-test-target
+    container_name: omnyssh-ssh-test-target
+    ports:
+      - '127.0.0.1:2222:22'

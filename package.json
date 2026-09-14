@@ -12,6 +12,7 @@
     "check": "npm run check --workspace packages/ui && npm run check --workspace packages/electron",
     "test": "npm run test --workspace packages/electron && npm run test --workspace packages/ui",
     "test:e2e": "npm run build && npm run test:e2e --workspace packages/ui",
+    "test:integration": "npm run test:integration --workspace packages/electron",
     "package": "npm run build && electron-builder",
     "package:dir": "npm run build && electron-builder --dir"
   },

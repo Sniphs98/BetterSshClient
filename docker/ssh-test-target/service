@@ -1,0 +1,30 @@
+#!/bin/sh
+# Minimal `service <name> <action>` shim for this systemd-less container. OmnySSH's
+# auto key-setup flow (packages/electron/src/core/ssh/session.ts, buildReloadSshdCommand
+# / buildRollbackCommand) only ever runs `service sshd reload` / `service ssh reload` —
+# that's the only case handled; anything else fails loudly rather than silently doing
+# nothing, so a real bug doesn't look like a passing reload.
+set -eu
+
+name="${1:-}"
+action="${2:-}"
+
+if [ "$action" != "reload" ]; then
+  echo "service: unsupported action '$action'" >&2
+  exit 1
+fi
+
+case "$name" in
+  sshd | ssh) ;;
+  *)
+    echo "service: unknown service '$name'" >&2
+    exit 1
+    ;;
+esac
+
+pid=$(pgrep -f '/usr/sbin/sshd$' | head -n1)
+if [ -z "$pid" ]; then
+  echo "service: sshd is not running" >&2
+  exit 1
+fi
+kill -HUP "$pid"
