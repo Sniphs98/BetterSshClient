@@ -3,6 +3,11 @@
 
 import { get } from 'svelte/store';
 import type {
+  AutomationFlowCompleted,
+  AutomationFlowFailed,
+  AutomationFlowStarted,
+  AutomationNodeResult,
+  AutomationNodeStarted,
   ConnectionStatusDto,
   FilePreview,
   HostDto,
@@ -19,6 +24,13 @@ import type {
   SnippetResult,
   TransferProgressDto
 } from '$lib/bindings';
+import {
+  flowRun,
+  reduceFlowCompleted,
+  reduceFlowFailed,
+  reduceNodeResult,
+  reduceNodeStarted
+} from '$lib/stores/automations';
 import { hosts } from '$lib/stores/hosts';
 import { statuses } from '$lib/stores/statuses';
 import { metrics, mergeMetrics } from '$lib/stores/metrics';
@@ -142,6 +154,34 @@ export function applyKeySetupFailed(payload: KeySetupFailed): void {
 
 export function applyKeySetupRollback(payload: KeySetupRollback): void {
   keySetup.set(reduceRollback(payload.hostName, payload.result));
+}
+
+// Automations/Flow-run events. Mirrors key setup's shape: progress advances only the
+// active flow's run, a terminal outcome always lands (dismissed or not) so a reopen
+// (or the flows list's own "last run" state, if one is ever added) reflects it.
+export function applyAutomationFlowStarted(_payload: AutomationFlowStarted): void {
+  // No store change needed — beginFlowRun() (called by the UI the moment `run_flow`
+  // fires) already opened the panel; this event is here for symmetry/future use
+  // (e.g. a toast) rather than driving state today.
+}
+
+export function applyAutomationNodeStarted(payload: AutomationNodeStarted): void {
+  flowRun.update((run) => reduceNodeStarted(run, payload.flowName, payload.nodeId, payload.label));
+}
+
+export function applyAutomationNodeResult(payload: AutomationNodeResult): void {
+  // Strip `flowName` — it's routing information (which run this belongs to), not
+  // part of the NodeResultDto the store keeps.
+  const { flowName, ...result } = payload;
+  flowRun.update((run) => reduceNodeResult(run, flowName, result));
+}
+
+export function applyAutomationFlowCompleted(payload: AutomationFlowCompleted): void {
+  flowRun.set(reduceFlowCompleted(payload.flowName, payload.results));
+}
+
+export function applyAutomationFlowFailed(payload: AutomationFlowFailed): void {
+  flowRun.set(reduceFlowFailed(payload.flowName, payload.error));
 }
 
 // A newer release found by the startup check (tech-gui.md §4.3) → the update banner.

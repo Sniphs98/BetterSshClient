@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
 
 import { APP_ORIGIN, registerAppProtocolHandler, registerAppScheme } from './appProtocol.js';
+import { registerAutomationsIpc } from './ipc/automations.js';
 import { registerHostsIpc } from './ipc/hosts.js';
 import { registerKeySetupIpc } from './ipc/keysetup.js';
 import { registerSettingsIpc } from './ipc/settings.js';
@@ -94,6 +95,7 @@ app.whenReady().then(async () => {
   registerSftpIpc(ipcMain, state);
   registerKeySetupIpc(ipcMain, state);
   registerUpdateIpc(ipcMain);
+  registerAutomationsIpc(ipcMain, state);
 
   // Pre-load the shared host config so the first `list_hosts` paints
   // immediately, before the renderer's own `reload_hosts` call. A load

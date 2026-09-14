@@ -123,12 +123,38 @@ export const commands = {
   },
   async saveUpdateConfig(config: UpdateConfigDto): Promise<Result<null, CommandError>> {
     return call('save_update_config', config);
+  },
+  async listAutomations(): Promise<Result<AutomationDto[], CommandError>> {
+    return call('list_automations');
+  },
+  async saveAutomation(automation: AutomationDto): Promise<Result<null, CommandError>> {
+    return call('save_automation', automation);
+  },
+  async deleteAutomation(id: string): Promise<Result<null, CommandError>> {
+    return call('delete_automation', id);
+  },
+  async listFlows(): Promise<Result<FlowDto[], CommandError>> {
+    return call('list_flows');
+  },
+  async saveFlow(flow: FlowDto): Promise<Result<null, CommandError>> {
+    return call('save_flow', flow);
+  },
+  async deleteFlow(name: string): Promise<Result<null, CommandError>> {
+    return call('delete_flow', name);
+  },
+  async runFlow(name: string): Promise<Result<null, CommandError>> {
+    return call('run_flow', name);
   }
 };
 
 /** user-defined events **/
 
 const EVENT_CHANNELS = {
+  automationFlowStarted: 'automation-flow-started',
+  automationNodeStarted: 'automation-node-started',
+  automationNodeResult: 'automation-node-result',
+  automationFlowCompleted: 'automation-flow-completed',
+  automationFlowFailed: 'automation-flow-failed',
   error: 'error',
   filePreview: 'file-preview',
   hostStatusChanged: 'host-status-changed',
@@ -151,6 +177,11 @@ const EVENT_CHANNELS = {
 } as const;
 
 type EventMap = {
+  automationFlowStarted: AutomationFlowStarted;
+  automationNodeStarted: AutomationNodeStarted;
+  automationNodeResult: AutomationNodeResult;
+  automationFlowCompleted: AutomationFlowCompleted;
+  automationFlowFailed: AutomationFlowFailed;
   error: Error;
   filePreview: FilePreview;
   hostStatusChanged: HostStatusChanged;
@@ -203,6 +234,29 @@ function makeEvents<T extends Record<string, unknown>>(channels: Record<keyof T,
 export const events = makeEvents<EventMap>(EVENT_CHANNELS);
 
 /** user-defined types **/
+/** A reusable, named shell-command building block for Automations — local (on the
+ *  OmnySSH host machine) or against one specific remote host. */
+export type AutomationDto = {
+  id: string;
+  name: string;
+  kind: AutomationKindDto;
+  hostName?: string | null;
+  command: string;
+  timeoutSecs: number;
+};
+/** Every node in a completed flow run has settled (success, failed, or skipped). */
+export type AutomationFlowCompleted = { flowName: string; results: NodeResultDto[] };
+/** An engine-level failure (e.g. the flow no longer exists) — not a node failing,
+ *  which instead shows up as a `'failed'` result inside `AutomationFlowCompleted`. */
+export type AutomationFlowFailed = { flowName: string; error: string };
+/** A flow run started. */
+export type AutomationFlowStarted = { flowName: string };
+/** Whether an Automation runs locally or against a specific remote host. */
+export type AutomationKindDto = 'local' | 'remote';
+/** One node's result within a running flow. */
+export type AutomationNodeResult = NodeResultDto & { flowName: string };
+/** A node started executing. */
+export type AutomationNodeStarted = { flowName: string; nodeId: string; label: string };
 export type CommandError = { message: string };
 /** Live connection state for a host. Internally tagged so the frontend
  *  consumes a discriminated union keyed on `kind`. */
@@ -217,6 +271,18 @@ export type Error = { message: string };
 export type FileEntryDto = { name: string; path: string; size: number; isDir: boolean };
 /** Preview bytes for a remote file. Stamped with `sessionId`. */
 export type FilePreview = { sessionId: number; path: string; content: string };
+/** A graph of Automations wired together with dependency edges. */
+export type FlowDto = { name: string; nodes: FlowNodeDto[]; edges: FlowEdgeDto[] };
+/** `to` depends on `from` — `from` must complete before `to` can start. */
+export type FlowEdgeDto = { from: string; to: string };
+/** One placement of a reusable Automation into a Flow. */
+export type FlowNodeDto = {
+  id: string;
+  automationId: string;
+  label: string;
+  continueOnError: boolean;
+  position?: { x: number; y: number } | null;
+};
 /** A host as the frontend sees it — password and private-key material omitted. */
 export type HostDto = {
   name: string;
@@ -278,6 +344,18 @@ export type MetricsDto = {
 export type MetricsUpdated = { hostName: string; metrics: MetricsDto };
 /** How a host is watched. `tcpPort` means reachability only — no login, no metrics. */
 export type MonitorModeDto = 'ssh' | 'tcpPort';
+/** One node's outcome within a flow run. */
+export type NodeResultDto = {
+  nodeId: string;
+  label: string;
+  status: NodeStatusDto;
+  output: string;
+  error?: string | null;
+  durationMs: number;
+};
+/** `'skipped'` means an upstream dependency didn't succeed and this node's own
+ *  `continueOnError` wasn't set on the failing predecessor. */
+export type NodeStatusDto = 'success' | 'failed' | 'skipped';
 /** A single process in the "top processes" panel. */
 export type ProcessDto = { name: string; cpuPercent: number; memPercent: number };
 /** A service detected on a host with its quick-scan metrics. */

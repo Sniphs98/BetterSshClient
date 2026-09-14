@@ -27,6 +27,11 @@ export class GuiState {
   private nextTransferId = 1;
   /** Single-slot guard: the host a key-setup run is in flight for, if any. */
   private keySetupHost: string | undefined;
+  /** Flow names currently running — keyed per flow (unlike key setup's single global
+   *  slot, which exists specifically to protect a `hosts.toml` write race). Two
+   *  different flows have no reason to serialize; only the same flow twice at once is
+   *  nonsensical (confusing interleaved progress events on one flow's run). */
+  private readonly runningFlows = new Set<string>();
   private updateCheckClaimed = false;
   readonly pty: PtyManager;
 
@@ -74,6 +79,20 @@ export class GuiState {
   /** Releases the key-setup slot. Safe to call unconditionally. */
   endKeySetup(): void {
     this.keySetupHost = undefined;
+  }
+
+  /** Claims the run slot for `flowName`, or throws if that same flow is already
+   *  running. */
+  tryBeginFlowRun(flowName: string): void {
+    if (this.runningFlows.has(flowName)) {
+      throw new Error(`flow '${flowName}' is already running`);
+    }
+    this.runningFlows.add(flowName);
+  }
+
+  /** Releases the run slot for `flowName`. Safe to call unconditionally. */
+  endFlowRun(flowName: string): void {
+    this.runningFlows.delete(flowName);
   }
 
   /** One-shot latch: `true` only the first time it's called, so the startup

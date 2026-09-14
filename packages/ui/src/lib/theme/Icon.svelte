@@ -98,6 +98,12 @@
     <polygon points="22 2 15 22 11 13 2 9 22 2" />
   {:else if name === 'star'}
     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  {:else if name === 'automations'}
+    <circle cx="6" cy="6" r="2.5" />
+    <circle cx="18" cy="6" r="2.5" />
+    <circle cx="12" cy="18" r="2.5" />
+    <path d="M8 7.5 11 15.5" />
+    <path d="M16 7.5 13 15.5" />
   {:else if name === 'settings'}
     <circle cx="12" cy="12" r="3" />
     <path

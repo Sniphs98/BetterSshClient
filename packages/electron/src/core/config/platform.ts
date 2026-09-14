@@ -37,3 +37,11 @@ export function hostsConfigPath(): string {
 export function snippetsConfigPath(): string {
   return join(appConfigDir(), 'snippets.toml');
 }
+
+export function automationsConfigPath(): string {
+  return join(appConfigDir(), 'automations.toml');
+}
+
+export function flowsConfigPath(): string {
+  return join(appConfigDir(), 'flows.toml');
+}

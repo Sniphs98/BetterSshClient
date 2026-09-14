@@ -6,6 +6,7 @@
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
 import type { Snippet } from './core/config/snippets.js';
+import type { Automation, AutomationKind, Flow, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ConnectionStatus, Metrics } from './event.js';
 import type { ProcessInfo } from './core/ssh/metrics.js';
 import type { DetectedService, ServiceKind, ServiceMetric } from './core/ssh/services/types.js';
@@ -118,6 +119,67 @@ export function snippetToDto(snippet: Snippet): SnippetDto {
 
 export function snippetFromDto(dto: SnippetDto): Snippet {
   return dto;
+}
+
+export type AutomationKindDto = AutomationKind;
+
+export interface AutomationDto {
+  id: string;
+  name: string;
+  kind: AutomationKindDto;
+  hostName?: string;
+  command: string;
+  timeoutSecs: number;
+}
+
+export function automationToDto(automation: Automation): AutomationDto {
+  return automation;
+}
+
+export function automationFromDto(dto: AutomationDto): Automation {
+  return dto;
+}
+
+export interface FlowNodeDto {
+  id: string;
+  automationId: string;
+  label: string;
+  continueOnError: boolean;
+  position?: { x: number; y: number };
+}
+
+export interface FlowEdgeDto {
+  from: string;
+  to: string;
+}
+
+export interface FlowDto {
+  name: string;
+  nodes: FlowNodeDto[];
+  edges: FlowEdgeDto[];
+}
+
+export function flowToDto(flow: Flow): FlowDto {
+  return flow;
+}
+
+export function flowFromDto(dto: FlowDto): Flow {
+  return dto;
+}
+
+export type NodeStatusDto = NodeStatus;
+
+export interface NodeResultDto {
+  nodeId: string;
+  label: string;
+  status: NodeStatusDto;
+  output: string;
+  error?: string;
+  durationMs: number;
+}
+
+export function nodeResultToDto(result: NodeResult): NodeResultDto {
+  return result;
 }
 
 export interface CommandError {

@@ -12,6 +12,7 @@
   import AppShell from '$lib/components/AppShell.svelte';
   import Dashboard from '$lib/screens/Dashboard.svelte';
   import Snippets from '$lib/screens/Snippets.svelte';
+  import Automations from '$lib/screens/Automations.svelte';
   import Settings from '$lib/screens/Settings.svelte';
   import TerminalView from '$lib/screens/TerminalView.svelte';
   import SftpView from '$lib/screens/SftpView.svelte';
@@ -30,6 +31,7 @@
   const selectorActive = $derived(
     $activeEntity.kind === 'dashboard' ||
       $activeEntity.kind === 'snippets' ||
+      $activeEntity.kind === 'automations' ||
       $activeEntity.kind === 'settings'
   );
 </script>
@@ -53,6 +55,8 @@
             <Dashboard />
           {:else if $activeEntity.kind === 'snippets'}
             <Snippets />
+          {:else if $activeEntity.kind === 'automations'}
+            <Automations />
           {:else if $activeEntity.kind === 'settings'}
             <Settings />
           {/if}

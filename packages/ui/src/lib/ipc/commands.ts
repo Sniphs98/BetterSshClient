@@ -3,7 +3,9 @@
 
 import { commands, type Channel } from '$lib/bindings';
 import type {
+  AutomationDto,
   FileEntryDto,
+  FlowDto,
   HostDto,
   HostInputDto,
   SnippetDto,
@@ -238,5 +240,52 @@ export async function loadUpdateConfig(): Promise<UpdateConfigDto> {
 /** Persist the update-checker preferences to the shared config (tech-gui.md §4.3). */
 export async function saveUpdateConfig(config: UpdateConfigDto): Promise<void> {
   const res = await commands.saveUpdateConfig(config);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Read the reusable Automation library. */
+export async function listAutomations(): Promise<AutomationDto[]> {
+  const res = await commands.listAutomations();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Upsert one Automation by id and persist the whole library. */
+export async function saveAutomation(automation: AutomationDto): Promise<void> {
+  const res = await commands.saveAutomation(automation);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Delete the automation named `id`. Rejects if any Flow still references it. */
+export async function deleteAutomation(id: string): Promise<void> {
+  const res = await commands.deleteAutomation(id);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Read the saved Flows. */
+export async function listFlows(): Promise<FlowDto[]> {
+  const res = await commands.listFlows();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Upsert one Flow by name and persist. Rejects with the validation problem(s) if the
+ *  graph is structurally invalid (unknown automation, a cycle, a template reference
+ *  that isn't a direct dependency, …). */
+export async function saveFlow(flow: FlowDto): Promise<void> {
+  const res = await commands.saveFlow(flow);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Delete the flow named `name`. */
+export async function deleteFlow(name: string): Promise<void> {
+  const res = await commands.deleteFlow(name);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Run a Flow; progress and the outcome arrive as `automation-*` events.
+ *  Fire-and-forget — only an unknown/already-running flow rejects here. */
+export async function runFlow(name: string): Promise<void> {
+  const res = await commands.runFlow(name);
   if (res.status === 'error') throw new Error(res.error.message);
 }

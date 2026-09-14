@@ -83,6 +83,54 @@ export class SshSession {
     return output;
   }
 
+  /** For an Automation "remote" node (core/automation/engine.ts): runs `cmd` and
+   *  resolves rather than throwing either way, with a caller-supplied timeout
+   *  instead of the fixed 30s `EXEC_TIMEOUT_MS` `runCommand`/`runCommandChecked` use.
+   *  Captures stdout+stderr combined — unlike those two, which discard stderr to keep
+   *  metrics/probe parser input clean — so `{{nodes.<label>.output}}` sees a failed
+   *  command's usual diagnostic (almost always on stderr), and so the shape matches
+   *  `runLocalCommand`'s local-node output exactly regardless of node kind. A missing
+   *  exit code is treated as success, same leniency as `runCommandChecked`. */
+  async runShell(cmd: string, timeoutMs: number = EXEC_TIMEOUT_MS): Promise<{ output: string; ok: boolean; error?: string }> {
+    const channel = await new Promise<ClientChannel>((resolve, reject) => {
+      this.connection.client.exec(cmd, (err, ch) => {
+        if (err) reject(err);
+        else resolve(ch);
+      });
+    });
+
+    return new Promise((resolve) => {
+      const chunks: Buffer[] = [];
+      let exitCode: number | undefined;
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        channel.destroy();
+      }, timeoutMs);
+
+      const collect = (data: Buffer): void => void chunks.push(data);
+      channel.on('data', collect);
+      channel.stderr.on('data', collect);
+      channel.on('exit', (code: number | null) => {
+        if (code !== null) exitCode = code;
+      });
+      channel.on('close', () => {
+        clearTimeout(timer);
+        const output = Buffer.concat(chunks).toString('utf-8');
+        if (timedOut) {
+          resolve({ output, ok: false, error: `command timed out after ${Math.round(timeoutMs / 1000)}s` });
+          return;
+        }
+        const ok = exitCode === undefined || exitCode === 0;
+        resolve({ output, ok, error: ok ? undefined : `remote command exited with status ${exitCode}` });
+      });
+      channel.on('error', (err: Error) => {
+        clearTimeout(timer);
+        resolve({ output: Buffer.concat(chunks).toString('utf-8'), ok: false, error: err.message });
+      });
+    });
+  }
+
   /** Opens a channel with a remote PTY + shell (the `ssh -t` equivalent),
    *  for the terminal (pty.ts). `env` forwards the locale, mirroring an ssh
    *  client's default `SendEnv LANG LC_*` (best-effort — servers without

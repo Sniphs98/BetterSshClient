@@ -9,7 +9,12 @@ import { snippetRun, beginRun, clearRun } from '$lib/stores/snippets';
 import { sessions } from '$lib/stores/sessions';
 import { lastError } from '$lib/stores/notifications';
 import { keySetup, dismissKeySetup, beginKeySetup } from '$lib/stores/keySetup';
+import { flowRun, dismissFlowRun, beginFlowRun } from '$lib/stores/automations';
 import {
+  applyAutomationFlowCompleted,
+  applyAutomationFlowFailed,
+  applyAutomationNodeResult,
+  applyAutomationNodeStarted,
   applyError,
   applyHostStatusChanged,
   applyHostsLoaded,
@@ -200,5 +205,43 @@ describe('ipc event router', () => {
     applyKeySetupRollback({ hostName: 'db-1', result: 'Restored.' });
     expect(get(keySetup)).toEqual({ hostName: 'db-1', phase: { kind: 'rolledBack', result: 'Restored.' } });
     dismissKeySetup();
+  });
+
+  it('routes flow-run node events into the active run, then a terminal outcome', () => {
+    beginFlowRun('deploy');
+    applyAutomationNodeStarted({ flowName: 'deploy', nodeId: 'n1', label: 'build' });
+    let run = get(flowRun);
+    expect(run?.phase.kind).toBe('running');
+    if (run?.phase.kind === 'running') {
+      expect(run.phase.nodes.get('n1')).toEqual({ status: 'running', label: 'build' });
+    }
+
+    applyAutomationNodeResult({ flowName: 'deploy', nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 });
+    run = get(flowRun);
+    if (run?.phase.kind === 'running') {
+      expect(run.phase.nodes.get('n1')).toEqual({
+        status: 'done',
+        result: { nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 }
+      });
+    } else {
+      throw new Error('expected running phase');
+    }
+
+    applyAutomationFlowCompleted({
+      flowName: 'deploy',
+      results: [{ nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 }]
+    });
+    expect(get(flowRun)).toEqual({
+      flowName: 'deploy',
+      phase: { kind: 'completed', results: [{ nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 }] }
+    });
+    dismissFlowRun();
+  });
+
+  it('a flow-run failure shows even with no open run', () => {
+    dismissFlowRun();
+    applyAutomationFlowFailed({ flowName: 'deploy', error: "flow 'deploy' no longer exists" });
+    expect(get(flowRun)).toEqual({ flowName: 'deploy', phase: { kind: 'failed', error: "flow 'deploy' no longer exists" } });
+    dismissFlowRun();
   });
 });
