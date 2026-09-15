@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   AutomationCycleError,
+  missingParamValues,
   runFlow,
   substituteTemplate,
   topoOrder,
   validateFlow,
   type RunFlowDeps
 } from './engine.js';
-import type { Automation, Flow, FlowNode, NodeResult } from './types.js';
+import type { Automation, Flow, FlowNode, FlowParam, NodeResult } from './types.js';
 
 function automation(partial: Partial<Automation> & Pick<Automation, 'id' | 'name'>): Automation {
   return { kind: 'local', command: 'echo hi', timeoutSecs: 30, ...partial };
@@ -17,9 +18,11 @@ function node(partial: Partial<FlowNode> & Pick<FlowNode, 'id' | 'automationId'>
   return { label: partial.id, continueOnError: false, ...partial };
 }
 
-function flow(nodes: FlowNode[], edges: Array<[string, string]> = []): Flow {
-  return { name: 'test-flow', nodes, edges: edges.map(([from, to]) => ({ from, to })) };
+function flow(nodes: FlowNode[], edges: Array<[string, string]> = [], params: FlowParam[] = []): Flow {
+  return { name: 'test-flow', params, nodes, edges: edges.map(([from, to]) => ({ from, to })) };
 }
+
+const hostParam: FlowParam[] = [{ name: 'host', kind: 'host' }];
 
 describe('topoOrder', () => {
   it('orders a linear chain', () => {
@@ -70,12 +73,16 @@ describe('topoOrder', () => {
 describe('validateFlow', () => {
   const automationsById = new Map<string, Automation>([
     ['local-x', automation({ id: 'local-x', name: 'Local X', kind: 'local' })],
-    ['remote-y', automation({ id: 'remote-y', name: 'Remote Y', kind: 'remote', hostName: 'web-1' })],
-    ['remote-no-host', automation({ id: 'remote-no-host', name: 'Remote No Host', kind: 'remote' })]
+    ['remote-y', automation({ id: 'remote-y', name: 'Remote Y', kind: 'remote' })]
   ]);
 
   it('is empty for a valid flow', () => {
     const f = flow([node({ id: 'a', automationId: 'local-x' })]);
+    expect(validateFlow(f, automationsById)).toEqual([]);
+  });
+
+  it('is empty for a valid flow with a remote node and a host parameter', () => {
+    const f = flow([node({ id: 'a', automationId: 'remote-y' })], [], hostParam);
     expect(validateFlow(f, automationsById)).toEqual([]);
   });
 
@@ -84,9 +91,47 @@ describe('validateFlow', () => {
     expect(validateFlow(f, automationsById)[0]).toMatch(/unknown automation/);
   });
 
-  it('flags a remote automation with no host set', () => {
-    const f = flow([node({ id: 'a', automationId: 'remote-no-host' })]);
-    expect(validateFlow(f, automationsById)[0]).toMatch(/no host set/);
+  it('flags a remote node when the flow has no host parameter', () => {
+    const f = flow([node({ id: 'a', automationId: 'remote-y' })]);
+    expect(validateFlow(f, automationsById).some((p) => p.includes('no host parameter'))).toBe(true);
+  });
+
+  it('flags more than one host parameter', () => {
+    const f = flow(
+      [node({ id: 'a', automationId: 'local-x' })],
+      [],
+      [
+        { name: 'host', kind: 'host' },
+        { name: 'other-host', kind: 'host' }
+      ]
+    );
+    expect(validateFlow(f, automationsById).some((p) => p.includes('at most one host parameter'))).toBe(true);
+  });
+
+  it('flags a parameter name declared more than once', () => {
+    const f = flow(
+      [node({ id: 'a', automationId: 'local-x' })],
+      [],
+      [
+        { name: 'dup', kind: 'text' },
+        { name: 'dup', kind: 'text' }
+      ]
+    );
+    expect(validateFlow(f, automationsById).some((p) => p.includes('more than once'))).toBe(true);
+  });
+
+  it('flags a command referencing an unknown parameter', () => {
+    const referencing = automation({ id: 'ref', name: 'Ref', kind: 'local', command: '{{params.ghost}}' });
+    const byId = new Map(automationsById).set('ref', referencing);
+    const f = flow([node({ id: 'a', automationId: 'ref' })]);
+    expect(validateFlow(f, byId).some((p) => p.includes('unknown parameter'))).toBe(true);
+  });
+
+  it('accepts a command referencing a declared parameter, from any node (params are flow-wide)', () => {
+    const referencing = automation({ id: 'ref', name: 'Ref', kind: 'local', command: 'echo {{params.version}}' });
+    const byId = new Map(automationsById).set('ref', referencing);
+    const f = flow([node({ id: 'a', automationId: 'local-x' }), node({ id: 'b', automationId: 'ref' })], [], [{ name: 'version', kind: 'text' }]);
+    expect(validateFlow(f, byId)).toEqual([]);
   });
 
   it('flags duplicate labels', () => {
@@ -150,6 +195,45 @@ describe('substituteTemplate', () => {
   it('is a no-op when there is nothing to substitute', () => {
     expect(substituteTemplate('echo plain', new Map())).toBe('echo plain');
   });
+
+  it('replaces a parameter reference', () => {
+    expect(substituteTemplate('deploy to {{params.host}}', new Map(), { host: 'web-1' })).toBe('deploy to web-1');
+  });
+
+  it('replaces both a node reference and a parameter reference in the same command', () => {
+    const predecessors = new Map([['build', result('build', 'v1.2.3')]]);
+    expect(substituteTemplate('deploy {{nodes.build.output}} to {{params.host}}', predecessors, { host: 'web-1' })).toBe(
+      'deploy v1.2.3 to web-1'
+    );
+  });
+
+  it('throws when a referenced parameter has no value', () => {
+    expect(() => substituteTemplate('{{params.missing}}', new Map(), {})).toThrow(/missing/);
+  });
+});
+
+describe('missingParamValues', () => {
+  function flowWithParams(params: FlowParam[]): Flow {
+    return { name: 'f', params, nodes: [], edges: [] };
+  }
+
+  it('is empty when every declared parameter has a non-blank value', () => {
+    const f = flowWithParams([
+      { name: 'host', kind: 'host' },
+      { name: 'version', kind: 'text' }
+    ]);
+    expect(missingParamValues(f, { host: 'web-1', version: '1.0' })).toEqual([]);
+  });
+
+  it('flags a missing value, naming its label when set', () => {
+    const f = flowWithParams([{ name: 'host', kind: 'host', label: 'Target host' }]);
+    expect(missingParamValues(f, {})).toEqual(['Target host']);
+  });
+
+  it('flags a blank (whitespace-only) value the same as a missing one', () => {
+    const f = flowWithParams([{ name: 'version', kind: 'text' }]);
+    expect(missingParamValues(f, { version: '   ' })).toEqual(['version']);
+  });
 });
 
 describe('runFlow', () => {
@@ -167,7 +251,7 @@ describe('runFlow', () => {
       ['n1', 'n2']
     ]);
     const started: string[] = [];
-    const results = await runFlow(f, new Map([['a', a]]), deps(), (e) => {
+    const results = await runFlow(f, new Map([['a', a]]), {}, deps(), (e) => {
       if (e.kind === 'nodeStarted') started.push(e.label);
     });
     expect(started).toEqual(['first', 'second']);
@@ -187,6 +271,7 @@ describe('runFlow', () => {
         ['fail', failing],
         ['dep', dependent]
       ]),
+      {},
       deps({ runLocal: async () => ({ output: '', ok: false, error: 'boom' }) })
     );
     expect(results.map((r) => r.status)).toEqual(['failed', 'skipped']);
@@ -206,6 +291,7 @@ describe('runFlow', () => {
         ['fail', failing],
         ['dep', dependent]
       ]),
+      {},
       deps({
         runLocal: async () => {
           runLocalCalls += 1;
@@ -233,7 +319,7 @@ describe('runFlow', () => {
         ['n2', 'n3']
       ]
     );
-    const results = await runFlow(f, new Map([['a', a]]), deps({ runLocal: async () => ({ output: '', ok: false, error: 'boom' }) }));
+    const results = await runFlow(f, new Map([['a', a]]), {}, deps({ runLocal: async () => ({ output: '', ok: false, error: 'boom' }) }));
     expect(results.map((r) => r.status)).toEqual(['failed', 'skipped', 'skipped']);
   });
 
@@ -257,6 +343,7 @@ describe('runFlow', () => {
     const results = await runFlow(
       f,
       new Map([['a', a]]),
+      {},
       deps({
         runLocal: async () => {
           calls += 1;
@@ -273,10 +360,12 @@ describe('runFlow', () => {
 
   it('substitutes a predecessor output into a remote node command', async () => {
     const local = automation({ id: 'local', name: 'Local', command: 'echo build-123' });
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote', hostName: 'web-1', command: 'deploy {{nodes.build.output}}' });
-    const f = flow([node({ id: 'n1', automationId: 'local', label: 'build' }), node({ id: 'n2', automationId: 'remote', label: 'deploy' })], [
-      ['n1', 'n2']
-    ]);
+    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote', command: 'deploy {{nodes.build.output}}' });
+    const f = flow(
+      [node({ id: 'n1', automationId: 'local', label: 'build' }), node({ id: 'n2', automationId: 'remote', label: 'deploy' })],
+      [['n1', 'n2']],
+      hostParam
+    );
     const seenCommands: string[] = [];
     const results = await runFlow(
       f,
@@ -284,6 +373,7 @@ describe('runFlow', () => {
         ['local', local],
         ['remote', remote]
       ]),
+      { host: 'web-1' },
       deps({
         runLocal: async () => ({ output: 'build-123', ok: true }),
         connectHost: async () => ({
@@ -299,14 +389,45 @@ describe('runFlow', () => {
     expect(results.every((r) => r.status === 'success')).toBe(true);
   });
 
+  it('substitutes a text parameter into a remote node command alongside the resolved host', async () => {
+    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote', command: 'deploy --version {{params.version}}' });
+    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' })], [], [...hostParam, { name: 'version', kind: 'text' }]);
+    const seenCommands: string[] = [];
+    const seenHosts: string[] = [];
+    await runFlow(
+      f,
+      new Map([['remote', remote]]),
+      { host: 'web-1', version: '2.0.0' },
+      deps({
+        connectHost: async (hostName) => {
+          seenHosts.push(hostName);
+          return {
+            runShell: async (cmd) => {
+              seenCommands.push(cmd);
+              return { output: '', ok: true };
+            },
+            disconnect: () => {}
+          };
+        }
+      })
+    );
+    expect(seenHosts).toEqual(['web-1']);
+    expect(seenCommands).toEqual(['deploy --version 2.0.0']);
+  });
+
   it('reuses one connection per host across multiple nodes targeting it', async () => {
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote', hostName: 'web-1' });
-    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' }), node({ id: 'n2', automationId: 'remote', label: 'b' })]);
+    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const f = flow(
+      [node({ id: 'n1', automationId: 'remote', label: 'a' }), node({ id: 'n2', automationId: 'remote', label: 'b' })],
+      [],
+      hostParam
+    );
     let connectCount = 0;
     let disconnectCount = 0;
     await runFlow(
       f,
       new Map([['remote', remote]]),
+      { host: 'web-1' },
       deps({
         connectHost: async () => {
           connectCount += 1;
@@ -319,9 +440,13 @@ describe('runFlow', () => {
   });
 
   it('disconnects opened connections even if a later node throws unexpectedly', async () => {
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote', hostName: 'web-1' });
+    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote' });
     const local = automation({ id: 'local', name: 'Local' });
-    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' }), node({ id: 'n2', automationId: 'local', label: 'b' })]);
+    const f = flow(
+      [node({ id: 'n1', automationId: 'remote', label: 'a' }), node({ id: 'n2', automationId: 'local', label: 'b' })],
+      [],
+      hostParam
+    );
     let disconnected = false;
     await runFlow(
       f,
@@ -329,6 +454,7 @@ describe('runFlow', () => {
         ['remote', remote],
         ['local', local]
       ]),
+      { host: 'web-1' },
       deps({
         connectHost: async () => ({ runShell: async () => ({ output: '', ok: true }), disconnect: () => (disconnected = true) }),
         runLocal: async () => {
@@ -340,11 +466,12 @@ describe('runFlow', () => {
   });
 
   it('reports a failed connectHost as a failed node result rather than throwing', async () => {
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote', hostName: 'web-1' });
-    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' })]);
+    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' })], [], hostParam);
     const results = await runFlow(
       f,
       new Map([['remote', remote]]),
+      { host: 'web-1' },
       deps({
         connectHost: async () => {
           throw new Error('connection refused');
@@ -353,5 +480,13 @@ describe('runFlow', () => {
     );
     expect(results[0].status).toBe('failed');
     expect(results[0].error).toContain('connection refused');
+  });
+
+  it('fails a remote node (rather than throwing) when the flow has a host parameter but no value was supplied', async () => {
+    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' })], [], hostParam);
+    const results = await runFlow(f, new Map([['remote', remote]]), {}, deps());
+    expect(results[0].status).toBe('failed');
+    expect(results[0].error).toMatch(/no host parameter value/);
   });
 });

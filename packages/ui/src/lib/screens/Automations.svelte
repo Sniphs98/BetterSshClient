@@ -18,6 +18,7 @@
   } from '$lib/ipc/commands';
   import { automations, flows, flowRun, beginFlowRun } from '$lib/stores/automations';
   import { lastError } from '$lib/stores/notifications';
+  import { palette } from '$lib/stores/palette';
   import { emptyForm, formFromAutomation } from './automationForm';
   import AutomationEditor from './AutomationEditor.svelte';
   import FlowEditor from './FlowEditor.svelte';
@@ -29,7 +30,8 @@
     | { kind: 'deleteAutomation'; automation: AutomationDto }
     | { kind: 'addFlow' }
     | { kind: 'editFlow'; flow: FlowDto }
-    | { kind: 'deleteFlow'; flow: FlowDto };
+    | { kind: 'deleteFlow'; flow: FlowDto }
+    | { kind: 'runFlow'; flow: FlowDto; values: Record<string, string> };
 
   let tab = $state<'automations' | 'flows'>('automations');
   let dialog = $state<Dialog | null>(null);
@@ -80,13 +82,36 @@
     dialog = null;
   }
 
-  async function run(name: string): Promise<void> {
+  /** Runs `name` with `paramValues` (empty for a flow with no parameters). Called
+   *  either directly (no parameters to collect) or after the "Run flow" dialog
+   *  gathers them — see `openRunDialog`. */
+  async function run(name: string, paramValues: Record<string, string>): Promise<void> {
     beginFlowRun(name);
     try {
-      await runFlow(name);
+      await runFlow(name, paramValues);
     } catch (e) {
       lastError.set(message(e));
     }
+  }
+
+  /** A flow with no parameters runs immediately; otherwise open a dialog to collect
+   *  one value per parameter first (a host picker for a `'host'` param, a text input —
+   *  prefilled from its `default` — for a `'text'` one) so the same flow can be run
+   *  identically against different hosts / inputs each time. */
+  function openRunDialog(flow: FlowDto): void {
+    if (flow.params.length === 0) {
+      void run(flow.name, {});
+      return;
+    }
+    const values: Record<string, string> = {};
+    for (const p of flow.params) values[p.name] = p.default ?? '';
+    dialog = { kind: 'runFlow', flow, values };
+  }
+
+  async function pickRunHost(paramName: string): Promise<void> {
+    if (dialog?.kind !== 'runFlow') return;
+    const host = await palette.pickHost();
+    if (host) dialog.values[paramName] = host.name;
   }
 
   function isRunning(name: string): boolean {
@@ -148,7 +173,7 @@
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="truncate font-medium" title={automation.name}>{automation.name}</span>
-                  <Chip>{automation.kind === 'remote' && automation.hostName ? `remote · ${automation.hostName}` : 'local'}</Chip>
+                  <Chip>{automation.kind === 'remote' ? 'remote' : 'local'}</Chip>
                 </div>
                 <div class="mt-1 truncate font-mono text-xs text-muted" title={automation.command}>
                   {automation.command}
@@ -207,7 +232,7 @@
                 title="Run {flow.name}"
                 aria-label="Run {flow.name}"
                 disabled={isRunning(flow.name)}
-                onclick={() => run(flow.name)}
+                onclick={() => openRunDialog(flow)}
               >
                 <Icon name="play" size={12} />
                 {isRunning(flow.name) ? 'Running…' : 'Run'}
@@ -265,7 +290,7 @@
     </div>
   </Modal>
 {:else if dialog?.kind === 'addFlow'}
-  <FlowEditor mode="add" initial={{ name: '', nodes: [], edges: [] }} onSubmit={submitFlow} onCancel={() => (dialog = null)} />
+  <FlowEditor mode="add" initial={{ name: '', params: [], nodes: [], edges: [] }} onSubmit={submitFlow} onCancel={() => (dialog = null)} />
 {:else if dialog?.kind === 'editFlow'}
   <FlowEditor mode="edit" initial={dialog.flow} onSubmit={submitFlow} onCancel={() => (dialog = null)} />
 {:else if dialog?.kind === 'deleteFlow'}
@@ -279,6 +304,58 @@
       <div class="flex justify-end gap-2 pt-1">
         <Button variant="ghost" onclick={() => (dialog = null)}>Cancel</Button>
         <Button variant="primary" onclick={() => confirmDeleteFlow(flow.name)}>Delete</Button>
+      </div>
+    </div>
+  </Modal>
+{:else if dialog?.kind === 'runFlow'}
+  {@const d = dialog}
+  <Modal label="Run flow" onClose={() => (dialog = null)}>
+    <div class="space-y-3 px-5 py-4">
+      <h2 class="text-sm font-semibold">Run “{d.flow.name}”</h2>
+      <p class="text-sm text-muted">This flow needs a few values before it runs.</p>
+      <div class="space-y-3">
+        {#each d.flow.params as param (param.name)}
+          {#if param.kind === 'host'}
+            <!-- Not a <label>: wrapping a <button> in one lets the label text win the
+                 accessible-name computation over the button's own "Choose a host…"
+                 text in some engines, so the two are kept as siblings instead. -->
+            <div class="space-y-1 text-xs font-medium text-muted">
+              <span>{param.label || param.name}</span>
+              <button
+                type="button"
+                class="w-full truncate rounded-lg bg-surface-inset px-3 py-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-focus {d
+                  .values[param.name]
+                  ? 'text-fg'
+                  : 'text-faint'}"
+                onclick={() => pickRunHost(param.name)}
+              >
+                {d.values[param.name] || 'Choose a host…'}
+              </button>
+            </div>
+          {:else}
+            <label class="block space-y-1 text-xs font-medium text-muted">
+              <span>{param.label || param.name}</span>
+              <input
+                bind:value={d.values[param.name]}
+                class="w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              />
+            </label>
+          {/if}
+        {/each}
+      </div>
+      <div class="flex justify-end gap-2 pt-1">
+        <Button variant="ghost" onclick={() => (dialog = null)}>Cancel</Button>
+        <Button
+          variant="primary"
+          disabled={d.flow.params.some((p) => !d.values[p.name]?.trim())}
+          onclick={() => {
+            const { flow, values } = d;
+            dialog = null;
+            void run(flow.name, values);
+          }}
+        >
+          Run
+        </Button>
       </div>
     </div>
   </Modal>

@@ -3,7 +3,7 @@ import type { IpcMain } from 'electron';
 import { loadAutomations, saveAutomations } from '../core/config/automations.js';
 import { loadFlows, saveFlows } from '../core/config/flows.js';
 import { runLocalCommand } from '../core/automation/localExec.js';
-import { runFlow, validateFlow, type RunFlowDeps } from '../core/automation/engine.js';
+import { missingParamValues, runFlow, validateFlow, type RunFlowDeps } from '../core/automation/engine.js';
 import type { Automation, Flow } from '../core/automation/types.js';
 import { SshSession } from '../core/ssh/session.js';
 import { automationFromDto, flowFromDto, nodeResultToDto, toCommandError } from '../dto.js';
@@ -112,17 +112,17 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
     }
   });
 
-  ipcMain.handle('run_flow', (_event, name: string) => {
+  ipcMain.handle('run_flow', (_event, name: string, paramValues: Record<string, string>) => {
     try {
       state.tryBeginFlowRun(name);
     } catch (err) {
       throw toCommandError(err);
     }
-    void executeFlowRun(state, name);
+    void executeFlowRun(state, name, paramValues);
   });
 }
 
-async function executeFlowRun(state: GuiState, flowName: string): Promise<void> {
+async function executeFlowRun(state: GuiState, flowName: string, paramValues: Record<string, string>): Promise<void> {
   try {
     let flow: Flow | undefined;
     let automations: Automation[];
@@ -145,6 +145,11 @@ async function executeFlowRun(state: GuiState, flowName: string): Promise<void> 
       state.emit('automation-flow-failed', { flowName, error: problems.join('; ') });
       return;
     }
+    const missing = missingParamValues(flow, paramValues);
+    if (missing.length > 0) {
+      state.emit('automation-flow-failed', { flowName, error: `missing value for: ${missing.join(', ')}` });
+      return;
+    }
 
     state.emit('automation-flow-started', { flowName });
     const deps: RunFlowDeps = {
@@ -161,7 +166,7 @@ async function executeFlowRun(state: GuiState, flowName: string): Promise<void> 
     };
 
     try {
-      const results = await runFlow(flow, automationsById, deps, (event) => {
+      const results = await runFlow(flow, automationsById, paramValues, deps, (event) => {
         if (event.kind === 'nodeStarted') {
           state.emit('automation-node-started', { flowName, nodeId: event.nodeId, label: event.label });
         } else {

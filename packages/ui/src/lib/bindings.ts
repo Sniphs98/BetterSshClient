@@ -142,8 +142,8 @@ export const commands = {
   async deleteFlow(name: string): Promise<Result<null, CommandError>> {
     return call('delete_flow', name);
   },
-  async runFlow(name: string): Promise<Result<null, CommandError>> {
-    return call('run_flow', name);
+  async runFlow(name: string, paramValues: Record<string, string>): Promise<Result<null, CommandError>> {
+    return call('run_flow', name, paramValues);
   }
 };
 
@@ -240,7 +240,6 @@ export type AutomationDto = {
   id: string;
   name: string;
   kind: AutomationKindDto;
-  hostName?: string | null;
   command: string;
   timeoutSecs: number;
 };
@@ -271,8 +270,9 @@ export type Error = { message: string };
 export type FileEntryDto = { name: string; path: string; size: number; isDir: boolean };
 /** Preview bytes for a remote file. Stamped with `sessionId`. */
 export type FilePreview = { sessionId: number; path: string; content: string };
-/** A graph of Automations wired together with dependency edges. */
-export type FlowDto = { name: string; nodes: FlowNodeDto[]; edges: FlowEdgeDto[] };
+/** A graph of Automations wired together with dependency edges, plus the parameters
+ *  (at most one `'host'`-kind) it asks for right before it runs. */
+export type FlowDto = { name: string; params: FlowParamDto[]; nodes: FlowNodeDto[]; edges: FlowEdgeDto[] };
 /** `to` depends on `from` — `from` must complete before `to` can start. */
 export type FlowEdgeDto = { from: string; to: string };
 /** One placement of a reusable Automation into a Flow. */
@@ -283,6 +283,12 @@ export type FlowNodeDto = {
   continueOnError: boolean;
   position?: { x: number; y: number } | null;
 };
+/** A value collected from the "run this flow" prompt rather than baked into any node
+ *  — `'host'` supplies the target for every remote node in the flow, `'text'` is a
+ *  free-form value substituted via `{{params.<name>}}`. A flow may declare at most one
+ *  `'host'` param. */
+export type FlowParamDto = { name: string; kind: FlowParamKindDto; label?: string | null; default?: string | null };
+export type FlowParamKindDto = 'text' | 'host';
 /** A host as the frontend sees it — password and private-key material omitted. */
 export type HostDto = {
   name: string;

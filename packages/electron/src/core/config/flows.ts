@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { parse, stringify } from 'smol-toml';
 
 import { flowsConfigPath } from './platform.js';
-import type { Flow, FlowEdge, FlowNode } from '../automation/types.js';
+import type { Flow, FlowEdge, FlowNode, FlowParam, FlowParamKind } from '../automation/types.js';
 
 /** `flows.toml` I/O — Flows wire Automations (loaded separately, from
  *  `automations.ts`/`automations.toml`) together into a graph. Mirrors
@@ -52,16 +52,37 @@ function flowEdgeFromToml(raw: Record<string, unknown>, flowName: string): FlowE
   return { from: raw.from, to: raw.to };
 }
 
+function flowParamFromToml(raw: Record<string, unknown>, flowName: string): FlowParam {
+  if (typeof raw.name !== 'string') throw new Error(`flow "${flowName}" has a parameter missing "name"`);
+  const kind: FlowParamKind | undefined = raw.kind === 'text' ? 'text' : raw.kind === 'host' ? 'host' : undefined;
+  if (kind === undefined) throw new Error(`flow "${flowName}" parameter "${raw.name}" has an invalid kind`);
+  return {
+    name: raw.name,
+    kind,
+    label: typeof raw.label === 'string' ? raw.label : undefined,
+    default: typeof raw.default === 'string' ? raw.default : undefined
+  };
+}
+
+function flowParamToToml(param: FlowParam): Record<string, unknown> {
+  const out: Record<string, unknown> = { name: param.name, kind: param.kind };
+  if (param.label !== undefined) out.label = param.label;
+  if (param.default !== undefined) out.default = param.default;
+  return out;
+}
+
 function flowFromToml(raw: Record<string, unknown>): Flow {
   if (typeof raw.name !== 'string') throw new Error('flow is missing "name"');
+  const params = Array.isArray(raw.params) ? raw.params.map((p) => flowParamFromToml(p as Record<string, unknown>, raw.name as string)) : [];
   const nodes = Array.isArray(raw.nodes) ? raw.nodes.map((n) => flowNodeFromToml(n as Record<string, unknown>, raw.name as string)) : [];
   const edges = Array.isArray(raw.edges) ? raw.edges.map((e) => flowEdgeFromToml(e as Record<string, unknown>, raw.name as string)) : [];
-  return { name: raw.name, nodes, edges };
+  return { name: raw.name, params, nodes, edges };
 }
 
 function flowToToml(flow: Flow): Record<string, unknown> {
   return {
     name: flow.name,
+    params: flow.params.map(flowParamToToml),
     nodes: flow.nodes.map(flowNodeToToml),
     edges: flow.edges.map((e) => ({ from: e.from, to: e.to }))
   };

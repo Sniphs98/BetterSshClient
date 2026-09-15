@@ -24,22 +24,19 @@ function automationFromToml(raw: Record<string, unknown>): Automation {
     id: raw.id,
     name: raw.name,
     kind,
-    hostName: typeof raw.hostName === 'string' ? raw.hostName : undefined,
     command: raw.command,
     timeoutSecs: raw.timeoutSecs
   };
 }
 
 function automationToToml(automation: Automation): Record<string, unknown> {
-  const out: Record<string, unknown> = {
+  return {
     id: automation.id,
     name: automation.name,
     kind: automation.kind,
     command: automation.command,
     timeoutSecs: automation.timeoutSecs
   };
-  if (automation.hostName !== undefined) out.hostName = automation.hostName;
-  return out;
 }
 
 function parseAutomationsFile(content: string): AutomationsFile {

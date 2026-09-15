@@ -55,16 +55,10 @@ describe('saveAutomations / loadAutomations round trip', () => {
     expect(await loadAutomations(path)).toEqual(original);
   });
 
-  it('round-trips a remote automation with its hostName', async () => {
-    const original = [automation({ id: 'a2', kind: 'remote', hostName: 'web-1', command: 'docker ps' })];
+  it('round-trips a remote automation (no host — that is a flow-level parameter now)', async () => {
+    const original = [automation({ id: 'a2', kind: 'remote', command: 'docker ps' })];
     await saveAutomations(original, path);
     expect(await loadAutomations(path)).toEqual(original);
-  });
-
-  it('omits hostName from the file when unset (stays sparse)', async () => {
-    await saveAutomations([automation()], path);
-    const content = await import('node:fs/promises').then((fs) => fs.readFile(path, 'utf-8'));
-    expect(content).not.toContain('hostName');
   });
 
   it('round-trips multiple automations, preserving order', async () => {

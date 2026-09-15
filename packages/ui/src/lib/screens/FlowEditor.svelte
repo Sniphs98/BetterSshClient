@@ -7,8 +7,14 @@
   // …) happens server-side in `validateFlow` (core/automation/engine.ts) — this stays a
   // plain UI package with no dependency on the electron package's code, so a rejected
   // save just surfaces that message inline, the same as any other form here.
+  //
+  // Parameters (`FlowParam`) are values collected right before the flow runs rather
+  // than baked into any node — at most one `'host'`-kind, whose run-time value is the
+  // target for every remote automation node in this flow, plus any number of
+  // `'text'`-kind ones substituted via `{{params.<name>}}`. This is what lets one flow
+  // definition run identically against different hosts.
   import { onMount } from 'svelte';
-  import type { FlowDto, FlowEdgeDto } from '$lib/bindings';
+  import type { FlowDto, FlowEdgeDto, FlowParamDto } from '$lib/bindings';
   import { Button, Icon, Surface } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
   import Select from '$lib/components/Select.svelte';
@@ -38,15 +44,34 @@
   // svelte-ignore state_referenced_locally
   let name = $state(initial.name);
   // svelte-ignore state_referenced_locally
+  let params = $state<FlowParamDto[]>(initial.params.map((p) => ({ ...p })));
+  // svelte-ignore state_referenced_locally
   let nodes = $state<EditableNode[]>(initial.nodes.map((n) => ({ ...n })));
   // svelte-ignore state_referenced_locally
   let edges = $state<FlowEdgeDto[]>(initial.edges.map((e) => ({ ...e })));
   let addAutomationId = $state('');
+  let newParamName = $state('');
+  let newParamKind = $state<'text' | 'host'>('text');
   let error = $state<string | null>(null);
   let saving = $state(false);
   let nameEl = $state<HTMLInputElement>();
 
   onMount(() => nameEl?.focus());
+
+  const hasHostParam = $derived(params.some((p) => p.kind === 'host'));
+
+  function addParam(): void {
+    const name = newParamName.trim();
+    if (!name || params.some((p) => p.name === name)) return;
+    if (newParamKind === 'host' && hasHostParam) return;
+    params = [...params, { name, kind: newParamKind, default: undefined }];
+    newParamName = '';
+    newParamKind = 'text';
+  }
+
+  function removeParam(name: string): void {
+    params = params.filter((p) => p.name !== name);
+  }
 
   function dependsOn(nodeId: string): Set<string> {
     return new Set(edges.filter((e) => e.to === nodeId).map((e) => e.from));
@@ -96,9 +121,15 @@
       error = 'Node labels must be unique within the flow';
       return;
     }
+    const usesRemote = nodes.some((n) => $automations.find((a) => a.id === n.automationId)?.kind === 'remote');
+    if (usesRemote && !hasHostParam) {
+      error = 'This flow runs a remote automation — add a host parameter below';
+      return;
+    }
 
     const flow: FlowDto = {
       name: flowName,
+      params: params.map((p) => ({ ...p })),
       nodes: nodes.map((n) => ({ id: n.id, automationId: n.automationId, label: n.label.trim(), continueOnError: n.continueOnError })),
       edges: [...edges]
     };
@@ -133,6 +164,50 @@
         <span>Name</span>
         <input bind:this={nameEl} bind:value={name} class={field} placeholder="Deploy to prod" />
       </label>
+
+      <div class="space-y-2">
+        <h3 class="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">Parameters</h3>
+        <p class="text-xs text-muted">
+          Collected right before the flow runs, not baked into any node — a host
+          parameter is the target for every remote automation in this flow, so the
+          same flow runs unchanged against a different host. Reference either kind in
+          a command as {'{{params.<name>}}'}.
+        </p>
+
+        {#if params.length > 0}
+          <div class="flex flex-wrap gap-1.5">
+            {#each params as param (param.name)}
+              <span class="inline-flex items-center gap-1.5 rounded-full border border-default px-2.5 py-1 text-xs text-muted">
+                <span class="font-mono">{param.name}</span>
+                <span class="text-faint">({param.kind})</span>
+                <button
+                  type="button"
+                  class="text-faint hover:text-fg"
+                  title="Remove parameter {param.name}"
+                  aria-label="Remove parameter {param.name}"
+                  onclick={() => removeParam(param.name)}
+                >
+                  <Icon name="close" size={11} />
+                </button>
+              </span>
+            {/each}
+          </div>
+        {/if}
+
+        <div class="flex items-center gap-2 pt-1">
+          <input
+            bind:value={newParamName}
+            class="{field} flex-1"
+            placeholder="parameter name, e.g. host"
+            onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addParam())}
+          />
+          <Select bind:value={newParamKind} class={field} aria-label="Parameter kind">
+            <option value="text">text</option>
+            <option value="host" disabled={hasHostParam}>host</option>
+          </Select>
+          <Button variant="secondary" title="Add parameter" onclick={addParam} disabled={!newParamName.trim()}>Add</Button>
+        </div>
+      </div>
 
       <div class="space-y-2">
         <h3 class="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">Nodes</h3>
@@ -190,7 +265,7 @@
         {/each}
 
         <div class="flex items-center gap-2 pt-1">
-          <Select bind:value={addAutomationId} class={field}>
+          <Select bind:value={addAutomationId} class={field} aria-label="Add an automation">
             <option value="" disabled selected>Add an automation…</option>
             {#each $automations as a (a.id)}
               <option value={a.id}>{a.name} ({a.kind})</option>

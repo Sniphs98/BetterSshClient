@@ -11,13 +11,14 @@
   let {
     value = $bindable(),
     class: className = '',
-    children
-  }: { value: string; class?: string; children: Snippet } = $props();
+    children,
+    ...rest
+  }: { value: string; class?: string; children: Snippet; [key: string]: unknown } = $props();
 </script>
 
 <span class="relative block">
   <!-- `pr-9` keeps the longest option clear of the chevron. -->
-  <select bind:value class="{className} appearance-none pr-9">
+  <select bind:value {...rest} class="{className} appearance-none pr-9">
     {@render children()}
   </select>
   <svg

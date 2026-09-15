@@ -21,6 +21,7 @@ afterEach(async () => {
 function flow(overrides: Partial<Flow> = {}): Flow {
   return {
     name: 'deploy',
+    params: [],
     nodes: [
       { id: 'n1', automationId: 'a1', label: 'build', continueOnError: false },
       { id: 'n2', automationId: 'a2', label: 'deploy', continueOnError: true }
@@ -40,9 +41,9 @@ describe('loadFlows', () => {
     expect(await loadFlows(path)).toEqual([]);
   });
 
-  it('a flow with no nodes/edges tables defaults both to empty arrays', async () => {
+  it('a flow with no params/nodes/edges tables defaults all to empty arrays', async () => {
     await writeFile(path, '[[flows]]\nname = "empty"\n', 'utf-8');
-    expect(await loadFlows(path)).toEqual([{ name: 'empty', nodes: [], edges: [] }]);
+    expect(await loadFlows(path)).toEqual([{ name: 'empty', params: [], nodes: [], edges: [] }]);
   });
 
   it('rejects a node missing required fields', async () => {
@@ -68,5 +69,18 @@ describe('saveFlows / loadFlows round trip', () => {
     const original = [flow({ name: 'one' }), flow({ name: 'two', nodes: [], edges: [] })];
     await saveFlows(original, path);
     expect((await loadFlows(path)).map((f) => f.name)).toEqual(['one', 'two']);
+  });
+
+  it('round-trips parameters, including a text default and an unset label', async () => {
+    const original = [
+      flow({
+        params: [
+          { name: 'host', kind: 'host' },
+          { name: 'version', kind: 'text', label: 'Version to deploy', default: 'latest' }
+        ]
+      })
+    ];
+    await saveFlows(original, path);
+    expect(await loadFlows(path)).toEqual(original);
   });
 });

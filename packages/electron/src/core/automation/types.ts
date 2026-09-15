@@ -14,11 +14,31 @@ export interface Automation {
   id: string;
   name: string;
   kind: AutomationKind;
-  /** Required iff `kind === 'remote'`. */
-  hostName?: string;
-  /** Shell command string; may reference `{{nodes.<label>.output}}`. */
+  /** Shell command string; may reference `{{nodes.<label>.output}}` and
+   *  `{{params.<name>}}`. No target host here — a `kind === 'remote'` automation runs
+   *  against whichever host the *flow* resolves at run time (its one `'host'`-kind
+   *  `FlowParam`), so the same automation and the same flow both work unchanged
+   *  against a different host without editing anything. */
   command: string;
   timeoutSecs: number;
+}
+
+export type FlowParamKind = 'text' | 'host';
+
+/** A value the flow asks for right before it runs, rather than baking it into any
+ *  node. A flow may declare at most one `kind: 'host'` param — its value is the host
+ *  every remote node in the flow connects to; any number of `kind: 'text'` params are
+ *  also allowed, substituted into commands via `{{params.<name>}}` just like a
+ *  `'host'` param's own value is. */
+export interface FlowParam {
+  /** Unique within the flow; the `{{params.<name>}}` handle and the key into the
+   *  `paramValues` map supplied to `run_flow`. */
+  name: string;
+  kind: FlowParamKind;
+  /** Shown in the "run this flow" prompt in place of `name`, if set. */
+  label?: string;
+  /** Prefills the "run this flow" prompt for a `'text'` param; unused for `'host'`. */
+  default?: string;
 }
 
 export interface FlowNode {
@@ -43,6 +63,7 @@ export interface FlowEdge {
 
 export interface Flow {
   name: string;
+  params: FlowParam[];
   nodes: FlowNode[];
   edges: FlowEdge[];
 }

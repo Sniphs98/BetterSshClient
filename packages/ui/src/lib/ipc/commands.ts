@@ -284,8 +284,11 @@ export async function deleteFlow(name: string): Promise<void> {
 }
 
 /** Run a Flow; progress and the outcome arrive as `automation-*` events.
- *  Fire-and-forget — only an unknown/already-running flow rejects here. */
-export async function runFlow(name: string): Promise<void> {
-  const res = await commands.runFlow(name);
+ *  `paramValues` is whatever the "run this flow" prompt collected — a value for every
+ *  `FlowParam` the flow declares, keyed by name (empty object for a flow with none).
+ *  Fire-and-forget — only an unknown/already-running flow rejects here; a missing
+ *  param value surfaces as `automation-flow-failed`, not a rejection. */
+export async function runFlow(name: string, paramValues: Record<string, string>): Promise<void> {
+  const res = await commands.runFlow(name, paramValues);
   if (res.status === 'error') throw new Error(res.error.message);
 }

@@ -2,13 +2,15 @@
   // Add/edit Automation form: the reusable, named shell-command building block a Flow
   // places as a node. Validation mirrors the TUI-style forms elsewhere (`hostForm.ts`,
   // `snippetForm.ts`) via `formToAutomation`; on submit the parent persists + refreshes,
-  // and a rejected save surfaces inline without closing. Semantic tokens only.
+  // and a rejected save surfaces inline without closing. Semantic tokens only. No host
+  // field for a remote automation — its target host is a Flow-level parameter,
+  // collected when the flow runs (see FlowEditor's Parameters section), so the same
+  // automation works unchanged against whichever host that flow is run with.
   import { onMount } from 'svelte';
   import type { AutomationDto } from '$lib/bindings';
   import { Button } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
   import Select from '$lib/components/Select.svelte';
-  import { palette } from '$lib/stores/palette';
   import { formToAutomation, type AutomationFormFields } from './automationForm';
 
   let {
@@ -36,11 +38,6 @@
   let nameEl = $state<HTMLInputElement>();
 
   onMount(() => nameEl?.focus());
-
-  async function pickHost(): Promise<void> {
-    const host = await palette.pickHost();
-    if (host) fields.hostName = host.name;
-  }
 
   async function save(): Promise<void> {
     const result = formToAutomation(fields, id);
@@ -97,15 +94,6 @@
         </label>
       </div>
 
-      {#if fields.kind === 'remote'}
-        <label class={label}>
-          <span>Host</span>
-          <button type="button" class="{field} truncate text-left {fields.hostName ? '' : 'text-faint'}" onclick={pickHost}>
-            {fields.hostName || 'Choose a host…'}
-          </button>
-        </label>
-      {/if}
-
       <label class={label}>
         <span>Command</span>
         <textarea
@@ -117,7 +105,12 @@
       </label>
       <p class="text-[11px] text-faint">
         Reference an upstream node's output as {'{{nodes.<label>.output}}'} once this
-        automation is placed in a flow with an edge into it from that node.
+        automation is placed in a flow with an edge into it from that node, or a flow
+        parameter's value as {'{{params.<name>}}'}.
+        {#if fields.kind === 'remote'}
+          This automation runs on whichever host the flow is run with — add a host
+          parameter to the flow if it doesn't have one yet.
+        {/if}
       </p>
 
       {#if error}

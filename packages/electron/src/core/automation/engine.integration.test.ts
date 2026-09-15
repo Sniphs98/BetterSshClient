@@ -31,12 +31,12 @@ describe('automation engine against the test target', () => {
       id: 'remote',
       name: 'Remote',
       kind: 'remote',
-      hostName: 'ssh-test-target',
       command: 'echo received:{{nodes.build.output}}',
       timeoutSecs: 30
     };
     const flow: Flow = {
       name: 'it-flow',
+      params: [{ name: 'host', kind: 'host' }],
       nodes: [
         { id: 'n1', automationId: 'local', label: 'build', continueOnError: false },
         { id: 'n2', automationId: 'remote', label: 'deploy', continueOnError: false }
@@ -50,6 +50,7 @@ describe('automation engine against the test target', () => {
         ['local', local],
         ['remote', remote]
       ]),
+      { host: 'ssh-test-target' },
       deps()
     );
 
@@ -64,12 +65,12 @@ describe('automation engine against the test target', () => {
       id: 'remote',
       name: 'Remote',
       kind: 'remote',
-      hostName: 'ssh-test-target',
       command: `touch ${marker}`,
       timeoutSecs: 30
     };
     const flow: Flow = {
       name: 'it-flow-skip',
+      params: [{ name: 'host', kind: 'host' }],
       nodes: [
         { id: 'n1', automationId: 'fail', label: 'x', continueOnError: false },
         { id: 'n2', automationId: 'remote', label: 'y', continueOnError: false }
@@ -83,6 +84,7 @@ describe('automation engine against the test target', () => {
         ['fail', failing],
         ['remote', remote]
       ]),
+      { host: 'ssh-test-target' },
       deps()
     );
     expect(results.map((r) => r.status)).toEqual(['failed', 'skipped']);

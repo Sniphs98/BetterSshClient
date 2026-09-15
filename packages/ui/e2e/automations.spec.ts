@@ -11,8 +11,12 @@ import { expect, test, type Page } from '@playwright/test';
 // continueOnError was left off — the same rule the real engine applies.
 type Rec = Record<string, unknown>;
 
+const HOSTS = [
+  { name: 'web-1', hostname: 'web-1.example.com', user: 'deploy', port: 22, tags: [], source: 'manual', hasKey: true }
+];
+
 async function boot(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  await page.addInitScript((hosts) => {
     const win = window as unknown as Record<string, unknown>;
     const listeners: Record<string, Array<(payload: unknown) => void>> = {};
     const state: { automations: Rec[]; flows: Rec[] } = { automations: [], flows: [] };
@@ -25,7 +29,7 @@ async function boot(page: Page): Promise<void> {
       invoke: (channel: string, ...args: unknown[]) => {
         switch (channel) {
           case 'list_hosts':
-            return Promise.resolve([]);
+            return Promise.resolve(hosts);
           case 'reload_hosts':
             return Promise.resolve(null);
           case 'list_automations':
@@ -56,6 +60,7 @@ async function boot(page: Page): Promise<void> {
           }
           case 'run_flow': {
             const flowName = args[0] as string;
+            const paramValues = (args[1] as Record<string, string>) ?? {};
             const flow = state.flows.find((f) => f.name === flowName) as
               | { nodes: Array<{ id: string; automationId: string; label: string; continueOnError: boolean }>; edges: Array<{ from: string; to: string }> }
               | undefined;
@@ -64,6 +69,11 @@ async function boot(page: Page): Promise<void> {
               return Promise.resolve(null);
             }
             const automationsById = new Map(state.automations.map((a) => [a.id as string, a]));
+            const needsHost = flow.nodes.some((n) => automationsById.get(n.automationId)?.kind === 'remote');
+            if (needsHost && !paramValues.host) {
+              setTimeout(() => fire('automation-flow-failed', { flowName, error: 'missing host parameter value' }), 0);
+              return Promise.resolve(null);
+            }
             setTimeout(() => {
               fire('automation-flow-started', { flowName });
               const statusById = new Map<string, string>();
@@ -86,11 +96,12 @@ async function boot(page: Page): Promise<void> {
                 const automation = automationsById.get(node.automationId);
                 const command = (automation?.command as string) ?? '';
                 const ok = !command.includes('exit 1');
+                const isRemote = automation?.kind === 'remote';
                 const result = {
                   nodeId: node.id,
                   label: node.label,
                   status: ok ? 'success' : 'failed',
-                  output: ok ? 'ok' : '',
+                  output: ok ? (isRemote ? `ok on ${paramValues.host}` : 'ok') : '',
                   error: ok ? undefined : 'boom',
                   durationMs: 1
                 };
@@ -117,7 +128,7 @@ async function boot(page: Page): Promise<void> {
       homeDir: () => Promise.resolve('/home/user'),
       getPathForFile: () => ''
     };
-  });
+  }, HOSTS);
   await page.goto('/');
 }
 
@@ -150,7 +161,7 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
   await flowEditor.getByLabel('Name').fill('release');
 
   async function addNode(automationName: string): Promise<void> {
-    await flowEditor.locator('select').selectOption({ label: `${automationName} (local)` });
+    await flowEditor.getByRole('combobox', { name: 'Add an automation' }).selectOption({ label: `${automationName} (local)` });
     await flowEditor.getByRole('button', { name: 'Add', exact: true }).click();
   }
   await addNode('Build');
@@ -178,4 +189,54 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
 
   await progress.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('a remote automation has no host of its own — the flow asks for one at run time', async ({ page }) => {
+  await boot(page);
+
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  const automationEditor = page.getByRole('dialog', { name: 'New automation' });
+  await automationEditor.getByLabel('Name').fill('Deploy');
+  await automationEditor.getByLabel('Runs').selectOption('remote');
+  // No host field should appear on the automation itself.
+  await expect(automationEditor.getByText('Host', { exact: true })).toHaveCount(0);
+  await automationEditor.getByLabel('Command').fill('echo deployed');
+  await automationEditor.getByRole('button', { name: 'Add automation' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // Wire a flow with a `host`-kind parameter and one node using the remote automation.
+  await page.getByRole('button', { name: 'Flows', exact: true }).click();
+  await page.getByRole('button', { name: 'New flow' }).first().click();
+  const flowEditor = page.getByRole('dialog', { name: 'New flow' });
+  await flowEditor.getByLabel('Name').fill('deploy-anywhere');
+
+  await flowEditor.getByPlaceholder('parameter name, e.g. host').fill('host');
+  await flowEditor.getByRole('combobox', { name: 'Parameter kind' }).selectOption('host');
+  await flowEditor.getByRole('button', { name: 'Add parameter' }).click();
+
+  await flowEditor.getByRole('combobox', { name: 'Add an automation' }).selectOption({ label: 'Deploy (remote)' });
+  await flowEditor.getByRole('button', { name: 'Add', exact: true }).click();
+
+  await flowEditor.getByRole('button', { name: 'Add flow' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // Running the flow first asks which host to use.
+  await page.getByRole('button', { name: 'Run deploy-anywhere' }).click();
+  const runDialog = page.getByRole('dialog', { name: 'Run flow' });
+  await expect(runDialog).toBeVisible();
+  await runDialog.getByRole('button', { name: 'Choose a host…' }).click();
+
+  const hostPicker = page.getByRole('dialog', { name: 'Pick a host' });
+  await expect(hostPicker).toBeVisible();
+  await hostPicker.getByRole('button', { name: /web-1/ }).click();
+
+  await runDialog.getByRole('button', { name: 'Run', exact: true }).click();
+
+  const progress = page.getByRole('dialog', { name: 'Flow run' });
+  await expect(progress).toBeVisible();
+  await expect(progress.getByRole('button', { name: 'Done' })).toBeVisible();
+  // Proof the picked host — not something baked into the automation — reached the run.
+  await expect(progress.locator('li', { hasText: 'Deploy' })).toContainText('ok on web-1');
 });

@@ -6,7 +6,7 @@
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
 import type { Snippet } from './core/config/snippets.js';
-import type { Automation, AutomationKind, Flow, NodeResult, NodeStatus } from './core/automation/types.js';
+import type { Automation, AutomationKind, Flow, FlowParam, FlowParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ConnectionStatus, Metrics } from './event.js';
 import type { ProcessInfo } from './core/ssh/metrics.js';
 import type { DetectedService, ServiceKind, ServiceMetric } from './core/ssh/services/types.js';
@@ -127,7 +127,6 @@ export interface AutomationDto {
   id: string;
   name: string;
   kind: AutomationKindDto;
-  hostName?: string;
   command: string;
   timeoutSecs: number;
 }
@@ -153,8 +152,26 @@ export interface FlowEdgeDto {
   to: string;
 }
 
+export type FlowParamKindDto = FlowParamKind;
+
+export interface FlowParamDto {
+  name: string;
+  kind: FlowParamKindDto;
+  label?: string;
+  default?: string;
+}
+
+export function flowParamToDto(param: FlowParam): FlowParamDto {
+  return param;
+}
+
+export function flowParamFromDto(dto: FlowParamDto): FlowParam {
+  return dto;
+}
+
 export interface FlowDto {
   name: string;
+  params: FlowParamDto[];
   nodes: FlowNodeDto[];
   edges: FlowEdgeDto[];
 }

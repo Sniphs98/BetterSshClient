@@ -9,6 +9,7 @@ import type { Automation, Flow, FlowNode, NodeResult } from './types.js';
  */
 
 const TEMPLATE_REF = /\{\{nodes\.([^.}]+)\.output\}\}/g;
+const PARAM_REF = /\{\{params\.([^.}]+)\}\}/g;
 
 export class AutomationCycleError extends Error {}
 
@@ -60,11 +61,21 @@ function predecessorMap(flow: Flow): Map<string, string[]> {
   return map;
 }
 
+/** The flow's one `'host'`-kind `FlowParam`, if it declared one — its run-time value
+ *  is the host every remote node in the flow connects to. `validateFlow` enforces at
+ *  most one. */
+function hostParamOf(flow: Flow): { name: string } | undefined {
+  return flow.params.find((p) => p.kind === 'host');
+}
+
 /** Save-time structural validation — not execution. Returns a list of problem
- *  strings (empty means valid): an unknown `automationId`, a remote Automation with
- *  no `hostName`, a duplicate label, a dangling edge, a `{{nodes.<label>.output}}`
- *  reference to a label that isn't a *direct* predecessor (template scope is exactly
- *  what an edge means — "this output is visible to that node"), and a cycle. */
+ *  strings (empty means valid): an unknown `automationId`, a duplicate label or
+ *  parameter name, more than one `'host'`-kind parameter, a remote node with no host
+ *  parameter declared to supply it at run time, a dangling edge, a
+ *  `{{nodes.<label>.output}}`/`{{params.<name>}}` reference that doesn't resolve
+ *  (a node reference must additionally be a *direct* predecessor — template scope is
+ *  exactly what an edge means, "this output is visible to that node"; a param
+ *  reference has no such restriction, since every param is flow-wide), and a cycle. */
 export function validateFlow(flow: Flow, automationsById: Map<string, Automation>): string[] {
   const problems: string[] = [];
   const nodeIds = new Set(flow.nodes.map((n) => n.id));
@@ -76,14 +87,31 @@ export function validateFlow(flow: Flow, automationsById: Map<string, Automation
     const automation = automationsById.get(node.automationId);
     if (automation === undefined) {
       problems.push(`node "${node.label}" references an unknown automation`);
-    } else if (automation.kind === 'remote' && automation.hostName === undefined) {
-      problems.push(`node "${node.label}" uses automation "${automation.name}", a remote automation with no host set`);
     }
     labelCounts.set(node.label, (labelCounts.get(node.label) ?? 0) + 1);
     labelToNode.set(node.label, node);
   }
   for (const [label, count] of labelCounts) {
     if (count > 1) problems.push(`label "${label}" is used by more than one node`);
+  }
+
+  const paramNames = new Set<string>();
+  const paramNameCounts = new Map<string, number>();
+  let hostParamCount = 0;
+  for (const param of flow.params) {
+    if (!param.name.trim()) problems.push('a parameter needs a name');
+    paramNames.add(param.name);
+    paramNameCounts.set(param.name, (paramNameCounts.get(param.name) ?? 0) + 1);
+    if (param.kind === 'host') hostParamCount += 1;
+  }
+  for (const [name, count] of paramNameCounts) {
+    if (count > 1) problems.push(`parameter "${name}" is declared more than once`);
+  }
+  if (hostParamCount > 1) problems.push('a flow can have at most one host parameter');
+
+  const hasRemoteNode = flow.nodes.some((n) => automationsById.get(n.automationId)?.kind === 'remote');
+  if (hasRemoteNode && hostParamCount === 0) {
+    problems.push('this flow runs a remote automation but has no host parameter — add one so a host can be chosen when the flow runs');
   }
 
   for (const edge of flow.edges) {
@@ -107,6 +135,12 @@ export function validateFlow(flow: Flow, automationsById: Map<string, Automation
         problems.push(`node "${node.label}" references "${ref}", which is not a direct dependency (add an edge from it)`);
       }
     }
+    for (const match of automation.command.matchAll(PARAM_REF)) {
+      const ref = match[1];
+      if (!paramNames.has(ref)) {
+        problems.push(`node "${node.label}" references unknown parameter "${ref}"`);
+      }
+    }
   }
 
   try {
@@ -118,16 +152,35 @@ export function validateFlow(flow: Flow, automationsById: Map<string, Automation
   return problems;
 }
 
-/** Replaces every `{{nodes.<label>.output}}` in `command`, using only `predecessors`
- *  (the calling node's *direct* predecessors, keyed by label) — matching
- *  `validateFlow`'s "template scope is direct edges only" rule. Throws if a
- *  referenced label isn't present; `validateFlow` should already have caught that at
- *  save time, so this is defense in depth, not the primary UX. */
-export function substituteTemplate(command: string, predecessors: Map<string, NodeResult>): string {
-  return command.replace(TEMPLATE_REF, (_full, label: string) => {
+/** Run-time check, distinct from `validateFlow`'s save-time structural check: does
+ *  `paramValues` (what the user typed into the "run this flow" prompt) supply a
+ *  non-blank value for every parameter the flow declares? Returns each missing
+ *  param's `label ?? name`; empty means ready to run. */
+export function missingParamValues(flow: Flow, paramValues: Record<string, string>): string[] {
+  return flow.params.filter((p) => !paramValues[p.name]?.trim()).map((p) => p.label || p.name);
+}
+
+/** Replaces every `{{nodes.<label>.output}}` and `{{params.<name>}}` in `command`.
+ *  `predecessors` is the calling node's *direct* predecessors, keyed by label —
+ *  matching `validateFlow`'s "node-reference scope is direct edges only" rule;
+ *  `paramValues` is the whole flow's run-time parameter values, keyed by name — every
+ *  node sees every param, matching `validateFlow`'s "params are flow-wide" rule.
+ *  Throws if a referenced label or param isn't present; `validateFlow`/
+ *  `missingParamValues` should already have caught that before a run starts, so this
+ *  is defense in depth, not the primary UX. */
+export function substituteTemplate(
+  command: string,
+  predecessors: Map<string, NodeResult>,
+  paramValues: Record<string, string> = {}
+): string {
+  const withNodeRefs = command.replace(TEMPLATE_REF, (_full, label: string) => {
     const result = predecessors.get(label);
     if (result === undefined) throw new Error(`no predecessor result for label "${label}"`);
     return result.output;
+  });
+  return withNodeRefs.replace(PARAM_REF, (_full, name: string) => {
+    if (!(name in paramValues)) throw new Error(`no value for parameter "${name}"`);
+    return paramValues[name];
   });
 }
 
@@ -152,18 +205,23 @@ export type FlowProgressEvent =
  *  reason about and debug than parallel branches). A node whose direct predecessors
  *  aren't all `success` (or `failed`/`skipped` with that predecessor's own
  *  `continueOnError: true`) is skipped rather than run — see `types.ts`'s doc comment
- *  on `FlowNode.continueOnError` for the exact rule. Opens one connection per distinct
- *  remote host actually touched, lazily on first use, reused across nodes targeting
- *  it, and disconnects every opened connection in `finally`. */
+ *  on `FlowNode.continueOnError` for the exact rule. `paramValues` is what the caller
+ *  collected from the "run this flow" prompt (see `missingParamValues`) — the same
+ *  values for every node, so one flow definition runs identically against whichever
+ *  host (and whichever text param values) are supplied this time. Opens one
+ *  connection per distinct remote host actually touched, lazily on first use, reused
+ *  across nodes targeting it, and disconnects every opened connection in `finally`. */
 export async function runFlow(
   flow: Flow,
   automationsById: Map<string, Automation>,
+  paramValues: Record<string, string>,
   deps: RunFlowDeps,
   onProgress?: (event: FlowProgressEvent) => void
 ): Promise<NodeResult[]> {
   const order = topoOrder(flow);
   const nodeById = new Map(flow.nodes.map((n) => [n.id, n]));
   const predecessorsOf = predecessorMap(flow);
+  const hostParam = hostParamOf(flow);
   const resultsById = new Map<string, NodeResult>();
   const connections = new Map<string, RunFlowConnection>();
 
@@ -181,8 +239,9 @@ export async function runFlow(
         settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'automation no longer exists', durationMs: 0 });
         continue;
       }
-      if (automation.kind === 'remote' && automation.hostName === undefined) {
-        settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'remote automation has no host set', durationMs: 0 });
+      const nodeHostName = hostParam ? paramValues[hostParam.name] : undefined;
+      if (automation.kind === 'remote' && !nodeHostName) {
+        settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'remote automation but the flow has no host parameter value', durationMs: 0 });
         continue;
       }
 
@@ -201,11 +260,11 @@ export async function runFlow(
 
       let exec: { output: string; ok: boolean; error?: string };
       try {
-        const command = substituteTemplate(automation.command, predecessorsByLabel);
+        const command = substituteTemplate(automation.command, predecessorsByLabel, paramValues);
         if (automation.kind === 'local') {
           exec = await deps.runLocal(command, timeoutMs);
         } else {
-          const hostName = automation.hostName!;
+          const hostName = nodeHostName!;
           let connection = connections.get(hostName);
           if (connection === undefined) {
             connection = await deps.connectHost(hostName);

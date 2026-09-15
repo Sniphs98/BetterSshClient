@@ -21,31 +21,26 @@ describe('formToAutomation', () => {
     });
   });
 
-  it('rejects a remote automation with no host picked', () => {
-    const r = formToAutomation(fields({ name: 'Deploy', command: 'echo hi', kind: 'remote' }), 'id1');
-    expect(r).toEqual({ ok: false, error: 'Pick a host for a remote automation' });
-  });
-
   it('builds a local automation with a trimmed name/command and the given id', () => {
     const r = formToAutomation(fields({ name: ' Build ', command: ' echo hi ' }), 'id1');
     expect(r.ok && r.automation).toEqual({
       id: 'id1',
       name: 'Build',
       kind: 'local',
-      hostName: undefined,
       command: 'echo hi',
       timeoutSecs: 300
     });
   });
 
-  it('builds a remote automation with its hostName', () => {
-    const r = formToAutomation(fields({ name: 'Deploy', command: 'docker ps', kind: 'remote', hostName: 'web-1' }), 'id2');
-    expect(r.ok && r.automation.hostName).toBe('web-1');
-  });
-
-  it('drops hostName for a local automation even if one was typed', () => {
-    const r = formToAutomation(fields({ name: 'Build', command: 'echo hi', kind: 'local', hostName: 'web-1' }), 'id1');
-    expect(r.ok && r.automation.hostName).toBeUndefined();
+  it('builds a remote automation with no host field — that is resolved by the flow at run time', () => {
+    const r = formToAutomation(fields({ name: 'Deploy', command: 'docker ps', kind: 'remote' }), 'id2');
+    expect(r.ok && r.automation).toEqual({
+      id: 'id2',
+      name: 'Deploy',
+      kind: 'remote',
+      command: 'docker ps',
+      timeoutSecs: 300
+    });
   });
 
   it('defaults an empty timeout to 300', () => {
@@ -72,7 +67,10 @@ describe('formFromAutomation', () => {
     expect(r.ok && r.automation).toEqual(original);
   });
 
-  it('round-trips a remote automation, leaving hostName blank when unset', () => {
-    expect(formFromAutomation({ id: 'id1', name: 'Build', kind: 'local', command: 'x', timeoutSecs: 1 }).hostName).toBe('');
+  it('round-trips a remote automation', () => {
+    const original: AutomationDto = { id: 'id1', name: 'Deploy', kind: 'remote', command: 'docker ps', timeoutSecs: 60 };
+    const f = formFromAutomation(original);
+    const r = formToAutomation(f, original.id);
+    expect(r.ok && r.automation).toEqual(original);
   });
 });

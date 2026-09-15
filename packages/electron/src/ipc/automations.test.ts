@@ -7,7 +7,7 @@ function automation(overrides: Partial<Automation> = {}): Automation {
 }
 
 function flow(overrides: Partial<Flow> = {}): Flow {
-  return { name: 'deploy', nodes: [], edges: [], ...overrides };
+  return { name: 'deploy', params: [], nodes: [], edges: [], ...overrides };
 }
 
 describe('upsertAutomation', () => {
