@@ -169,8 +169,17 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
   await addNode('Notify');
   await expect(flowEditor.getByLabel('Label')).toHaveCount(3);
 
-  await flowEditor.getByRole('checkbox', { name: 'Deploy depends on Build' }).click();
-  await flowEditor.getByRole('checkbox', { name: 'Notify depends on Deploy' }).click();
+  // Wire the canvas: click a node's source (right) dot, then the dependent node's
+  // target (left) dot — svelte-flow's click-to-connect, an alternative to dragging.
+  async function connect(fromAutomationName: string, toAutomationName: string): Promise<void> {
+    const fromNode = flowEditor.locator('.svelte-flow__node', { hasText: fromAutomationName });
+    const toNode = flowEditor.locator('.svelte-flow__node', { hasText: toAutomationName });
+    await fromNode.locator('.svelte-flow__handle.source').click();
+    await toNode.locator('.svelte-flow__handle.target').click();
+  }
+  await connect('Build', 'Deploy');
+  await connect('Deploy', 'Notify');
+  await expect(flowEditor.locator('.svelte-flow__edge')).toHaveCount(2);
 
   await flowEditor.getByRole('button', { name: 'Add flow' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);

@@ -1,12 +1,13 @@
 <script lang="ts">
-  // Add/edit Flow form: a v1, non-canvas graph builder — add nodes by picking from the
-  // Automation library, wire dependencies via a "depends on" chip picker per node
-  // (there's no reusable multi-select component to reach for, so this mirrors
-  // SnippetRunner.svelte's inline-checkbox pattern instead). Structural validation
-  // (unknown automation, a cycle, a template reference that isn't a direct dependency,
-  // …) happens server-side in `validateFlow` (core/automation/engine.ts) — this stays a
-  // plain UI package with no dependency on the electron package's code, so a rejected
-  // save just surfaces that message inline, the same as any other form here.
+  // Add/edit Flow form: nodes are placed and wired on an actual svelte-flow canvas —
+  // drag from an Automation library entry onto the graph, drag between a node's right
+  // (source) and another's left (target) handle to add a dependency edge. Structural
+  // validation (unknown automation, a cycle, a template reference that isn't a direct
+  // dependency, …) happens server-side in `validateFlow` (core/automation/engine.ts) —
+  // this stays a plain UI package with no dependency on the electron package's code,
+  // so a rejected save just surfaces that message inline, the same as any other form
+  // here. `FlowNode.position` (already part of the DTO) is what makes a layout
+  // persist across reopens instead of re-flowing every time.
   //
   // Parameters (`FlowParam`) are values collected right before the flow runs rather
   // than baked into any node — at most one `'host'`-kind, whose run-time value is the
@@ -14,18 +15,16 @@
   // `'text'`-kind ones substituted via `{{params.<name>}}`. This is what lets one flow
   // definition run identically against different hosts.
   import { onMount } from 'svelte';
-  import type { FlowDto, FlowEdgeDto, FlowParamDto } from '$lib/bindings';
-  import { Button, Icon, Surface } from '$lib/theme';
+  import { SvelteFlow, Background, BackgroundVariant, Controls, type Connection } from '@xyflow/svelte';
+  import '@xyflow/svelte/dist/style.css';
+  import type { FlowDto, FlowParamDto } from '$lib/bindings';
+  import { Button, Icon } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
   import Select from '$lib/components/Select.svelte';
   import { automations } from '$lib/stores/automations';
-
-  interface EditableNode {
-    id: string;
-    automationId: string;
-    label: string;
-    continueOnError: boolean;
-  }
+  import { theme } from '$lib/stores/theme';
+  import FlowCanvasNode from './FlowCanvasNode.svelte';
+  import type { AutomationFlowEdge, AutomationFlowNode } from './flowCanvasTypes';
 
   let {
     mode,
@@ -39,6 +38,14 @@
     onCancel: () => void;
   } = $props();
 
+  const nodeTypes = { automation: FlowCanvasNode };
+
+  /** A simple left-to-right, wrapping grid — used only for a node that has no saved
+   *  `position` yet (freshly added, or a flow saved before positions existed). */
+  function layoutPosition(index: number): { x: number; y: number } {
+    return { x: 60 + (index % 4) * 230, y: 60 + Math.floor(index / 4) * 150 };
+  }
+
   // Seeded once from `initial`; the editor is remounted per open, so the prop never
   // changes under a live instance.
   // svelte-ignore state_referenced_locally
@@ -46,9 +53,27 @@
   // svelte-ignore state_referenced_locally
   let params = $state<FlowParamDto[]>(initial.params.map((p) => ({ ...p })));
   // svelte-ignore state_referenced_locally
-  let nodes = $state<EditableNode[]>(initial.nodes.map((n) => ({ ...n })));
+  let canvasNodes = $state<AutomationFlowNode[]>(
+    initial.nodes.map((n, i) => {
+      const automation = $automations.find((a) => a.id === n.automationId);
+      return {
+        id: n.id,
+        type: 'automation',
+        position: n.position ?? layoutPosition(i),
+        data: {
+          automationId: n.automationId,
+          label: n.label,
+          continueOnError: n.continueOnError,
+          automationName: automation?.name ?? 'unknown automation',
+          automationKind: automation?.kind ?? 'local'
+        }
+      };
+    })
+  );
   // svelte-ignore state_referenced_locally
-  let edges = $state<FlowEdgeDto[]>(initial.edges.map((e) => ({ ...e })));
+  let canvasEdges = $state<AutomationFlowEdge[]>(
+    initial.edges.map((e) => ({ id: `${e.from}->${e.to}`, source: e.from, target: e.to }))
+  );
   let addAutomationId = $state('');
   let newParamName = $state('');
   let newParamKind = $state<'text' | 'host'>('text');
@@ -73,33 +98,44 @@
     params = params.filter((p) => p.name !== name);
   }
 
-  function dependsOn(nodeId: string): Set<string> {
-    return new Set(edges.filter((e) => e.to === nodeId).map((e) => e.from));
-  }
-
-  function toggleDependency(nodeId: string, dependsOnId: string): void {
-    const has = edges.some((e) => e.from === dependsOnId && e.to === nodeId);
-    edges = has ? edges.filter((e) => !(e.from === dependsOnId && e.to === nodeId)) : [...edges, { from: dependsOnId, to: nodeId }];
-  }
-
   function uniqueLabel(base: string): string {
     const slug = base.trim() || 'node';
-    if (!nodes.some((n) => n.label === slug)) return slug;
+    const taken = new Set(canvasNodes.map((n) => n.data.label));
+    if (!taken.has(slug)) return slug;
     let i = 2;
-    while (nodes.some((n) => n.label === `${slug}-${i}`)) i += 1;
+    while (taken.has(`${slug}-${i}`)) i += 1;
     return `${slug}-${i}`;
   }
 
   function addNode(): void {
     const automation = $automations.find((a) => a.id === addAutomationId);
     if (!automation) return;
-    nodes = [...nodes, { id: crypto.randomUUID(), automationId: automation.id, label: uniqueLabel(automation.name), continueOnError: false }];
+    canvasNodes = [
+      ...canvasNodes,
+      {
+        id: crypto.randomUUID(),
+        type: 'automation',
+        position: layoutPosition(canvasNodes.length),
+        data: {
+          automationId: automation.id,
+          label: uniqueLabel(automation.name),
+          continueOnError: false,
+          automationName: automation.name,
+          automationKind: automation.kind
+        }
+      }
+    ];
     addAutomationId = '';
   }
 
-  function removeNode(id: string): void {
-    nodes = nodes.filter((n) => n.id !== id);
-    edges = edges.filter((e) => e.from !== id && e.to !== id);
+  /** A dependency edge: dragging from a node's source (right) handle to another's
+   *  target (left) handle means "the target depends on the source" — `to` waits for
+   *  `from`, matching `FlowEdge`'s own `{ from, to }` shape exactly. */
+  function onconnect(connection: Connection): void {
+    if (!connection.source || !connection.target || connection.source === connection.target) return;
+    const exists = canvasEdges.some((e) => e.source === connection.source && e.target === connection.target);
+    if (exists) return;
+    canvasEdges = [...canvasEdges, { id: `${connection.source}->${connection.target}`, source: connection.source, target: connection.target }];
   }
 
   async function save(): Promise<void> {
@@ -108,11 +144,11 @@
       error = 'Name cannot be empty';
       return;
     }
-    if (nodes.length === 0) {
+    if (canvasNodes.length === 0) {
       error = 'Add at least one node';
       return;
     }
-    const labels = nodes.map((n) => n.label.trim());
+    const labels = canvasNodes.map((n) => n.data.label.trim());
     if (labels.some((l) => !l)) {
       error = 'Every node needs a label';
       return;
@@ -121,7 +157,7 @@
       error = 'Node labels must be unique within the flow';
       return;
     }
-    const usesRemote = nodes.some((n) => $automations.find((a) => a.id === n.automationId)?.kind === 'remote');
+    const usesRemote = canvasNodes.some((n) => n.data.automationKind === 'remote');
     if (usesRemote && !hasHostParam) {
       error = 'This flow runs a remote automation — add a host parameter below';
       return;
@@ -130,8 +166,14 @@
     const flow: FlowDto = {
       name: flowName,
       params: params.map((p) => ({ ...p })),
-      nodes: nodes.map((n) => ({ id: n.id, automationId: n.automationId, label: n.label.trim(), continueOnError: n.continueOnError })),
-      edges: [...edges]
+      nodes: canvasNodes.map((n) => ({
+        id: n.id,
+        automationId: n.data.automationId,
+        label: n.data.label.trim(),
+        continueOnError: n.data.continueOnError,
+        position: n.position
+      })),
+      edges: canvasEdges.map((e) => ({ from: e.source, to: e.target }))
     };
     error = null;
     saving = true;
@@ -148,9 +190,6 @@
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
-  const iconBtn =
-    'grid h-7 w-7 shrink-0 place-items-center rounded text-muted transition hover:bg-surface-inset ' +
-    'hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
 </script>
 
 <Modal label={mode === 'add' ? 'New flow' : 'Edit flow'} size="large" onClose={onCancel}>
@@ -210,61 +249,12 @@
       </div>
 
       <div class="space-y-2">
-        <h3 class="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">Nodes</h3>
+        <div class="flex items-center justify-between gap-2">
+          <h3 class="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">Nodes</h3>
+          <p class="text-xs text-muted">Drag between a node's dots to add a dependency; select an edge and press Delete to remove it.</p>
+        </div>
 
-        {#if nodes.length === 0}
-          <p class="text-sm text-muted">No nodes yet — add one below.</p>
-        {/if}
-
-        {#each nodes as node (node.id)}
-          {@const automation = $automations.find((a) => a.id === node.automationId)}
-          <Surface class="space-y-2.5 p-3">
-            <div class="flex items-center gap-2">
-              <input bind:value={node.label} class="{field} flex-1 font-mono text-xs" placeholder="label" aria-label="Label" />
-              <span class="min-w-0 shrink truncate text-xs text-muted" title={automation?.name}>
-                {automation ? `${automation.name} · ${automation.kind}` : 'unknown automation'}
-              </span>
-              <button
-                type="button"
-                class={iconBtn}
-                title="Remove node"
-                aria-label="Remove {node.label || 'node'}"
-                onclick={() => removeNode(node.id)}
-              >
-                <Icon name="trash" size={14} />
-              </button>
-            </div>
-
-            <label class="flex items-center gap-2 text-xs text-muted">
-              <input type="checkbox" bind:checked={node.continueOnError} class="accent-current" />
-              Let dependents run even if this node fails
-            </label>
-
-            {#if nodes.length > 1}
-              <div class="space-y-1">
-                <span class="text-[11px] font-medium uppercase tracking-[0.14em] text-faint">Depends on</span>
-                <div class="flex flex-wrap gap-1.5">
-                  {#each nodes.filter((n) => n.id !== node.id) as other (other.id)}
-                    {@const checked = dependsOn(node.id).has(other.id)}
-                    <button
-                      type="button"
-                      role="checkbox"
-                      aria-checked={checked}
-                      aria-label="{node.label || 'node'} depends on {other.label || 'node'}"
-                      class="rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus
-                        {checked ? 'border-accent bg-accent text-accent-fg' : 'border-default text-muted hover:border-strong'}"
-                      onclick={() => toggleDependency(node.id, other.id)}
-                    >
-                      {other.label || 'node'}
-                    </button>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </Surface>
-        {/each}
-
-        <div class="flex items-center gap-2 pt-1">
+        <div class="flex items-center gap-2">
           <Select bind:value={addAutomationId} class={field} aria-label="Add an automation">
             <option value="" disabled selected>Add an automation…</option>
             {#each $automations as a (a.id)}
@@ -276,6 +266,17 @@
         {#if $automations.length === 0}
           <p class="text-xs text-faint">No automations yet — create one first.</p>
         {/if}
+
+        <div class="h-[420px] overflow-hidden rounded-lg border border-default">
+          {#if canvasNodes.length === 0}
+            <div class="flex h-full items-center justify-center text-sm text-muted">No nodes yet — add one above.</div>
+          {:else}
+            <SvelteFlow bind:nodes={canvasNodes} bind:edges={canvasEdges} {nodeTypes} {onconnect} colorMode={$theme} fitView minZoom={0.4}>
+              <Background variant={BackgroundVariant.Dots} />
+              <Controls showLock={false} />
+            </SvelteFlow>
+          {/if}
+        </div>
       </div>
 
       {#if error}
