@@ -141,11 +141,11 @@
         </button>
       </div>
     {:else}
-      <ul class="min-h-0 flex-1 space-y-2 overflow-y-auto">
-        {#each $automations as automation (automation.id)}
-          <li>
-            <Surface class="flex items-center gap-4 p-4">
-              <div class="min-w-0 flex-1">
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
+          {#each $automations as automation (automation.id)}
+            <Surface class="flex flex-col gap-3 p-5">
+              <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
                   <span class="truncate font-medium" title={automation.name}>{automation.name}</span>
                   <Chip>{automation.kind === 'remote' && automation.hostName ? `remote · ${automation.hostName}` : 'local'}</Chip>
@@ -154,7 +154,7 @@
                   {automation.command}
                 </div>
               </div>
-              <div class="flex shrink-0 items-center gap-1.5">
+              <div class="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   class={iconBtn}
@@ -175,9 +175,9 @@
                 </button>
               </div>
             </Surface>
-          </li>
-        {/each}
-      </ul>
+          {/each}
+        </div>
+      </div>
     {/if}
   {:else if $flows.length === 0}
     <div class="flex flex-1 flex-col items-center justify-center gap-2 text-center">
@@ -189,18 +189,18 @@
       </button>
     </div>
   {:else}
-    <ul class="min-h-0 flex-1 space-y-2 overflow-y-auto">
-      {#each $flows as flow (flow.name)}
-        <li>
-          <Surface class="flex items-center gap-4 p-4">
-            <div class="min-w-0 flex-1">
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
+        {#each $flows as flow (flow.name)}
+          <Surface class="flex flex-col gap-3 p-5">
+            <div class="min-w-0">
               <span class="truncate font-medium" title={flow.name}>{flow.name}</span>
               <div class="mt-1 text-xs text-muted">
                 {flow.nodes.length} {flow.nodes.length === 1 ? 'node' : 'nodes'} · {flow.edges.length}
                 {flow.edges.length === 1 ? 'dependency' : 'dependencies'}
               </div>
             </div>
-            <div class="flex shrink-0 items-center gap-1.5">
+            <div class="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 class={pill}
@@ -232,9 +232,9 @@
               </button>
             </div>
           </Surface>
-        </li>
-      {/each}
-    </ul>
+        {/each}
+      </div>
+    </div>
   {/if}
 </section>
 
