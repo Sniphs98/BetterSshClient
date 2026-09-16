@@ -1,0 +1,6 @@
+{
+  "service": "omnyssh-test-target",
+  "version": 1,
+  "tags": ["ssh", "sftp", "fixture"],
+  "healthy": true
+}

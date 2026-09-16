@@ -1,0 +1,2 @@
+A filename with spaces — exercises path handling end to end (SFTP list/read/
+write/rename/delete, and the terminal drawer's autocd shell-quoting).

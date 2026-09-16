@@ -1,0 +1,3 @@
+No extension and not a recognised filename — should still open, as plaintext
+(fileEdit.ts's isEditableFile defaults an unrecognised name to editable now,
+matching VS Code's own "open anything as text" behaviour).

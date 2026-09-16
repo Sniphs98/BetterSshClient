@@ -15,8 +15,20 @@ docker compose up -d --build
 That builds the image the first time and starts the container, publishing it on
 `localhost:2222`. `docker compose down` stops and removes it — nothing about it
 persists, so a fresh `up` (without `--build`) gets you back to the seeded starting
-state (an `omnyssh` user, password auth, a couple of sample files) every time. Add
-`--build` again only if you changed the Dockerfile/sshd_config/service files.
+state (an `omnyssh` user, password auth, a spread of sample files) every time. Add
+`--build` again only if you changed the Dockerfile/sshd_config/service/testfiles.
+
+## Sample files
+
+`/home/omnyssh/testfiles/` (see `testfiles/readme.txt` in there, and the local
+`testfiles/` folder next to this README for the source) has a broad spread of file
+types for trying the SFTP browser's "Open" action and the Monaco editor it opens —
+code/config files across ~15 languages, two files that should stay read-only (random
+bytes with a `.png`/`.zip` extension), one over the editor's 2 MiB size cap (so you
+see the read-only preview fallback), a nested folder, and two filenames chosen to
+exercise path quoting (a space, and a single quote). `/home/omnyssh/config.yml` and
+`/home/omnyssh/www/` stay where they were — `sftp.integration.test.ts` asserts they
+exist.
 
 ## Add it in OmnySSH
 

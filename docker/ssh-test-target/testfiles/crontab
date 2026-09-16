@@ -1,0 +1,2 @@
+# Sample fixture, not installed as an actual crontab.
+0 3 * * * /usr/local/bin/backup.sh

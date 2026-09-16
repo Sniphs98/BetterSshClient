@@ -1,0 +1,5 @@
+name,kind,size_kb
+readme.txt,text,1
+data.json,text,1
+photo.png,binary,4
+huge.log,text,2930
