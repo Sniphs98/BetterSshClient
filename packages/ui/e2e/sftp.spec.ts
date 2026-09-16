@@ -145,6 +145,11 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
               const [, path] = args as [number, string];
               return Promise.resolve(remoteContents[path] ?? '');
             }
+            case 'sftp_preview': {
+              const [sessionId, path] = args as [number, string];
+              setTimeout(() => fire('file-preview', { sessionId, path, content: remoteContents[path] ?? '' }), 0);
+              return Promise.resolve(null);
+            }
             case 'sftp_write_file': {
               const [, path, content] = args as [number, string, string];
               remoteContents[path] = content;
@@ -399,7 +404,7 @@ test('editing a text file opens Monaco, and Save writes the content back', async
 
   await remotePane.getByTitle('config.yml').click({ button: 'right' });
   const menu = page.getByRole('menu');
-  await menu.getByRole('menuitem', { name: 'Edit' }).click();
+  await menu.getByRole('menuitem', { name: 'Open' }).click();
 
   const editorDialog = page.getByRole('dialog', { name: 'Edit /config.yml' });
   await expect(editorDialog).toBeVisible();
@@ -424,7 +429,7 @@ test('editing a text file opens Monaco, and Save writes the content back', async
   expect(written).toBe('key: changed');
 });
 
-test("Edit is disabled for a file type the editor doesn't recognise", async ({ page }) => {
+test('Open falls back to a read-only preview for a binary file the editor refuses', async ({ page }) => {
   await boot(page);
   await page.getByTitle('files on web-1').click();
   const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
@@ -432,5 +437,9 @@ test("Edit is disabled for a file type the editor doesn't recognise", async ({ p
 
   await remotePane.getByTitle('photo.png').click({ button: 'right' });
   const menu = page.getByRole('menu');
-  await expect(menu.getByRole('menuitem', { name: 'Edit' })).toBeDisabled();
+  await expect(menu.getByRole('menuitem', { name: 'Open' })).toBeEnabled();
+  await menu.getByRole('menuitem', { name: 'Open' }).click();
+
+  await expect(page.getByRole('dialog', { name: 'File preview' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Edit /photo.png' })).toHaveCount(0);
 });

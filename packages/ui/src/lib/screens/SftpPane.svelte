@@ -6,10 +6,12 @@
   // selection without navigating, and shift-click selects the range from the last
   // touched entry — both work the same on files and directories, so a batch of folders
   // can still be marked for delete/download. A double-click (or Enter) opens the
-  // clicked entry either way (previews a file; navigating a directory again is a
-  // harmless no-op there). The leading checkbox stays as an explicit, always-additive
-  // toggle for touch/trackpad use. Right-click opens a context menu with the equivalent
-  // actions; the parent owns building and positioning it. Semantic tokens only (§5.1).
+  // clicked entry either way (a file opens — in the editor if `fileEdit.ts` allows it,
+  // else a read-only preview, the parent's call via `onOpenFile`; navigating a
+  // directory again is a harmless no-op there). The leading checkbox stays as an
+  // explicit, always-additive toggle for touch/trackpad use. Right-click opens a
+  // context menu with the equivalent actions; the parent owns building and positioning
+  // it. Semantic tokens only (§5.1).
   import type { Snippet } from 'svelte';
   import { Icon } from '$lib/theme';
   import type { FileEntryDto } from '$lib/bindings';
@@ -23,7 +25,7 @@
     onSelectOnly,
     onSelectRange,
     onClearMarks,
-    onPreview,
+    onOpenFile,
     onDragStart,
     onDrop,
     onEntryContextMenu,
@@ -37,7 +39,7 @@
     onSelectOnly: (path: string) => void;
     onSelectRange: (path: string) => void;
     onClearMarks: () => void;
-    onPreview: (entry: FileEntryDto) => void;
+    onOpenFile: (entry: FileEntryDto) => void;
     onDragStart: (entry: FileEntryDto) => void;
     onDrop: () => void;
     onEntryContextMenu: (entry: FileEntryDto, event: MouseEvent) => void;
@@ -49,7 +51,7 @@
 
   function open(entry: FileEntryDto): void {
     if (entry.isDir) onNavigate(entry);
-    else onPreview(entry);
+    else onOpenFile(entry);
   }
 
   function click(entry: FileEntryDto, event: MouseEvent): void {

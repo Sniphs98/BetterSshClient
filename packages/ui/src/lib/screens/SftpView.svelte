@@ -238,6 +238,9 @@
     if (backendId != null) sftp.clearMarks(backendId, side);
   }
 
+  // The read-only fallback for a file `fileEdit.ts` won't open in the editor (too
+  // large, or a known-binary extension) — truncated to the first 4096 bytes server/
+  // fs-side (core/ssh/sftp.ts's readPreview/previewLocalFile), not loaded whole.
   async function preview(side: PaneSide, entry: FileEntryDto): Promise<void> {
     const id = backendId;
     if (id == null) return;
@@ -367,13 +370,21 @@
 
   function openEntry(side: PaneSide, entry: FileEntryDto): void {
     if (entry.isDir) navigate(side, entry);
-    else void preview(side, entry);
+    else void openFile(side, entry);
   }
 
-  // Opens the file editor (tech-gui.md §3.2): reads the file whole up front — unlike the
-  // preview, which is deliberately truncated — so the editor mounts with content already
-  // in hand. `fileEdit.ts`'s isEditableFile already gated this to a size the process can
-  // hold comfortably.
+  // The one "open a file" action (tech-gui.md §3.2) — double-click, Enter, and the
+  // context menu's "Open" all funnel through here. `fileEdit.ts`'s isEditableFile
+  // decides which of the two paths below runs; there's no separate user-facing "Edit".
+  async function openFile(side: PaneSide, entry: FileEntryDto): Promise<void> {
+    if (isEditableFile(entry.name, entry.size)) await openEditor(side, entry);
+    else await preview(side, entry);
+  }
+
+  // Opens the file editor: reads the file whole up front — unlike the preview, which is
+  // deliberately truncated — so the editor mounts with content already in hand.
+  // `fileEdit.ts`'s isEditableFile already gated this to a size the process can hold
+  // comfortably.
   async function openEditor(side: PaneSide, entry: FileEntryDto): Promise<void> {
     const id = backendId;
     if (id == null) return;
@@ -410,10 +421,8 @@
   function remoteEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto): ContextMenuItem[] {
     const count = remoteMarked.length;
     const files = remoteMarkedFiles.length;
-    const editable = count === 1 && !entry.isDir && isEditableFile(entry.name, entry.size);
     return [
       { label: 'Open', icon: entry.isDir ? 'folder' : 'file', onSelect: () => openEntry('remote', entry), disabled: count > 1 },
-      { label: 'Edit', icon: 'edit', onSelect: () => void openEditor('remote', entry), disabled: !editable },
       { label: files > 1 ? `Download ${files} files` : 'Download', icon: 'download', onSelect: download, disabled: files === 0 },
       { label: 'Rename', icon: 'edit', onSelect: () => openPrompt('rename'), disabled: !singleRemoteMark },
       { label: count > 1 ? `Delete ${count} items` : 'Delete', icon: 'trash', danger: true, onSelect: () => (deleteConfirm = true), disabled: count === 0 },
@@ -432,10 +441,8 @@
   function localEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto): ContextMenuItem[] {
     const marked = markedEntries(currentView.local).length;
     const files = localMarkedFiles.length;
-    const editable = marked === 1 && !entry.isDir && isEditableFile(entry.name, entry.size);
     return [
       { label: 'Open', icon: entry.isDir ? 'folder' : 'file', onSelect: () => openEntry('local', entry), disabled: marked > 1 },
-      { label: 'Edit', icon: 'edit', onSelect: () => void openEditor('local', entry), disabled: !editable },
       { label: files > 1 ? `Upload ${files} files` : 'Upload', icon: 'upload', onSelect: upload, disabled: files === 0 },
       { label: 'Refresh', icon: 'refresh', onSelect: () => void refreshLocal(currentView.local.path) }
     ];
@@ -519,7 +526,7 @@
         onSelectOnly={(p) => selectOnly('local', p)}
         onSelectRange={(p) => selectRange('local', p)}
         onClearMarks={() => clearMarks('local')}
-        onPreview={(e) => preview('local', e)}
+        onOpenFile={(e) => void openFile('local', e)}
         onDragStart={(e) => startDrag('local', e)}
         onDrop={() => dropOn('local')}
         onEntryContextMenu={(e, event) => openEntryContextMenu('local', e, event)}
@@ -556,7 +563,7 @@
         onSelectOnly={(p) => selectOnly('remote', p)}
         onSelectRange={(p) => selectRange('remote', p)}
         onClearMarks={() => clearMarks('remote')}
-        onPreview={(e) => preview('remote', e)}
+        onOpenFile={(e) => void openFile('remote', e)}
         onDragStart={(e) => startDrag('remote', e)}
         onDrop={() => dropOn('remote')}
         onEntryContextMenu={(e, event) => openEntryContextMenu('remote', e, event)}
@@ -697,6 +704,9 @@
       </h2>
     </header>
     <div class="min-h-0 flex-1 overflow-auto px-5 py-4">
+      <p class="mb-3 text-xs text-faint">
+        Read-only — too large or not a text type the editor opens.
+      </p>
       {#if view.preview.content.length === 0}
         <p class="text-sm text-faint">Empty file.</p>
       {:else}
