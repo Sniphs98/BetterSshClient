@@ -13,23 +13,32 @@
   // across reopens instead of re-flowing every time.
   //
   // Parameters (`FlowParam`) are values collected right before the flow runs rather
-  // than baked into any node — at most one `'host'`-kind, whose run-time value is the
-  // target for every remote automation node in this flow, plus any number of
-  // `'text'`-kind ones substituted via `{{params.<name>}}`. This is what lets one flow
-  // definition run identically against different hosts.
-  import { onMount } from 'svelte';
+  // than baked into any automation node — at most one `'host'`-kind, whose run-time
+  // value is the target for every remote automation node in this flow, plus any
+  // number of `'text'`-kind ones substituted via `{{params.<name>}}`. This is what
+  // lets one flow definition run identically against different hosts. They're drawn
+  // as the graph's own permanent "Start" node (FlowStartNode.svelte) rather than a
+  // toolbar above the canvas — see flowCanvasTypes.ts's note on `START_NODE_ID`.
+  import { onMount, setContext } from 'svelte';
   import { SvelteFlow, Background, BackgroundVariant, Controls, type Connection } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
-  import type { FlowDto, FlowParamDto } from '$lib/bindings';
+  import type { FlowDto, FlowParamDto, FlowParamKindDto } from '$lib/bindings';
   import { Button, Icon } from '$lib/theme';
-  import Select from '$lib/components/Select.svelte';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import { automations, flows } from '$lib/stores/automations';
   import { listFlows, saveFlow } from '$lib/ipc/commands';
   import { activeEntity } from '$lib/stores/activeEntity';
   import { theme } from '$lib/stores/theme';
   import FlowCanvasNode from './FlowCanvasNode.svelte';
-  import type { AutomationFlowEdge, AutomationFlowNode } from './flowCanvasTypes';
+  import FlowStartNode from './FlowStartNode.svelte';
+  import {
+    FLOW_PARAMS_CONTEXT,
+    START_NODE_ID,
+    type AnyFlowNode,
+    type AutomationFlowEdge,
+    type AutomationFlowNode,
+    type StartFlowNode
+  } from './flowCanvasTypes';
 
   /** `null` opens a fresh, unsaved flow; a name loads that existing Flow from the
    *  `flows` store (already loaded by Automations.svelte before navigation ever gets
@@ -48,7 +57,7 @@
   // svelte-ignore state_referenced_locally
   const notFound = flowName !== null && existing === undefined;
 
-  const nodeTypes = { automation: FlowCanvasNode };
+  const nodeTypes = { automation: FlowCanvasNode, start: FlowStartNode };
 
   /** A simple left-to-right, wrapping grid — used only for a node that has no saved
    *  `position` yet (freshly added, or a flow saved before positions existed). */
@@ -56,14 +65,28 @@
     return { x: 60 + (index % 4) * 230, y: 60 + Math.floor(index / 4) * 150 };
   }
 
+  function isAutomationNode(n: AnyFlowNode): n is AutomationFlowNode {
+    return n.type === 'automation';
+  }
+
+  const startNode: StartFlowNode = {
+    id: START_NODE_ID,
+    type: 'start',
+    position: { x: -280, y: 60 },
+    data: {},
+    deletable: false,
+    selectable: false
+  };
+
   let name = $state(initial.name);
   let params = $state<FlowParamDto[]>(initial.params.map((p) => ({ ...p })));
-  let canvasNodes = $state<AutomationFlowNode[]>(
-    initial.nodes.map((n, i) => {
+  let canvasNodes = $state<AnyFlowNode[]>([
+    startNode,
+    ...initial.nodes.map((n, i) => {
       const automation = $automations.find((a) => a.id === n.automationId);
       return {
         id: n.id,
-        type: 'automation',
+        type: 'automation' as const,
         position: n.position ?? layoutPosition(i),
         data: {
           automationId: n.automationId,
@@ -74,13 +97,11 @@
         }
       };
     })
-  );
+  ]);
   let canvasEdges = $state<AutomationFlowEdge[]>(
     initial.edges.map((e) => ({ id: `${e.from}->${e.to}`, source: e.from, target: e.to }))
   );
   let addMenuAnchor = $state<{ x: number; y: number } | null>(null);
-  let newParamName = $state('');
-  let newParamKind = $state<'text' | 'host'>('text');
   let error = $state<string | null>(null);
   let saving = $state(false);
   let nameEl = $state<HTMLInputElement>();
@@ -91,26 +112,26 @@
 
   const hasHostParam = $derived(params.some((p) => p.kind === 'host'));
 
+  setContext(FLOW_PARAMS_CONTEXT, {
+    params: () => params,
+    addParam: (paramName: string, kind: FlowParamKindDto) => {
+      const trimmed = paramName.trim();
+      if (!trimmed || params.some((p) => p.name === trimmed)) return;
+      if (kind === 'host' && hasHostParam) return;
+      params = [...params, { name: trimmed, kind, default: undefined }];
+    },
+    removeParam: (paramName: string) => {
+      params = params.filter((p) => p.name !== paramName);
+    }
+  });
+
   function back(): void {
     activeEntity.selectAutomations();
   }
 
-  function addParam(): void {
-    const name = newParamName.trim();
-    if (!name || params.some((p) => p.name === name)) return;
-    if (newParamKind === 'host' && hasHostParam) return;
-    params = [...params, { name, kind: newParamKind, default: undefined }];
-    newParamName = '';
-    newParamKind = 'text';
-  }
-
-  function removeParam(name: string): void {
-    params = params.filter((p) => p.name !== name);
-  }
-
   function uniqueLabel(base: string): string {
     const slug = base.trim() || 'node';
-    const taken = new Set(canvasNodes.map((n) => n.data.label));
+    const taken = new Set(canvasNodes.filter(isAutomationNode).map((n) => n.data.label));
     if (!taken.has(slug)) return slug;
     let i = 2;
     while (taken.has(`${slug}-${i}`)) i += 1;
@@ -133,7 +154,7 @@
               {
                 id: crypto.randomUUID(),
                 type: 'automation',
-                position: layoutPosition(canvasNodes.length),
+                position: layoutPosition(canvasNodes.filter(isAutomationNode).length),
                 data: {
                   automationId: a.id,
                   label: uniqueLabel(a.name),
@@ -163,11 +184,12 @@
       error = 'Name cannot be empty';
       return;
     }
-    if (canvasNodes.length === 0) {
+    const automationNodes = canvasNodes.filter(isAutomationNode);
+    if (automationNodes.length === 0) {
       error = 'Add at least one node';
       return;
     }
-    const labels = canvasNodes.map((n) => n.data.label.trim());
+    const labels = automationNodes.map((n) => n.data.label.trim());
     if (labels.some((l) => !l)) {
       error = 'Every node needs a label';
       return;
@@ -176,16 +198,16 @@
       error = 'Node labels must be unique within the flow';
       return;
     }
-    const usesRemote = canvasNodes.some((n) => n.data.automationKind === 'remote');
+    const usesRemote = automationNodes.some((n) => n.data.automationKind === 'remote');
     if (usesRemote && !hasHostParam) {
-      error = 'This flow runs a remote automation — add a host parameter below';
+      error = 'This flow runs a remote automation — add a host parameter on the Start node';
       return;
     }
 
     const flow: FlowDto = {
       name: flowNameTrimmed,
       params: params.map((p) => ({ ...p })),
-      nodes: canvasNodes.map((n) => ({
+      nodes: automationNodes.map((n) => ({
         id: n.id,
         automationId: n.data.automationId,
         label: n.data.label.trim(),
@@ -244,40 +266,6 @@
       <p class="text-sm text-muted">“{flowName}” no longer exists — it may have been deleted.</p>
     </div>
   {:else}
-    <div class="flex flex-wrap items-center gap-3 border-b border-default px-6 py-2.5">
-      <span class="text-[11px] font-medium uppercase tracking-[0.14em] text-faint" title="Collected right before the flow runs, not baked into any node — a host parameter is the target for every remote automation in this flow. Reference either kind in a command as {'{{params.<name>}}'}.">
-        Parameters
-      </span>
-      {#each params as param (param.name)}
-        <span class="inline-flex items-center gap-1.5 rounded-full border border-default px-2.5 py-1 text-xs text-muted">
-          <span class="font-mono">{param.name}</span>
-          <span class="text-faint">({param.kind})</span>
-          <button
-            type="button"
-            class="text-faint hover:text-fg"
-            title="Remove parameter {param.name}"
-            aria-label="Remove parameter {param.name}"
-            onclick={() => removeParam(param.name)}
-          >
-            <Icon name="close" size={11} />
-          </button>
-        </span>
-      {/each}
-      <div class="flex items-center gap-1.5">
-        <input
-          bind:value={newParamName}
-          class="{field} w-40"
-          placeholder="parameter name"
-          onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addParam())}
-        />
-        <Select bind:value={newParamKind} class={field} aria-label="Parameter kind">
-          <option value="text">text</option>
-          <option value="host" disabled={hasHostParam}>host</option>
-        </Select>
-        <Button variant="secondary" title="Add parameter" onclick={addParam} disabled={!newParamName.trim()}>Add</Button>
-      </div>
-    </div>
-
     {#if error}
       <p class="border-b border-default px-6 py-2 text-xs text-status-crit">{error}</p>
     {/if}
@@ -285,7 +273,7 @@
     <div class="relative min-h-0 flex-1">
       <button
         type="button"
-        class="absolute left-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-full border border-default bg-surface text-fg shadow-soft transition hover:bg-surface-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        class="absolute right-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-full border border-default bg-surface text-fg shadow-soft transition hover:bg-surface-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         title="Add an automation to this flow"
         aria-label="Add an automation to this flow"
         onclick={openAddMenu}
@@ -296,16 +284,10 @@
         <ContextMenu x={addMenuAnchor.x} y={addMenuAnchor.y} items={addMenuItems} onClose={() => (addMenuAnchor = null)} />
       {/if}
 
-      {#if canvasNodes.length === 0}
-        <div class="flex h-full items-center justify-center text-sm text-muted">
-          No nodes yet — use the + button to add an automation.
-        </div>
-      {:else}
-        <SvelteFlow bind:nodes={canvasNodes} bind:edges={canvasEdges} {nodeTypes} {onconnect} colorMode={$theme} class="h-full w-full" fitView minZoom={0.3}>
-          <Background variant={BackgroundVariant.Dots} />
-          <Controls showLock={false} />
-        </SvelteFlow>
-      {/if}
+      <SvelteFlow bind:nodes={canvasNodes} bind:edges={canvasEdges} {nodeTypes} {onconnect} colorMode={$theme} class="h-full w-full" fitView minZoom={0.3}>
+        <Background variant={BackgroundVariant.Dots} />
+        <Controls showLock={false} />
+      </SvelteFlow>
     </div>
   {/if}
 </section>

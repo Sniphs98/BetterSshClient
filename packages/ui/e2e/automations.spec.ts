@@ -229,7 +229,8 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   await page.getByRole('button', { name: 'New flow' }).first().click();
   await page.getByLabel('Flow name').fill('deploy-anywhere');
 
-  await page.getByPlaceholder('parameter name').fill('host');
+  // Parameters live on the graph's permanent "Start" node now, not a toolbar.
+  await page.getByLabel('Parameter name').fill('host');
   await page.getByRole('combobox', { name: 'Parameter kind' }).selectOption('host');
   await page.getByRole('button', { name: 'Add parameter' }).click();
 
