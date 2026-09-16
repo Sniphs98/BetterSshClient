@@ -157,32 +157,36 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
   // Switch to Flows: wire Build -> Deploy -> Notify, so Deploy's failure skips Notify.
   await page.getByRole('button', { name: 'Flows', exact: true }).click();
   await page.getByRole('button', { name: 'New flow' }).first().click();
-  const flowEditor = page.getByRole('dialog', { name: 'New flow' });
-  await flowEditor.getByLabel('Name').fill('release');
 
-  async function addNode(automationName: string): Promise<void> {
-    await flowEditor.getByRole('combobox', { name: 'Add an automation' }).selectOption({ label: `${automationName} (local)` });
-    await flowEditor.getByRole('button', { name: 'Add', exact: true }).click();
+  // "New flow" replaces the whole content area with the canvas — not a dialog.
+  await expect(page.getByRole('heading', { name: 'Automations' })).toHaveCount(0);
+  await page.getByLabel('Flow name').fill('release');
+
+  async function addNode(automationName: string, kind: 'local' | 'remote' = 'local'): Promise<void> {
+    await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
+    await page.getByRole('menuitem', { name: `${automationName} (${kind})` }).click();
   }
   await addNode('Build');
   await addNode('Deploy');
   await addNode('Notify');
-  await expect(flowEditor.getByLabel('Label')).toHaveCount(3);
+  await expect(page.getByLabel('Label')).toHaveCount(3);
 
   // Wire the canvas: click a node's source (right) dot, then the dependent node's
   // target (left) dot — svelte-flow's click-to-connect, an alternative to dragging.
   async function connect(fromAutomationName: string, toAutomationName: string): Promise<void> {
-    const fromNode = flowEditor.locator('.svelte-flow__node', { hasText: fromAutomationName });
-    const toNode = flowEditor.locator('.svelte-flow__node', { hasText: toAutomationName });
+    const fromNode = page.locator('.svelte-flow__node', { hasText: fromAutomationName });
+    const toNode = page.locator('.svelte-flow__node', { hasText: toAutomationName });
     await fromNode.locator('.svelte-flow__handle.source').click();
     await toNode.locator('.svelte-flow__handle.target').click();
   }
   await connect('Build', 'Deploy');
   await connect('Deploy', 'Notify');
-  await expect(flowEditor.locator('.svelte-flow__edge')).toHaveCount(2);
+  await expect(page.locator('.svelte-flow__edge')).toHaveCount(2);
 
-  await flowEditor.getByRole('button', { name: 'Add flow' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Create flow' }).click();
+
+  // Saving returns to the Flows list (the "back" navigation, same as Cancel).
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
   await expect(page.getByText('release', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Run release' }).click();
@@ -218,18 +222,17 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   // Wire a flow with a `host`-kind parameter and one node using the remote automation.
   await page.getByRole('button', { name: 'Flows', exact: true }).click();
   await page.getByRole('button', { name: 'New flow' }).first().click();
-  const flowEditor = page.getByRole('dialog', { name: 'New flow' });
-  await flowEditor.getByLabel('Name').fill('deploy-anywhere');
+  await page.getByLabel('Flow name').fill('deploy-anywhere');
 
-  await flowEditor.getByPlaceholder('parameter name, e.g. host').fill('host');
-  await flowEditor.getByRole('combobox', { name: 'Parameter kind' }).selectOption('host');
-  await flowEditor.getByRole('button', { name: 'Add parameter' }).click();
+  await page.getByPlaceholder('parameter name').fill('host');
+  await page.getByRole('combobox', { name: 'Parameter kind' }).selectOption('host');
+  await page.getByRole('button', { name: 'Add parameter' }).click();
 
-  await flowEditor.getByRole('combobox', { name: 'Add an automation' }).selectOption({ label: 'Deploy (remote)' });
-  await flowEditor.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
+  await page.getByRole('menuitem', { name: 'Deploy (remote)' }).click();
 
-  await flowEditor.getByRole('button', { name: 'Add flow' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Create flow' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
 
   // Running the flow first asks which host to use.
   await page.getByRole('button', { name: 'Run deploy-anywhere' }).click();

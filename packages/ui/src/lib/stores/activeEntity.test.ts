@@ -36,4 +36,15 @@ describe('activeEntity — exactly one active', () => {
     activeEntity.selectAutomations();
     expect(get(activeEntity)).toEqual({ kind: 'automations' });
   });
+
+  it('selectFlow(null) opens a new, unsaved flow', () => {
+    activeEntity.selectFlow(null);
+    expect(get(activeEntity)).toEqual({ kind: 'flow', flowName: null });
+  });
+
+  it('selectFlow(name) opens that flow, deactivating a session', () => {
+    activeEntity.activateSession(7);
+    activeEntity.selectFlow('release');
+    expect(get(activeEntity)).toEqual({ kind: 'flow', flowName: 'release' });
+  });
 });

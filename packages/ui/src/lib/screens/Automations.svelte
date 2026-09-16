@@ -7,33 +7,22 @@
   import { onMount } from 'svelte';
   import type { AutomationDto, FlowDto } from '$lib/bindings';
   import { Surface, Chip, Icon, Button } from '$lib/theme';
-  import {
-    listAutomations,
-    saveAutomation,
-    deleteAutomation,
-    listFlows,
-    saveFlow,
-    deleteFlow,
-    runFlow
-  } from '$lib/ipc/commands';
-  import { automations, flows, flowRun, beginFlowRun } from '$lib/stores/automations';
+  import { listAutomations, saveAutomation, deleteAutomation, listFlows, deleteFlow, runFlow } from '$lib/ipc/commands';
+  import { automations, flows, automationsTab, flowRun, beginFlowRun } from '$lib/stores/automations';
   import { lastError } from '$lib/stores/notifications';
   import { palette } from '$lib/stores/palette';
+  import { activeEntity } from '$lib/stores/activeEntity';
   import { emptyForm, formFromAutomation } from './automationForm';
   import AutomationEditor from './AutomationEditor.svelte';
-  import FlowEditor from './FlowEditor.svelte';
   import Modal from '$lib/components/Modal.svelte';
 
   type Dialog =
     | { kind: 'addAutomation'; id: string }
     | { kind: 'editAutomation'; automation: AutomationDto }
     | { kind: 'deleteAutomation'; automation: AutomationDto }
-    | { kind: 'addFlow' }
-    | { kind: 'editFlow'; flow: FlowDto }
     | { kind: 'deleteFlow'; flow: FlowDto }
     | { kind: 'runFlow'; flow: FlowDto; values: Record<string, string> };
 
-  let tab = $state<'automations' | 'flows'>('automations');
   let dialog = $state<Dialog | null>(null);
 
   const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -63,12 +52,6 @@
     } catch (e) {
       lastError.set(message(e));
     }
-    dialog = null;
-  }
-
-  async function submitFlow(flow: FlowDto): Promise<void> {
-    await saveFlow(flow);
-    flows.set(await listFlows());
     dialog = null;
   }
 
@@ -135,25 +118,25 @@
   <div class="mb-5 flex items-center gap-3">
     <h1 class="text-lg font-semibold tracking-tight">Automations</h1>
     <div class="ml-auto flex items-center gap-1 rounded-full bg-surface-inset p-1">
-      <button type="button" class={tabBtn(tab === 'automations')} onclick={() => (tab = 'automations')}>
+      <button type="button" class={tabBtn($automationsTab === 'automations')} onclick={() => automationsTab.set('automations')}>
         Automations
       </button>
-      <button type="button" class={tabBtn(tab === 'flows')} onclick={() => (tab = 'flows')}>Flows</button>
+      <button type="button" class={tabBtn($automationsTab === 'flows')} onclick={() => automationsTab.set('flows')}>Flows</button>
     </div>
-    {#if tab === 'automations'}
+    {#if $automationsTab === 'automations'}
       <button type="button" class={pill} onclick={() => (dialog = { kind: 'addAutomation', id: crypto.randomUUID() })}>
         <Icon name="plus" size={13} />
         New automation
       </button>
     {:else}
-      <button type="button" class={pill} onclick={() => (dialog = { kind: 'addFlow' })}>
+      <button type="button" class={pill} onclick={() => activeEntity.selectFlow(null)}>
         <Icon name="plus" size={13} />
         New flow
       </button>
     {/if}
   </div>
 
-  {#if tab === 'automations'}
+  {#if $automationsTab === 'automations'}
     {#if $automations.length === 0}
       <div class="flex flex-1 flex-col items-center justify-center gap-2 text-center">
         <p class="font-medium">No automations yet</p>
@@ -208,7 +191,7 @@
     <div class="flex flex-1 flex-col items-center justify-center gap-2 text-center">
       <p class="font-medium">No flows yet</p>
       <p class="text-sm text-muted">Wire automations together with dependencies, then run the whole graph.</p>
-      <button type="button" class="{pill} mt-2" onclick={() => (dialog = { kind: 'addFlow' })}>
+      <button type="button" class="{pill} mt-2" onclick={() => activeEntity.selectFlow(null)}>
         <Icon name="plus" size={13} />
         New flow
       </button>
@@ -218,13 +201,18 @@
       <div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
         {#each $flows as flow (flow.name)}
           <Surface class="flex flex-col gap-3 p-5">
-            <div class="min-w-0">
+            <button
+              type="button"
+              class="min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              title="Open {flow.name}"
+              onclick={() => activeEntity.selectFlow(flow.name)}
+            >
               <span class="truncate font-medium" title={flow.name}>{flow.name}</span>
               <div class="mt-1 text-xs text-muted">
                 {flow.nodes.length} {flow.nodes.length === 1 ? 'node' : 'nodes'} · {flow.edges.length}
                 {flow.edges.length === 1 ? 'dependency' : 'dependencies'}
               </div>
-            </div>
+            </button>
             <div class="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
@@ -236,15 +224,6 @@
               >
                 <Icon name="play" size={12} />
                 {isRunning(flow.name) ? 'Running…' : 'Run'}
-              </button>
-              <button
-                type="button"
-                class={iconBtn}
-                title="Edit {flow.name}"
-                aria-label="Edit {flow.name}"
-                onclick={() => (dialog = { kind: 'editFlow', flow })}
-              >
-                <Icon name="edit" size={15} />
               </button>
               <button
                 type="button"
@@ -289,10 +268,6 @@
       </div>
     </div>
   </Modal>
-{:else if dialog?.kind === 'addFlow'}
-  <FlowEditor mode="add" initial={{ name: '', params: [], nodes: [], edges: [] }} onSubmit={submitFlow} onCancel={() => (dialog = null)} />
-{:else if dialog?.kind === 'editFlow'}
-  <FlowEditor mode="edit" initial={dialog.flow} onSubmit={submitFlow} onCancel={() => (dialog = null)} />
 {:else if dialog?.kind === 'deleteFlow'}
   {@const flow = dialog.flow}
   <Modal label="Delete flow" onClose={() => (dialog = null)}>

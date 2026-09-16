@@ -10,7 +10,12 @@ export type ActiveEntity =
   | { kind: 'snippets' }
   | { kind: 'automations' }
   | { kind: 'settings' }
-  | { kind: 'session'; id: number };
+  | { kind: 'session'; id: number }
+  /** A single Flow filling the whole content area — the svelte-flow canvas needs the
+   *  room a modal can't give it. `flowName: null` is a new, unsaved flow; a string
+   *  is the name of the existing Flow being edited (Flow has no separate id — its
+   *  name is already the unique key `upsertFlow` keys on). */
+  | { kind: 'flow'; flowName: string | null };
 
 function createActiveEntity() {
   const { subscribe, set } = writable<ActiveEntity>({ kind: 'dashboard' });
@@ -20,7 +25,8 @@ function createActiveEntity() {
     selectSnippets: () => set({ kind: 'snippets' }),
     selectAutomations: () => set({ kind: 'automations' }),
     selectSettings: () => set({ kind: 'settings' }),
-    activateSession: (id: number) => set({ kind: 'session', id })
+    activateSession: (id: number) => set({ kind: 'session', id }),
+    selectFlow: (flowName: string | null) => set({ kind: 'flow', flowName })
   };
 }
 

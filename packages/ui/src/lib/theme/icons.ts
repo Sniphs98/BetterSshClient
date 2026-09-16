@@ -27,4 +27,5 @@ export type IconName =
   | 'settings'
   | 'telegram'
   | 'star'
-  | 'automations';
+  | 'automations'
+  | 'arrow-left';

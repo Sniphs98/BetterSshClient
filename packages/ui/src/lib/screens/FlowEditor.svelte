@@ -1,13 +1,16 @@
 <script lang="ts">
-  // Add/edit Flow form: nodes are placed and wired on an actual svelte-flow canvas —
-  // drag from an Automation library entry onto the graph, drag between a node's right
-  // (source) and another's left (target) handle to add a dependency edge. Structural
-  // validation (unknown automation, a cycle, a template reference that isn't a direct
-  // dependency, …) happens server-side in `validateFlow` (core/automation/engine.ts) —
-  // this stays a plain UI package with no dependency on the electron package's code,
-  // so a rejected save just surfaces that message inline, the same as any other form
-  // here. `FlowNode.position` (already part of the DTO) is what makes a layout
-  // persist across reopens instead of re-flowing every time.
+  // A single Flow, full-page: the canvas needs the room a modal can't give it. Reached
+  // via `activeEntity.selectFlow(name | null)` and rendered by +page.svelte as another
+  // selector (tech-gui.md §2) — it occupies the whole content area, sidebar and status
+  // bar excluded, same chrome every other selector gets for free. Nodes are placed and
+  // wired directly on an actual svelte-flow canvas: click a node's source (right) dot
+  // then another's target (left) dot to add a dependency edge (or drag between them).
+  // Structural validation (unknown automation, a cycle, a template reference that
+  // isn't a direct dependency, …) happens server-side in `validateFlow`
+  // (core/automation/engine.ts) — this stays a plain UI package with no dependency on
+  // the electron package's code, so a rejected save just surfaces that message inline.
+  // `FlowNode.position` (already part of the DTO) is what makes a layout persist
+  // across reopens instead of re-flowing every time.
   //
   // Parameters (`FlowParam`) are values collected right before the flow runs rather
   // than baked into any node — at most one `'host'`-kind, whose run-time value is the
@@ -19,24 +22,31 @@
   import '@xyflow/svelte/dist/style.css';
   import type { FlowDto, FlowParamDto } from '$lib/bindings';
   import { Button, Icon } from '$lib/theme';
-  import Modal from '$lib/components/Modal.svelte';
   import Select from '$lib/components/Select.svelte';
-  import { automations } from '$lib/stores/automations';
+  import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
+  import { automations, flows } from '$lib/stores/automations';
+  import { listFlows, saveFlow } from '$lib/ipc/commands';
+  import { activeEntity } from '$lib/stores/activeEntity';
   import { theme } from '$lib/stores/theme';
   import FlowCanvasNode from './FlowCanvasNode.svelte';
   import type { AutomationFlowEdge, AutomationFlowNode } from './flowCanvasTypes';
 
-  let {
-    mode,
-    initial,
-    onSubmit,
-    onCancel
-  }: {
-    mode: 'add' | 'edit';
-    initial: FlowDto;
-    onSubmit: (flow: FlowDto) => Promise<void>;
-    onCancel: () => void;
-  } = $props();
+  /** `null` opens a fresh, unsaved flow; a name loads that existing Flow from the
+   *  `flows` store (already loaded by Automations.svelte before navigation ever gets
+   *  here). +page.svelte keys this component on `flowName`, so a switch between two
+   *  flows (or from an existing one to a new draft) always gets a fresh instance —
+   *  the "seeded once" state below never has to react to a changed prop. */
+  let { flowName }: { flowName: string | null } = $props();
+
+  // svelte-ignore state_referenced_locally
+  const existing = flowName ? $flows.find((f) => f.name === flowName) : undefined;
+  const mode: 'add' | 'edit' = existing ? 'edit' : 'add';
+  const initial: FlowDto = existing ?? { name: '', params: [], nodes: [], edges: [] };
+  // A name was passed but no longer matches anything in the store (deleted from
+  // elsewhere between listing and opening) — surface that instead of silently
+  // presenting an empty "new flow" draft under the old name.
+  // svelte-ignore state_referenced_locally
+  const notFound = flowName !== null && existing === undefined;
 
   const nodeTypes = { automation: FlowCanvasNode };
 
@@ -46,13 +56,8 @@
     return { x: 60 + (index % 4) * 230, y: 60 + Math.floor(index / 4) * 150 };
   }
 
-  // Seeded once from `initial`; the editor is remounted per open, so the prop never
-  // changes under a live instance.
-  // svelte-ignore state_referenced_locally
   let name = $state(initial.name);
-  // svelte-ignore state_referenced_locally
   let params = $state<FlowParamDto[]>(initial.params.map((p) => ({ ...p })));
-  // svelte-ignore state_referenced_locally
   let canvasNodes = $state<AutomationFlowNode[]>(
     initial.nodes.map((n, i) => {
       const automation = $automations.find((a) => a.id === n.automationId);
@@ -70,20 +75,25 @@
       };
     })
   );
-  // svelte-ignore state_referenced_locally
   let canvasEdges = $state<AutomationFlowEdge[]>(
     initial.edges.map((e) => ({ id: `${e.from}->${e.to}`, source: e.from, target: e.to }))
   );
-  let addAutomationId = $state('');
+  let addMenuAnchor = $state<{ x: number; y: number } | null>(null);
   let newParamName = $state('');
   let newParamKind = $state<'text' | 'host'>('text');
   let error = $state<string | null>(null);
   let saving = $state(false);
   let nameEl = $state<HTMLInputElement>();
 
-  onMount(() => nameEl?.focus());
+  onMount(() => {
+    if (!notFound) nameEl?.focus();
+  });
 
   const hasHostParam = $derived(params.some((p) => p.kind === 'host'));
+
+  function back(): void {
+    activeEntity.selectAutomations();
+  }
 
   function addParam(): void {
     const name = newParamName.trim();
@@ -107,28 +117,37 @@
     return `${slug}-${i}`;
   }
 
-  function addNode(): void {
-    const automation = $automations.find((a) => a.id === addAutomationId);
-    if (!automation) return;
-    canvasNodes = [
-      ...canvasNodes,
-      {
-        id: crypto.randomUUID(),
-        type: 'automation',
-        position: layoutPosition(canvasNodes.length),
-        data: {
-          automationId: automation.id,
-          label: uniqueLabel(automation.name),
-          continueOnError: false,
-          automationName: automation.name,
-          automationKind: automation.kind
-        }
-      }
-    ];
-    addAutomationId = '';
+  function openAddMenu(e: MouseEvent): void {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    addMenuAnchor = { x: rect.left, y: rect.bottom + 6 };
   }
 
-  /** A dependency edge: dragging from a node's source (right) handle to another's
+  const addMenuItems: ContextMenuItem[] = $derived(
+    $automations.length === 0
+      ? [{ label: 'No automations yet — create one first', onSelect: () => {}, disabled: true }]
+      : $automations.map((a) => ({
+          label: `${a.name} (${a.kind})`,
+          onSelect: () => {
+            canvasNodes = [
+              ...canvasNodes,
+              {
+                id: crypto.randomUUID(),
+                type: 'automation',
+                position: layoutPosition(canvasNodes.length),
+                data: {
+                  automationId: a.id,
+                  label: uniqueLabel(a.name),
+                  continueOnError: false,
+                  automationName: a.name,
+                  automationKind: a.kind
+                }
+              }
+            ];
+          }
+        }))
+  );
+
+  /** A dependency edge: connecting from a node's source (right) handle to another's
    *  target (left) handle means "the target depends on the source" — `to` waits for
    *  `from`, matching `FlowEdge`'s own `{ from, to }` shape exactly. */
   function onconnect(connection: Connection): void {
@@ -139,8 +158,8 @@
   }
 
   async function save(): Promise<void> {
-    const flowName = name.trim();
-    if (!flowName) {
+    const flowNameTrimmed = name.trim();
+    if (!flowNameTrimmed) {
       error = 'Name cannot be empty';
       return;
     }
@@ -164,7 +183,7 @@
     }
 
     const flow: FlowDto = {
-      name: flowName,
+      name: flowNameTrimmed,
       params: params.map((p) => ({ ...p })),
       nodes: canvasNodes.map((n) => ({
         id: n.id,
@@ -178,7 +197,9 @@
     error = null;
     saving = true;
     try {
-      await onSubmit(flow);
+      await saveFlow(flow);
+      flows.set(await listFlows());
+      back();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -186,109 +207,105 @@
     }
   }
 
-  const label = 'block space-y-1 text-xs font-medium text-muted';
   const field =
-    'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
+    'rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
+  const iconBtn =
+    'grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-surface-inset ' +
+    'hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
 </script>
 
-<Modal label={mode === 'add' ? 'New flow' : 'Edit flow'} size="large" onClose={onCancel}>
-  <div class="flex min-h-0 flex-1 flex-col">
-    <header class="border-b border-default px-5 py-3.5">
-      <h2 class="text-sm font-semibold">{mode === 'add' ? 'New flow' : 'Edit flow'}</h2>
-    </header>
-
-    <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-      <label class={label}>
-        <span>Name</span>
-        <input bind:this={nameEl} bind:value={name} class={field} placeholder="Deploy to prod" />
-      </label>
-
-      <div class="space-y-2">
-        <h3 class="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">Parameters</h3>
-        <p class="text-xs text-muted">
-          Collected right before the flow runs, not baked into any node — a host
-          parameter is the target for every remote automation in this flow, so the
-          same flow runs unchanged against a different host. Reference either kind in
-          a command as {'{{params.<name>}}'}.
-        </p>
-
-        {#if params.length > 0}
-          <div class="flex flex-wrap gap-1.5">
-            {#each params as param (param.name)}
-              <span class="inline-flex items-center gap-1.5 rounded-full border border-default px-2.5 py-1 text-xs text-muted">
-                <span class="font-mono">{param.name}</span>
-                <span class="text-faint">({param.kind})</span>
-                <button
-                  type="button"
-                  class="text-faint hover:text-fg"
-                  title="Remove parameter {param.name}"
-                  aria-label="Remove parameter {param.name}"
-                  onclick={() => removeParam(param.name)}
-                >
-                  <Icon name="close" size={11} />
-                </button>
-              </span>
-            {/each}
-          </div>
-        {/if}
-
-        <div class="flex items-center gap-2 pt-1">
-          <input
-            bind:value={newParamName}
-            class="{field} flex-1"
-            placeholder="parameter name, e.g. host"
-            onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addParam())}
-          />
-          <Select bind:value={newParamKind} class={field} aria-label="Parameter kind">
-            <option value="text">text</option>
-            <option value="host" disabled={hasHostParam}>host</option>
-          </Select>
-          <Button variant="secondary" title="Add parameter" onclick={addParam} disabled={!newParamName.trim()}>Add</Button>
-        </div>
+<section class="flex h-full flex-col">
+  <header class="flex items-center gap-3 border-b border-default px-6 py-3">
+    <button type="button" class={iconBtn} title="Back to Flows" aria-label="Back to Flows" onclick={back}>
+      <Icon name="arrow-left" size={18} />
+    </button>
+    {#if notFound}
+      <h1 class="text-lg font-semibold tracking-tight">Flow not found</h1>
+    {:else}
+      <input
+        bind:this={nameEl}
+        bind:value={name}
+        class="{field} min-w-0 flex-1 max-w-sm text-base font-semibold"
+        placeholder="Flow name"
+        aria-label="Flow name"
+      />
+      <div class="ml-auto flex items-center gap-2">
+        <Button variant="ghost" onclick={back}>Cancel</Button>
+        <Button variant="primary" onclick={save} disabled={saving}>
+          {mode === 'add' ? 'Create flow' : 'Save'}
+        </Button>
       </div>
+    {/if}
+  </header>
 
-      <div class="space-y-2">
-        <div class="flex items-center justify-between gap-2">
-          <h3 class="text-[11px] font-medium uppercase tracking-[0.18em] text-faint">Nodes</h3>
-          <p class="text-xs text-muted">Drag between a node's dots to add a dependency; select an edge and press Delete to remove it.</p>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <Select bind:value={addAutomationId} class={field} aria-label="Add an automation">
-            <option value="" disabled selected>Add an automation…</option>
-            {#each $automations as a (a.id)}
-              <option value={a.id}>{a.name} ({a.kind})</option>
-            {/each}
-          </Select>
-          <Button variant="secondary" onclick={addNode} disabled={!addAutomationId}>Add</Button>
-        </div>
-        {#if $automations.length === 0}
-          <p class="text-xs text-faint">No automations yet — create one first.</p>
-        {/if}
-
-        <div class="h-[420px] overflow-hidden rounded-lg border border-default">
-          {#if canvasNodes.length === 0}
-            <div class="flex h-full items-center justify-center text-sm text-muted">No nodes yet — add one above.</div>
-          {:else}
-            <SvelteFlow bind:nodes={canvasNodes} bind:edges={canvasEdges} {nodeTypes} {onconnect} colorMode={$theme} fitView minZoom={0.4}>
-              <Background variant={BackgroundVariant.Dots} />
-              <Controls showLock={false} />
-            </SvelteFlow>
-          {/if}
-        </div>
+  {#if notFound}
+    <div class="flex flex-1 items-center justify-center">
+      <p class="text-sm text-muted">“{flowName}” no longer exists — it may have been deleted.</p>
+    </div>
+  {:else}
+    <div class="flex flex-wrap items-center gap-3 border-b border-default px-6 py-2.5">
+      <span class="text-[11px] font-medium uppercase tracking-[0.14em] text-faint" title="Collected right before the flow runs, not baked into any node — a host parameter is the target for every remote automation in this flow. Reference either kind in a command as {'{{params.<name>}}'}.">
+        Parameters
+      </span>
+      {#each params as param (param.name)}
+        <span class="inline-flex items-center gap-1.5 rounded-full border border-default px-2.5 py-1 text-xs text-muted">
+          <span class="font-mono">{param.name}</span>
+          <span class="text-faint">({param.kind})</span>
+          <button
+            type="button"
+            class="text-faint hover:text-fg"
+            title="Remove parameter {param.name}"
+            aria-label="Remove parameter {param.name}"
+            onclick={() => removeParam(param.name)}
+          >
+            <Icon name="close" size={11} />
+          </button>
+        </span>
+      {/each}
+      <div class="flex items-center gap-1.5">
+        <input
+          bind:value={newParamName}
+          class="{field} w-40"
+          placeholder="parameter name"
+          onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addParam())}
+        />
+        <Select bind:value={newParamKind} class={field} aria-label="Parameter kind">
+          <option value="text">text</option>
+          <option value="host" disabled={hasHostParam}>host</option>
+        </Select>
+        <Button variant="secondary" title="Add parameter" onclick={addParam} disabled={!newParamName.trim()}>Add</Button>
       </div>
-
-      {#if error}
-        <p class="text-xs text-status-crit">{error}</p>
-      {/if}
     </div>
 
-    <footer class="flex justify-end gap-2 border-t border-default px-5 py-3">
-      <Button variant="ghost" onclick={onCancel}>Cancel</Button>
-      <Button variant="primary" onclick={save} disabled={saving}>
-        {mode === 'add' ? 'Add flow' : 'Save'}
-      </Button>
-    </footer>
-  </div>
-</Modal>
+    {#if error}
+      <p class="border-b border-default px-6 py-2 text-xs text-status-crit">{error}</p>
+    {/if}
+
+    <div class="relative min-h-0 flex-1">
+      <button
+        type="button"
+        class="absolute left-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-full border border-default bg-surface text-fg shadow-soft transition hover:bg-surface-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        title="Add an automation to this flow"
+        aria-label="Add an automation to this flow"
+        onclick={openAddMenu}
+      >
+        <Icon name="plus" size={18} />
+      </button>
+      {#if addMenuAnchor}
+        <ContextMenu x={addMenuAnchor.x} y={addMenuAnchor.y} items={addMenuItems} onClose={() => (addMenuAnchor = null)} />
+      {/if}
+
+      {#if canvasNodes.length === 0}
+        <div class="flex h-full items-center justify-center text-sm text-muted">
+          No nodes yet — use the + button to add an automation.
+        </div>
+      {:else}
+        <SvelteFlow bind:nodes={canvasNodes} bind:edges={canvasEdges} {nodeTypes} {onconnect} colorMode={$theme} class="h-full w-full" fitView minZoom={0.3}>
+          <Background variant={BackgroundVariant.Dots} />
+          <Controls showLock={false} />
+        </SvelteFlow>
+      {/if}
+    </div>
+  {/if}
+</section>

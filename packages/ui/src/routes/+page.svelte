@@ -13,6 +13,7 @@
   import Dashboard from '$lib/screens/Dashboard.svelte';
   import Snippets from '$lib/screens/Snippets.svelte';
   import Automations from '$lib/screens/Automations.svelte';
+  import FlowEditor from '$lib/screens/FlowEditor.svelte';
   import Settings from '$lib/screens/Settings.svelte';
   import TerminalView from '$lib/screens/TerminalView.svelte';
   import SftpView from '$lib/screens/SftpView.svelte';
@@ -32,7 +33,8 @@
     $activeEntity.kind === 'dashboard' ||
       $activeEntity.kind === 'snippets' ||
       $activeEntity.kind === 'automations' ||
-      $activeEntity.kind === 'settings'
+      $activeEntity.kind === 'settings' ||
+      $activeEntity.kind === 'flow'
   );
 </script>
 
@@ -57,6 +59,13 @@
             <Snippets />
           {:else if $activeEntity.kind === 'automations'}
             <Automations />
+          {:else if $activeEntity.kind === 'flow'}
+            <!-- Keyed so switching between two different flows (or from an existing
+                 flow to a fresh "new flow" draft) fully remounts the editor rather
+                 than reusing its "seeded once from the prop" local state. -->
+            {#key $activeEntity.flowName}
+              <FlowEditor flowName={$activeEntity.flowName} />
+            {/key}
           {:else if $activeEntity.kind === 'settings'}
             <Settings />
           {/if}
