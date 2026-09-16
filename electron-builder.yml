@@ -40,8 +40,13 @@ mac:
   category: public.app-category.developer-tools
 
 win:
-  target: [nsis]
+  target: [nsis, portable, zip]
   icon: build/icon.ico
+  # electron-builder otherwise fetches the (macOS-targeted) winCodeSign bundle even
+  # for a plain unsigned Windows build, then fails extracting it here: its symlinks
+  # need SeCreateSymbolicLinkPrivilege, which a non-admin/non-Developer-Mode Windows
+  # account doesn't have. Not needed anyway — this build isn't signed.
+  signAndEditExecutable: false
 
 linux:
   target: [AppImage, deb, rpm]
