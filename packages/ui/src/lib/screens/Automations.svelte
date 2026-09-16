@@ -68,11 +68,15 @@
 
   /** Runs `name` with `paramValues` (empty for a flow with no parameters). Called
    *  either directly (no parameters to collect) or after the "Run flow" dialog
-   *  gathers them — see `openRunDialog`. */
+   *  gathers them — see `openRunDialog`. Spread into a plain object first: when this
+   *  came from the dialog, `paramValues` is `dialog.values`, a `$state` proxy nested
+   *  inside another — Electron's IPC send uses structured clone, which throws "An
+   *  object could not be cloned" on a proxy (the same bug class `FlowEditor.svelte`'s
+   *  `save()` had for a node's `position`). */
   async function run(name: string, paramValues: Record<string, string>): Promise<void> {
     beginFlowRun(name);
     try {
-      await runFlow(name, paramValues);
+      await runFlow(name, { ...paramValues });
     } catch (e) {
       lastError.set(message(e));
     }

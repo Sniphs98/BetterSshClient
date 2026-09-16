@@ -204,6 +204,12 @@
       return;
     }
 
+    // n.position is a $state proxy (svelte-flow's bind:nodes lives in a $state array,
+    // and Svelte 5 deep-proxies nested objects) — Electron's ipcRenderer.invoke sends
+    // this over the structured-clone algorithm, which throws "An object could not be
+    // cloned" on a Proxy. Rebuilding it as a plain {x, y} (rather than assigning
+    // n.position directly) strips that away, same as everything else here already
+    // does implicitly by only copying primitive fields off n/n.data.
     const flow: FlowDto = {
       name: flowNameTrimmed,
       params: params.map((p) => ({ ...p })),
@@ -212,7 +218,7 @@
         automationId: n.data.automationId,
         label: n.data.label.trim(),
         continueOnError: n.data.continueOnError,
-        position: n.position
+        position: { x: n.position.x, y: n.position.y }
       })),
       edges: canvasEdges.map((e) => ({ from: e.source, to: e.target }))
     };

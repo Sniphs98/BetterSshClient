@@ -26,7 +26,14 @@ async function boot(page: Page): Promise<void> {
     }
 
     win.omnyssh = {
-      invoke: (channel: string, ...args: unknown[]) => {
+      invoke: (channel: string, ...rawArgs: unknown[]) => {
+        // Real Electron sends every arg across the renderer/main IPC boundary via the
+        // structured-clone algorithm, which throws "An object could not be cloned" on
+        // anything that isn't plain data — a Svelte 5 $state proxy included (the exact
+        // bug this line exists to catch: FlowEditor once handed `save_flow` a node's
+        // still-proxied `position` object). Cloning here reproduces that check, since
+        // this test runs in a real Chromium page with the same structuredClone.
+        const args = rawArgs.map((a) => structuredClone(a));
         switch (channel) {
           case 'list_hosts':
             return Promise.resolve(hosts);
