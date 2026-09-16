@@ -136,7 +136,11 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  // Flows is the default, primary view — the Automation library is reached via the
+  // secondary "Manage automations" link.
+  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
+  await page.getByRole('button', { name: 'Manage automations' }).click();
+  await expect(page.getByRole('heading', { name: 'Automation library' })).toBeVisible();
 
   async function addAutomation(name: string, command: string): Promise<void> {
     await page.getByRole('button', { name: 'New automation' }).first().click();
@@ -154,12 +158,12 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
   await expect(page.getByText('Deploy', { exact: true })).toBeVisible();
   await expect(page.getByText('Notify', { exact: true })).toBeVisible();
 
-  // Switch to Flows: wire Build -> Deploy -> Notify, so Deploy's failure skips Notify.
-  await page.getByRole('button', { name: 'Flows', exact: true }).click();
+  // Back to Flows: wire Build -> Deploy -> Notify, so Deploy's failure skips Notify.
+  await page.getByRole('button', { name: 'Back to Flows' }).click();
   await page.getByRole('button', { name: 'New flow' }).first().click();
 
   // "New flow" replaces the whole content area with the canvas — not a dialog.
-  await expect(page.getByRole('heading', { name: 'Automations' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Flows' })).toHaveCount(0);
   await page.getByLabel('Flow name').fill('release');
 
   async function addNode(automationName: string, kind: 'local' | 'remote' = 'local'): Promise<void> {
@@ -186,7 +190,7 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
   await page.getByRole('button', { name: 'Create flow' }).click();
 
   // Saving returns to the Flows list (the "back" navigation, same as Cancel).
-  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
   await expect(page.getByText('release', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Run release' }).click();
@@ -208,6 +212,7 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage automations' }).click();
 
   await page.getByRole('button', { name: 'New automation' }).first().click();
   const automationEditor = page.getByRole('dialog', { name: 'New automation' });
@@ -220,7 +225,7 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   // Wire a flow with a `host`-kind parameter and one node using the remote automation.
-  await page.getByRole('button', { name: 'Flows', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to Flows' }).click();
   await page.getByRole('button', { name: 'New flow' }).first().click();
   await page.getByLabel('Flow name').fill('deploy-anywhere');
 
@@ -232,7 +237,7 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   await page.getByRole('menuitem', { name: 'Deploy (remote)' }).click();
 
   await page.getByRole('button', { name: 'Create flow' }).click();
-  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
 
   // Running the flow first asks which host to use.
   await page.getByRole('button', { name: 'Run deploy-anywhere' }).click();

@@ -1,9 +1,10 @@
 <script lang="ts">
-  // Automations selector screen: two sections — the reusable Automation library, and
-  // the Flows that wire them into a graph and run them. Mirrors `Snippets.svelte`'s
-  // list+CRUD shape, doubled up (a tab switch between the two lists rather than one
-  // flat list, since they're different entity types). CRUD orchestration refreshes
-  // both stores from disk after every mutation so they never drift.
+  // Automations selector screen: Flows (what actually gets run) is the primary,
+  // default view; the reusable Automation library is secondary — a building-block
+  // list reached via a small "Manage automations" link, not an equal-weight tab,
+  // since a flow is the thing someone actually cares about day to day. CRUD
+  // orchestration refreshes both stores from disk after every mutation so they never
+  // drift.
   import { onMount } from 'svelte';
   import type { AutomationDto, FlowDto } from '$lib/bindings';
   import { Surface, Chip, Icon, Button } from '$lib/theme';
@@ -102,9 +103,6 @@
     return r?.flowName === name && r.phase.kind === 'running';
   }
 
-  const tabBtn = (active: boolean): string =>
-    'rounded-full px-3.5 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ' +
-    (active ? 'bg-accent text-accent-fg' : 'text-muted hover:bg-surface-inset hover:text-fg');
   const pill =
     'inline-flex items-center gap-1.5 rounded-full border border-default px-2.5 py-1 text-xs ' +
     'font-medium text-muted transition hover:border-strong hover:bg-accent hover:text-accent-fg ' +
@@ -116,19 +114,24 @@
 
 <section class="flex h-full flex-col px-6 pb-6 pt-3">
   <div class="mb-5 flex items-center gap-3">
-    <h1 class="text-lg font-semibold tracking-tight">Automations</h1>
-    <div class="ml-auto flex items-center gap-1 rounded-full bg-surface-inset p-1">
-      <button type="button" class={tabBtn($automationsTab === 'automations')} onclick={() => automationsTab.set('automations')}>
-        Automations
-      </button>
-      <button type="button" class={tabBtn($automationsTab === 'flows')} onclick={() => automationsTab.set('flows')}>Flows</button>
-    </div>
     {#if $automationsTab === 'automations'}
-      <button type="button" class={pill} onclick={() => (dialog = { kind: 'addAutomation', id: crypto.randomUUID() })}>
+      <button type="button" class={iconBtn} title="Back to Flows" aria-label="Back to Flows" onclick={() => automationsTab.set('flows')}>
+        <Icon name="arrow-left" size={18} />
+      </button>
+      <h1 class="text-lg font-semibold tracking-tight">Automation library</h1>
+      <button type="button" class="{pill} ml-auto" onclick={() => (dialog = { kind: 'addAutomation', id: crypto.randomUUID() })}>
         <Icon name="plus" size={13} />
         New automation
       </button>
     {:else}
+      <h1 class="text-lg font-semibold tracking-tight">Flows</h1>
+      <button
+        type="button"
+        class="ml-auto rounded text-xs font-medium text-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        onclick={() => automationsTab.set('automations')}
+      >
+        Manage automations
+      </button>
       <button type="button" class={pill} onclick={() => activeEntity.selectFlow(null)}>
         <Icon name="plus" size={13} />
         New flow

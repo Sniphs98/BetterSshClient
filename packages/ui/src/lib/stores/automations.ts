@@ -6,12 +6,16 @@ import type { AutomationDto, FlowDto, NodeResultDto } from '$lib/bindings';
 export const automations = writable<AutomationDto[]>([]);
 export const flows = writable<FlowDto[]>([]);
 
-/** Which tab `Automations.svelte` shows. A module-level store (not component state)
- *  so it survives the component being torn down and recreated — which happens every
- *  time a Flow's full-page canvas (`activeEntity.selectFlow`) takes over the content
- *  area and the user comes back: without this, "Flows" would silently reset to
- *  "Automations" on every trip into a flow. Session-only; no persistence intended. */
-export const automationsTab = writable<'automations' | 'flows'>('automations');
+/** Which sub-view `Automations.svelte` shows. Defaults to `'flows'` — Flows are what
+ *  someone actually runs; the reusable Automation library is secondary, reached via a
+ *  small "Manage automations" link rather than an equal-weight tab. A module-level
+ *  store (not component state) so it survives the component being torn down and
+ *  recreated — which happens every time a Flow's full-page canvas
+ *  (`activeEntity.selectFlow`) takes over the content area and the user comes back:
+ *  without this, the view would silently reset to `'flows'` on every trip into a flow
+ *  even if the user had been managing the library. Session-only; no persistence
+ *  intended. */
+export const automationsTab = writable<'automations' | 'flows'>('flows');
 
 /** One node's live state within a running flow — 'running' until its `NodeResultDto`
  *  arrives. */
