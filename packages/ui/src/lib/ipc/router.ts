@@ -95,16 +95,53 @@ export function applySnippetResult(payload: SnippetResult): void {
 // its backend id (`terminalDidExit`), rather than stranding a dead tab open.
 const exitedBeforeMapped = new Set<number>();
 
+// A terminal that isn't a sidebar tab at all — e.g. the SFTP view's embedded drawer
+// terminal (SftpTerminalDrawer.svelte) — has no `sessions` entry for
+// applyTerminalExited to find, so it would otherwise just fall into
+// exitedBeforeMapped and sit there unconsumed forever, with nothing ever telling that
+// component its shell exited. `onOrphanTerminalExit` is the same one-shot-notification
+// idea as `terminalDidExit`, generalized to an arbitrary callback instead of a specific
+// tab's close.
+const orphanExitListeners = new Map<number, () => void>();
+
 export function applyTerminalExited(sessionId: number): void {
   const target = get(sessions).find((s) => s.termId === sessionId);
-  if (target) closeSession(target.id);
-  else exitedBeforeMapped.add(sessionId);
+  if (target) {
+    closeSession(target.id);
+    return;
+  }
+  const listener = orphanExitListeners.get(sessionId);
+  if (listener) {
+    orphanExitListeners.delete(sessionId);
+    listener();
+    return;
+  }
+  exitedBeforeMapped.add(sessionId);
 }
 
 /** Whether backend session `termId` already exited before its tab recorded it (the
  *  fast-fail race); consumes the pending flag. Called right after a tab sets termId. */
 export function terminalDidExit(termId: number): boolean {
   return exitedBeforeMapped.delete(termId);
+}
+
+/** Registers `cb` to fire once when `termId`'s shell exits, for a terminal with no
+ *  `sessions` tab of its own. Covers the same fast-fail race `terminalDidExit` guards
+ *  against (call this right after `terminalOpen` resolves with the id): if the exit
+ *  already arrived and got parked, `cb` fires immediately instead of being registered. */
+export function onOrphanTerminalExit(termId: number, cb: () => void): void {
+  if (terminalDidExit(termId)) {
+    cb();
+    return;
+  }
+  orphanExitListeners.set(termId, cb);
+}
+
+/** Cancels a pending `onOrphanTerminalExit` registration — call when the caller is
+ *  tearing down `termId` itself (e.g. the user closed the drawer), so a later, unrelated
+ *  reuse of a numeric id can never fire a stale callback. */
+export function offOrphanTerminalExit(termId: number): void {
+  orphanExitListeners.delete(termId);
 }
 
 // SFTP events (tech-gui.md §3.4/§4.3). Each carries the backend session id the sftp

@@ -11,6 +11,7 @@
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import SftpPane from './SftpPane.svelte';
   import FileEditor from './FileEditor.svelte';
+  import SftpTerminalDrawer from './SftpTerminalDrawer.svelte';
   import { isEditableFile, languageForFile } from './fileEdit';
   import type { FileEntryDto } from '$lib/bindings';
   import { get } from 'svelte/store';
@@ -72,6 +73,39 @@
   // other mutations here — it asks first. Reads the live `remoteMarked` selection at
   // confirm time rather than snapshotting it, same as `remove()` already did.
   let deleteConfirm = $state(false);
+
+  // The local pane can be hidden to see more of the remote side; the drawer terminal
+  // (SftpTerminalDrawer, cd'd into the remote path at the moment it opens) docks below
+  // both panes. Both are plain UI state, not persisted — they live as long as this
+  // component does (the whole SFTP tab's life, §3.2), same as everything else here.
+  let hideLocal = $state(false);
+  let showTerminal = $state(false);
+  const MIN_TERMINAL_HEIGHT = 140;
+  const MAX_TERMINAL_HEIGHT = 640;
+  let terminalHeight = $state(260);
+  let resizingTerminal = false;
+  let resizeStartY = 0;
+  let resizeStartHeight = 0;
+
+  function startTerminalResize(event: PointerEvent): void {
+    resizingTerminal = true;
+    resizeStartY = event.clientY;
+    resizeStartHeight = terminalHeight;
+    window.addEventListener('pointermove', onTerminalResizeMove);
+    window.addEventListener('pointerup', stopTerminalResize);
+  }
+
+  function onTerminalResizeMove(event: PointerEvent): void {
+    if (!resizingTerminal) return;
+    const delta = resizeStartY - event.clientY; // dragging the handle up grows the drawer
+    terminalHeight = Math.min(MAX_TERMINAL_HEIGHT, Math.max(MIN_TERMINAL_HEIGHT, resizeStartHeight + delta));
+  }
+
+  function stopTerminalResize(): void {
+    resizingTerminal = false;
+    window.removeEventListener('pointermove', onTerminalResizeMove);
+    window.removeEventListener('pointerup', stopTerminalResize);
+  }
 
   const view = $derived(backendId != null ? $sftp.get(backendId) : undefined);
   const transfer = $derived(view?.transfer);
@@ -517,43 +551,45 @@
       <p class="text-sm text-muted">Connecting to {session.hostName}…</p>
     </div>
   {:else}
-    <div class="grid min-h-0 flex-1 grid-cols-2 divide-x divide-default">
-      <SftpPane
-        title="Local"
-        pane={view.local}
-        onNavigate={(e) => navigate('local', e)}
-        onToggleMark={(p) => toggleMark('local', p)}
-        onSelectOnly={(p) => selectOnly('local', p)}
-        onSelectRange={(p) => selectRange('local', p)}
-        onClearMarks={() => clearMarks('local')}
-        onOpenFile={(e) => void openFile('local', e)}
-        onDragStart={(e) => startDrag('local', e)}
-        onDrop={() => dropOn('local')}
-        onEntryContextMenu={(e, event) => openEntryContextMenu('local', e, event)}
-        onEmptyContextMenu={(event) => openEmptyContextMenu('local', event)}
-      >
-        {#snippet toolbar()}
-          <button
-            type="button"
-            class={toolBtn}
-            title="Upload marked files to the remote directory"
-            disabled={localMarkedFiles.length === 0}
-            onclick={upload}
-          >
-            <Icon name="upload" size={13} />
-            Upload
-          </button>
-          <button
-            type="button"
-            class={toolBtn}
-            title="Refresh"
-            aria-label="Refresh local"
-            onclick={() => refreshLocal(view.local.path)}
-          >
-            <Icon name="refresh" size={13} />
-          </button>
-        {/snippet}
-      </SftpPane>
+    <div class="grid min-h-0 flex-1 {hideLocal ? '' : 'grid-cols-2 divide-x divide-default'}">
+      {#if !hideLocal}
+        <SftpPane
+          title="Local"
+          pane={view.local}
+          onNavigate={(e) => navigate('local', e)}
+          onToggleMark={(p) => toggleMark('local', p)}
+          onSelectOnly={(p) => selectOnly('local', p)}
+          onSelectRange={(p) => selectRange('local', p)}
+          onClearMarks={() => clearMarks('local')}
+          onOpenFile={(e) => void openFile('local', e)}
+          onDragStart={(e) => startDrag('local', e)}
+          onDrop={() => dropOn('local')}
+          onEntryContextMenu={(e, event) => openEntryContextMenu('local', e, event)}
+          onEmptyContextMenu={(event) => openEmptyContextMenu('local', event)}
+        >
+          {#snippet toolbar()}
+            <button
+              type="button"
+              class={toolBtn}
+              title="Upload marked files to the remote directory"
+              disabled={localMarkedFiles.length === 0}
+              onclick={upload}
+            >
+              <Icon name="upload" size={13} />
+              Upload
+            </button>
+            <button
+              type="button"
+              class={toolBtn}
+              title="Refresh"
+              aria-label="Refresh local"
+              onclick={() => refreshLocal(view.local.path)}
+            >
+              <Icon name="refresh" size={13} />
+            </button>
+          {/snippet}
+        </SftpPane>
+      {/if}
 
       <SftpPane
         title={session.hostName}
@@ -612,6 +648,26 @@
           >
             <Icon name="refresh" size={13} />
           </button>
+          <button
+            type="button"
+            class={toolBtn}
+            title={hideLocal ? 'Show local files' : 'Hide local files'}
+            aria-label={hideLocal ? 'Show local files' : 'Hide local files'}
+            aria-pressed={hideLocal}
+            onclick={() => (hideLocal = !hideLocal)}
+          >
+            <Icon name={hideLocal ? 'eye-off' : 'eye'} size={13} />
+          </button>
+          <button
+            type="button"
+            class={toolBtn}
+            title={showTerminal ? 'Hide terminal' : 'Open a terminal here'}
+            aria-label={showTerminal ? 'Hide terminal' : 'Open a terminal here'}
+            aria-pressed={showTerminal}
+            onclick={() => (showTerminal = !showTerminal)}
+          >
+            <Icon name="terminal" size={13} />
+          </button>
         {/snippet}
       </SftpPane>
     </div>
@@ -639,6 +695,41 @@
     {:else if view.error}
       <div class="shrink-0 border-t border-default px-4 py-2 text-xs text-status-crit">
         {view.error}
+      </div>
+    {/if}
+
+    {#if showTerminal}
+      <div class="relative shrink-0 border-t border-default" style="height: {terminalHeight}px">
+        <!-- The drag handle: straddles the border so a small mouse-down there always
+             hits it rather than the panes above. -->
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize terminal"
+          class="absolute inset-x-0 -top-1 z-10 h-2 cursor-row-resize"
+          onpointerdown={startTerminalResize}
+        ></div>
+        <div class="flex items-center justify-between border-b border-default px-3 py-1.5">
+          <span class="min-w-0 truncate font-mono text-xs text-muted" title={view.remote.path}>
+            {session.hostName} · {view.remote.path}
+          </span>
+          <button
+            type="button"
+            class={toolBtn}
+            title="Close terminal"
+            aria-label="Close terminal"
+            onclick={() => (showTerminal = false)}
+          >
+            <Icon name="close" size={13} />
+          </button>
+        </div>
+        <div class="h-[calc(100%-2.25rem)]">
+          <!-- Not keyed on view.remote.path: the drawer only reads `cwd` once, at
+               open, to run its initial `cd` (see SftpTerminalDrawer's doc comment) —
+               remounting on every later navigation would kill whatever the user is
+               running in there each time they browse a different folder. -->
+          <SftpTerminalDrawer hostName={session.hostName} cwd={view.remote.path} />
+        </div>
       </div>
     {/if}
   {/if}

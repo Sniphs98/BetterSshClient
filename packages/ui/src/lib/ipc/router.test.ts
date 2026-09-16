@@ -27,7 +27,9 @@ import {
   applyServicesFailed,
   applySnippetResult,
   applyTerminalExited,
-  terminalDidExit
+  terminalDidExit,
+  onOrphanTerminalExit,
+  offOrphanTerminalExit
 } from './router';
 
 describe('ipc event router', () => {
@@ -176,6 +178,38 @@ describe('ipc event router', () => {
     // ...then the tab records its id and learns it already exited (consumed once).
     expect(terminalDidExit(777)).toBe(true);
     expect(terminalDidExit(777)).toBe(false);
+  });
+
+  it('a terminal-exited for an id with no sessions tab notifies its orphan listener instead', () => {
+    let fired = false;
+    onOrphanTerminalExit(888, () => (fired = true));
+
+    applyTerminalExited(888);
+
+    expect(fired).toBe(true);
+    // Consumed once — a stray second event for the same id does not refire it.
+    fired = false;
+    applyTerminalExited(888);
+    expect(fired).toBe(false);
+  });
+
+  it('an orphan terminal-exited that races ahead of the listener registering still fires it', () => {
+    applyTerminalExited(889);
+
+    let fired = false;
+    onOrphanTerminalExit(889, () => (fired = true));
+
+    expect(fired).toBe(true);
+  });
+
+  it('offOrphanTerminalExit cancels a registration so a later reused id does not fire it', () => {
+    let fired = false;
+    onOrphanTerminalExit(890, () => (fired = true));
+    offOrphanTerminalExit(890);
+
+    applyTerminalExited(890);
+
+    expect(fired).toBe(false);
   });
 
   it('routes key-setup progress into the active run, then a terminal outcome', () => {

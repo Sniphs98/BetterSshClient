@@ -23,6 +23,10 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
       const listeners: Record<string, Array<(payload: unknown) => void>> = {};
       let nextSession = 0;
       let nextTransfer = 0;
+      let nextTerminal = 0;
+      let terminalWriteBuffer = '';
+      const terminalCommands: string[] = [];
+      win.__terminalCommands = terminalCommands;
       // A pending transfer holds until the test fires its op-done, so the progress bar
       // is observable mid-flight (the core is sequential — one transfer at a time).
       const completions: Array<() => void> = [];
@@ -158,6 +162,21 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
               return Promise.resolve(null);
             }
             case 'sftp_close':
+              return Promise.resolve(null);
+            case 'terminal_open': {
+              const sid = ++nextTerminal;
+              return Promise.resolve(sid);
+            }
+            case 'terminal_write': {
+              const [, data] = args as [number, number[]];
+              terminalWriteBuffer += String.fromCharCode(...data);
+              const lines = terminalWriteBuffer.split('\n');
+              terminalWriteBuffer = lines.pop() ?? '';
+              terminalCommands.push(...lines);
+              return Promise.resolve(null);
+            }
+            case 'terminal_resize':
+            case 'terminal_close':
               return Promise.resolve(null);
             default:
               return Promise.resolve(null);
@@ -427,6 +446,58 @@ test('editing a text file opens Monaco, and Save writes the content back', async
     () => (window as unknown as { __lastWrittenPath?: string; __lastWrittenContent?: string }).__lastWrittenContent
   );
   expect(written).toBe('key: changed');
+});
+
+test('hiding local files leaves only the remote pane, and can be undone', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  await expect(page.getByRole('region', { name: 'Local', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Hide local files' }).click();
+  await expect(page.getByRole('region', { name: 'Local', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'web-1', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Show local files' }).click();
+  await expect(page.getByRole('region', { name: 'Local', exact: true })).toBeVisible();
+});
+
+test('the terminal drawer opens cd\'d into the current remote directory, and closes', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1' });
+  await expect(remotePane.getByText('config.yml')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Open a terminal here' }).click();
+  // xterm is dynamically imported — give it real time to mount.
+  await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands))
+    .toEqual(["cd '/'"]);
+
+  await page.getByRole('button', { name: 'Close terminal' }).click();
+  await expect(page.locator('.xterm')).toHaveCount(0);
+});
+
+test('navigating the remote pane while the terminal is open does not restart the shell', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1' });
+
+  await page.getByRole('button', { name: 'Open a terminal here' }).click();
+  await expect(page.locator('.xterm')).toBeVisible({ timeout: 15_000 });
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands))
+    .toEqual(["cd '/'"]);
+
+  // Navigate the remote pane to a different directory while the drawer is open.
+  await remotePane.getByText('var', { exact: true }).dblclick();
+  await expect(remotePane.getByText('..', { exact: true })).toBeVisible();
+
+  // The drawer stayed mounted (one xterm instance, no remount) and never sent a second cd.
+  await expect(page.locator('.xterm')).toHaveCount(1);
+  const commands = await page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands);
+  expect(commands).toEqual(["cd '/'"]);
 });
 
 test('Open falls back to a read-only preview for a binary file the editor refuses', async ({ page }) => {

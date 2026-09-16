@@ -28,4 +28,6 @@ export type IconName =
   | 'telegram'
   | 'star'
   | 'automations'
-  | 'arrow-left';
+  | 'arrow-left'
+  | 'eye'
+  | 'eye-off';
