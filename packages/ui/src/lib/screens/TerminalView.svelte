@@ -6,17 +6,20 @@
   // terminal commands. Subscribes to the theme store and re-themes live (§5.1).
   import '@xterm/xterm/css/xterm.css';
   import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import type { Terminal } from '@xterm/xterm';
   import type { FitAddon } from '@xterm/addon-fit';
   import { theme } from '$lib/stores/theme';
   import { xtermTheme } from '$lib/theme/terminalTheme';
   import { sessions, type Session } from '$lib/stores/sessions';
+  import { hosts } from '$lib/stores/hosts';
   import { closeSession } from '$lib/stores/navigation';
   import { terminalDidExit } from '$lib/ipc/router';
   import { lastError } from '$lib/stores/notifications';
   import { terminalOpen, terminalWrite, terminalResize, terminalClose } from '$lib/ipc/commands';
   import { shouldFadeTop } from './terminalFade';
   import { chunkBytes } from './terminalInput';
+  import { shellQuote } from './shellQuote';
   import { Channel, type TerminalBytes } from '$lib/bindings';
 
   let { session, active }: { session: Session; active: boolean } = $props();
@@ -150,6 +153,13 @@
         closeSession(session.id);
         return;
       }
+
+      // The host's configured default path (tech-gui.md §4.1 — SFTP already opens
+      // there; a fresh terminal cd's into it too), same technique as
+      // SftpTerminalDrawer.svelte: queued by the pty until the shell is ready to read
+      // it, no race with the shell's own startup.
+      const defaultPath = get(hosts).find((h) => h.name === session.hostName)?.defaultPath;
+      if (defaultPath) sendInput(ENCODER.encode(`cd ${shellQuote(defaultPath)}\n`));
 
       // Text keystrokes/paste are UTF-8; onBinary carries raw 8-bit sequences
       // (e.g. legacy mouse reporting) that must go byte-for-byte, not re-encoded.

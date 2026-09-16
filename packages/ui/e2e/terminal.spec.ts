@@ -12,12 +12,18 @@ const HOSTS = [
   { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false }
 ];
 
-async function boot(page: Page): Promise<void> {
+async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Promise<void> {
   await page.addInitScript(
-    ({ hosts }) => {
+    ({ hosts, webOneDefaultPath }) => {
       const win = window as unknown as Record<string, unknown>;
+      const seededHosts = webOneDefaultPath
+        ? hosts.map((h) => (h.name === 'web-1' ? { ...h, defaultPath: webOneDefaultPath } : h))
+        : hosts;
       const listeners: Record<string, Array<(payload: unknown) => void>> = {};
       let nextSession = 0;
+      let terminalWriteBuffer = '';
+      const terminalCommands: string[] = [];
+      win.__terminalCommands = terminalCommands;
 
       function fire(channel: string, payload: unknown): void {
         for (const cb of listeners[channel] ?? []) cb(payload);
@@ -34,7 +40,7 @@ async function boot(page: Page): Promise<void> {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':
-              return Promise.resolve(hosts);
+              return Promise.resolve(seededHosts);
             case 'reload_hosts':
               return Promise.resolve(null);
             case 'terminal_open': {
@@ -45,6 +51,12 @@ async function boot(page: Page): Promise<void> {
             }
             case 'terminal_write': {
               const [sessionId, data] = args as [number, number[]];
+              // Track whole lines written (splitting on \n) so a test can assert an
+              // autocd command was sent, same idea as the Enter-triggered echo below.
+              terminalWriteBuffer += String.fromCharCode(...data);
+              const lines = terminalWriteBuffer.split('\n');
+              terminalWriteBuffer = lines.pop() ?? '';
+              terminalCommands.push(...lines);
               // Echo a canned result once Enter (\r == 13) arrives, so output is assertable.
               if (data.includes(13)) {
                 setTimeout(() => sendToTerminal(sessionId, '\r\nRESULT-OK\r\n'), 0);
@@ -70,7 +82,7 @@ async function boot(page: Page): Promise<void> {
         getPathForFile: () => ''
       };
     },
-    { hosts: HOSTS }
+    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath }
   );
 
   await page.goto('/');
@@ -101,6 +113,16 @@ test('host-first: spawn a terminal from a card, run a command, see output, then 
   await page.getByRole('button', { name: 'Close web-1', exact: true }).click();
   await expect(page.locator('.xterm')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'web-1 · terminal', exact: true })).toHaveCount(0);
+});
+
+test("a host's default path is cd'd into automatically when its terminal opens", async ({ page }) => {
+  await boot(page, { webOneDefaultPath: '/var/www' });
+  await page.getByTitle('sh on web-1').click();
+  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands))
+    .toEqual(["cd '/var/www'"]);
 });
 
 test('action-first: the Terminal spawner opens the host picker, then a live terminal', async ({

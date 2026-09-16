@@ -20,6 +20,7 @@
   import { terminalOpen, terminalWrite, terminalResize, terminalClose } from '$lib/ipc/commands';
   import { shouldFadeTop } from './terminalFade';
   import { chunkBytes } from './terminalInput';
+  import { shellQuote } from './shellQuote';
   import { Channel, type TerminalBytes } from '$lib/bindings';
 
   let { hostName, cwd }: { hostName: string; cwd: string } = $props();
@@ -31,12 +32,6 @@
     '"Hack Nerd Font Mono", "Hack Nerd Font", ' +
     '"FiraCode Nerd Font Mono", "FiraCode Nerd Font"';
   const ENCODER = new TextEncoder();
-
-  /** Single-quotes `path` for a POSIX shell, escaping any embedded `'` — the one thing
-   *  that can't just sit inside single quotes. */
-  function shellQuote(path: string): string {
-    return `'${path.replaceAll("'", `'\\''`)}'`;
-  }
 
   let writeChain: Promise<void> = Promise.resolve();
   function sendInput(bytes: Uint8Array): void {
