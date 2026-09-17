@@ -41,6 +41,12 @@ export interface FlowParamsContext {
   params: () => FlowParamDto[];
   addParam: (name: string, kind: FlowParamKindDto) => void;
   removeParam: (name: string) => void;
+  /** Renames and/or re-kinds the param currently named `name` — a no-op if the new
+   *  name is blank, collides with another param, or the new kind would be a second
+   *  `'host'` param. Identifies the row being edited by its *current* name, since
+   *  that's what's stable within one edit (see FlowStartNode.svelte's index-keyed
+   *  `{#each}`, which is what actually keeps the input focused across keystrokes). */
+  updateParam: (name: string, patch: { name?: string; kind?: FlowParamKindDto }) => void;
 }
 
 export const FLOW_PARAMS_CONTEXT = 'flow-params';

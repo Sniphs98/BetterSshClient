@@ -122,6 +122,19 @@
     },
     removeParam: (paramName: string) => {
       params = params.filter((p) => p.name !== paramName);
+    },
+    updateParam: (paramName: string, patch: { name?: string; kind?: FlowParamKindDto }) => {
+      const idx = params.findIndex((p) => p.name === paramName);
+      if (idx === -1) return;
+      const current = params[idx];
+      const nextName = patch.name !== undefined ? patch.name.trim() : current.name;
+      const nextKind = patch.kind ?? current.kind;
+      if (!nextName) return;
+      if (nextName !== current.name && params.some((p, i) => i !== idx && p.name === nextName)) return;
+      if (nextKind === 'host' && params.some((p, i) => i !== idx && p.kind === 'host')) return;
+      const next = [...params];
+      next[idx] = { ...current, name: nextName, kind: nextKind };
+      params = next;
     }
   });
 

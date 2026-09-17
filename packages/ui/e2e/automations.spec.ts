@@ -237,9 +237,18 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   await page.getByLabel('Flow name').fill('deploy-anywhere');
 
   // Parameters live on the graph's permanent "Start" node now, not a toolbar.
-  await page.getByLabel('Parameter name').fill('host');
-  await page.getByRole('combobox', { name: 'Parameter kind' }).selectOption('host');
+  await page.getByLabel('New parameter name').fill('host');
+  await page.getByRole('combobox', { name: 'New parameter kind' }).selectOption('host');
   await page.getByRole('button', { name: 'Add parameter' }).click();
+
+  // Existing params are editable in place, not just add-or-delete — rename it, then
+  // rename it back (the run stub below keys its fake paramValues on the literal name
+  // "host", so this proves the edit round-trips rather than leaving it renamed).
+  await expect(page.getByLabel('Parameter 1 name')).toHaveValue('host');
+  await page.getByLabel('Parameter 1 name').fill('target');
+  await expect(page.getByLabel('Parameter 1 name')).toHaveValue('target');
+  await page.getByLabel('Parameter 1 name').fill('host');
+  await expect(page.getByLabel('Parameter 1 name')).toHaveValue('host');
 
   await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
   await page.getByRole('menuitem', { name: 'Deploy (remote)' }).click();
