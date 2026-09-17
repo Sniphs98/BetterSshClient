@@ -237,17 +237,16 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   await page.getByLabel('Flow name').fill('deploy-anywhere');
 
   // Parameters live on the graph's permanent "Start" node now, not a toolbar — the
-  // dashed "Add parameter" button reveals the name/kind row, deliberately styled
-  // differently from an already-saved row.
+  // dashed "Add parameter" button adds one immediately (a placeholder name, focused
+  // and selected) rather than opening a draft form to separately confirm.
   await page.getByRole('button', { name: 'Add parameter' }).click();
-  await page.getByLabel('New parameter name').fill('host');
-  await page.getByRole('combobox', { name: 'New parameter kind' }).selectOption('host');
-  await page.getByRole('button', { name: 'Add parameter' }).click();
+  await expect(page.getByLabel('Parameter 1 name')).toHaveValue('param');
+  await page.getByLabel('Parameter 1 name').fill('host');
+  await page.getByRole('combobox', { name: 'Parameter 1 kind' }).selectOption('host');
 
   // Existing params are editable in place, not just add-or-delete — rename it, then
   // rename it back (the run stub below keys its fake paramValues on the literal name
   // "host", so this proves the edit round-trips rather than leaving it renamed).
-  await expect(page.getByLabel('Parameter 1 name')).toHaveValue('host');
   await page.getByLabel('Parameter 1 name').fill('target');
   await expect(page.getByLabel('Parameter 1 name')).toHaveValue('target');
   await page.getByLabel('Parameter 1 name').fill('host');
