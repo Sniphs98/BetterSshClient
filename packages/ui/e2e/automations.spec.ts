@@ -236,7 +236,10 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   await page.getByRole('button', { name: 'New flow' }).first().click();
   await page.getByLabel('Flow name').fill('deploy-anywhere');
 
-  // Parameters live on the graph's permanent "Start" node now, not a toolbar.
+  // Parameters live on the graph's permanent "Start" node now, not a toolbar — the
+  // dashed "Add parameter" button reveals the name/kind row, deliberately styled
+  // differently from an already-saved row.
+  await page.getByRole('button', { name: 'Add parameter' }).click();
   await page.getByLabel('New parameter name').fill('host');
   await page.getByRole('combobox', { name: 'New parameter kind' }).selectOption('host');
   await page.getByRole('button', { name: 'Add parameter' }).click();

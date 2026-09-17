@@ -8,14 +8,17 @@
   // has to rebuild FlowEditor's node array.
   //
   // Existing params are edited in place (rename/re-kind), not just add-or-delete —
-  // each row uses the same plain, unboxed look the "add a new one" row does, so the
-  // whole list reads as one stack of fields rather than a form above a separate
-  // read-only chip list. A row only shows its input-field chrome (background, ring) on
-  // hover/focus; at rest it's just text, so a flow with several params doesn't turn
-  // into a wall of boxes. Rows are keyed by index, not name: keying by name would
-  // remount (and defocus) the row's own `<input>` on every keystroke, since typing
-  // changes the very key `{#each}` tracks it by.
-  import { getContext } from 'svelte';
+  // each row uses the same plain, unboxed look at rest, so the list reads as one
+  // stack of fields rather than a form above a separate read-only chip list; hover/
+  // focus reveals a row's input-field chrome. Adding a new one is deliberately a
+  // *different*-looking affordance (a dashed "+ Add parameter" button) rather than an
+  // always-open row identical to the saved ones — otherwise "which of these is
+  // already saved?" isn't answerable at a glance. Clicking it swaps in the same
+  // input+select row, briefly, just to type the new one; submitting (or cancelling)
+  // collapses it back to the button. Rows are keyed by index, not name: keying by
+  // name would remount (and defocus) the row's own `<input>` on every keystroke,
+  // since typing changes the very key `{#each}` tracks it by.
+  import { getContext, tick } from 'svelte';
   import type { NodeProps } from '@xyflow/svelte';
   import { Icon } from '$lib/theme';
   import Select from '$lib/components/Select.svelte';
@@ -29,16 +32,28 @@
 
   const ctx = getContext<FlowParamsContext>(FLOW_PARAMS_CONTEXT);
 
+  let addingParam = $state(false);
   let newName = $state('');
   let newKind = $state<FlowParamKindDto>('text');
+  let newNameEl = $state<HTMLInputElement>();
 
   const hasHostParam = $derived(ctx.params().some((p) => p.kind === 'host'));
+
+  function startAdding(): void {
+    addingParam = true;
+    void tick().then(() => newNameEl?.focus());
+  }
+
+  function cancelAdding(): void {
+    addingParam = false;
+    newName = '';
+    newKind = 'text';
+  }
 
   function add(): void {
     if (!newName.trim()) return;
     ctx.addParam(newName, newKind);
-    newName = '';
-    newKind = 'text';
+    cancelAdding();
   }
 
   // A row's own "host" option is only disabled by *another* row already being one —
@@ -95,28 +110,57 @@
       </div>
     {/each}
 
-    <div class="flex items-center gap-1.5">
-      <input
-        bind:value={newName}
-        class="{rowField} flex-1 font-mono"
-        placeholder="name"
-        aria-label="New parameter name"
-        onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), add())}
-      />
-      <Select bind:value={newKind} class={rowField} aria-label="New parameter kind">
-        <option value="text">text</option>
-        <option value="host" disabled={hasHostParam}>host</option>
-      </Select>
+    {#if addingParam}
+      <div class="flex items-center gap-1.5">
+        <input
+          bind:this={newNameEl}
+          bind:value={newName}
+          class="{rowField} flex-1 font-mono"
+          placeholder="name"
+          aria-label="New parameter name"
+          onkeydown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelAdding();
+            }
+          }}
+        />
+        <Select bind:value={newKind} class={rowField} aria-label="New parameter kind">
+          <option value="text">text</option>
+          <option value="host" disabled={hasHostParam}>host</option>
+        </Select>
+        <button
+          type="button"
+          class="nodrag grid h-7 w-7 shrink-0 place-items-center rounded text-muted transition hover:bg-surface-inset hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-40"
+          title="Add parameter"
+          aria-label="Add parameter"
+          disabled={!newName.trim()}
+          onclick={add}
+        >
+          <Icon name="check" size={13} />
+        </button>
+        <button
+          type="button"
+          class="nodrag grid h-7 w-7 shrink-0 place-items-center rounded text-faint transition hover:bg-surface-inset hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          title="Cancel"
+          aria-label="Cancel adding a parameter"
+          onclick={cancelAdding}
+        >
+          <Icon name="close" size={12} />
+        </button>
+      </div>
+    {:else}
       <button
         type="button"
-        class="nodrag grid h-7 w-7 shrink-0 place-items-center rounded text-muted transition hover:bg-surface-inset hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-40"
-        title="Add parameter"
-        aria-label="Add parameter"
-        disabled={!newName.trim()}
-        onclick={add}
+        class="nodrag flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-default py-1.5 text-xs text-muted transition hover:border-strong hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        onclick={startAdding}
       >
         <Icon name="plus" size={13} />
+        Add parameter
       </button>
-    </div>
+    {/if}
   </div>
 </div>
