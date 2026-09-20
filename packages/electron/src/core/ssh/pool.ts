@@ -93,11 +93,20 @@ export function topProcessesCommand(psArgs: string): string {
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve();
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => {
+    // `{ once: true }` only unregisters `onAbort` once the 'abort' event actually
+    // fires — the far more common case (the timer just elapsing) leaves it attached
+    // forever. Since `signal` is a long-lived per-host poll signal reused on every
+    // cycle (waitOrRefresh/waitBackoff -> sleep), that leaked one listener per
+    // cycle, eventually tripping Node's MaxListenersExceededWarning.
+    const onAbort = (): void => {
       clearTimeout(timer);
       resolve();
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 
