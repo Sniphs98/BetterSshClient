@@ -8,7 +8,16 @@
   import { onMount } from 'svelte';
   import type { AutomationDto, FlowDto } from '$lib/bindings';
   import { Surface, Chip, Icon, Button } from '$lib/theme';
-  import { listAutomations, saveAutomation, deleteAutomation, listFlows, deleteFlow } from '$lib/ipc/commands';
+  import {
+    listAutomations,
+    saveAutomation,
+    deleteAutomation,
+    listFlows,
+    deleteFlow,
+    exportAutomation,
+    exportFlow,
+    importBundle
+  } from '$lib/ipc/commands';
   import { automations, flows, automationsTab, flowRun, runFlowNow } from '$lib/stores/automations';
   import { lastError } from '$lib/stores/notifications';
   import { activeEntity } from '$lib/stores/activeEntity';
@@ -66,6 +75,37 @@
     dialog = null;
   }
 
+  // Export/import — sharing an Automation or Flow as a portable JSON file (with a Flow
+  // also bundling the Automations its nodes reference, so it's self-contained). Each
+  // export just prompts a save dialog; a canceled dialog resolves `null`, not an error,
+  // so there's nothing to catch beyond a genuine failure. Import is a single entry
+  // point for either kind — the file itself says which one it is.
+  async function exportAutomationAction(id: string): Promise<void> {
+    try {
+      await exportAutomation(id);
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
+  async function exportFlowAction(name: string): Promise<void> {
+    try {
+      await exportFlow(name);
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
+  async function importAction(): Promise<void> {
+    try {
+      const result = await importBundle();
+      if (!result) return; // the file picker was canceled
+      await refresh();
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
   /** A flow with no parameters runs immediately; otherwise FlowRunDialog collects one
    *  value per parameter first (a host picker for a `'host'` param, a text input for a
    *  `'text'` one) so the same flow can be run identically against different hosts /
@@ -99,7 +139,11 @@
         <Icon name="arrow-left" size={18} />
       </button>
       <h1 class="text-lg font-semibold tracking-tight">Automation library</h1>
-      <button type="button" class="{pill} ml-auto" onclick={() => (dialog = { kind: 'addAutomation', id: crypto.randomUUID() })}>
+      <button type="button" class="{pill} ml-auto" title="Import an automation or flow from a file" onclick={importAction}>
+        <Icon name="upload" size={13} />
+        Import…
+      </button>
+      <button type="button" class={pill} onclick={() => (dialog = { kind: 'addAutomation', id: crypto.randomUUID() })}>
         <Icon name="plus" size={13} />
         New automation
       </button>
@@ -111,6 +155,10 @@
         onclick={() => automationsTab.set('automations')}
       >
         Manage automations
+      </button>
+      <button type="button" class={pill} title="Import an automation or flow from a file" onclick={importAction}>
+        <Icon name="upload" size={13} />
+        Import…
       </button>
       <button type="button" class={pill} onclick={() => activeEntity.selectFlow(null)}>
         <Icon name="plus" size={13} />
@@ -154,6 +202,15 @@
                   onclick={() => (dialog = { kind: 'editAutomation', automation })}
                 >
                   <Icon name="edit" size={15} />
+                </button>
+                <button
+                  type="button"
+                  class={iconBtn}
+                  title="Export {automation.name} to a file"
+                  aria-label="Export {automation.name}"
+                  onclick={() => exportAutomationAction(automation.id)}
+                >
+                  <Icon name="download" size={15} />
                 </button>
                 <button
                   type="button"
@@ -207,6 +264,15 @@
               >
                 <Icon name="play" size={12} />
                 {isRunning(flow.name) ? 'Running…' : 'Run'}
+              </button>
+              <button
+                type="button"
+                class={iconBtn}
+                title="Export {flow.name} to a file"
+                aria-label="Export {flow.name}"
+                onclick={() => exportFlowAction(flow.name)}
+              >
+                <Icon name="download" size={15} />
               </button>
               <button
                 type="button"

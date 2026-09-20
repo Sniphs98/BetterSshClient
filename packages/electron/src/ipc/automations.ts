@@ -1,13 +1,21 @@
-import type { IpcMain } from 'electron';
+import { dialog, type IpcMain } from 'electron';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import { loadAutomations, saveAutomations } from '../core/config/automations.js';
 import { loadFlows, saveFlows } from '../core/config/flows.js';
 import { runLocalCommand } from '../core/automation/localExec.js';
 import { missingParamValues, runFlow, validateFlow, type RunFlowDeps } from '../core/automation/engine.js';
+import {
+  buildAutomationBundle,
+  buildFlowBundle,
+  mergeAutomationBundle,
+  mergeFlowBundle,
+  parseBundle
+} from '../core/automation/bundle.js';
 import type { Automation, Flow } from '../core/automation/types.js';
 import { SshSession } from '../core/ssh/session.js';
 import { automationFromDto, flowFromDto, nodeResultToDto, toCommandError } from '../dto.js';
-import type { AutomationDto, FlowDto } from '../dto.js';
+import type { AutomationDto, FlowDto, ImportResultDto } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
 
 /**
@@ -50,6 +58,13 @@ export function upsertFlow(flows: Flow[], input: FlowDto): void {
 export function removeFlow(flows: Flow[], name: string): void {
   const i = flows.findIndex((f) => f.name === name);
   if (i !== -1) flows.splice(i, 1);
+}
+
+/** A safe default filename for a save dialog: strips characters Windows/macOS/Linux
+ *  filesystems all reject, so an Automation/Flow name with, say, a `/` in it doesn't
+ *  blow up `dialog.showSaveDialog`'s `defaultPath`. */
+function sanitizeFileName(name: string): string {
+  return name.replace(/[/\\:*?"<>|]/g, '_').trim() || 'untitled';
 }
 
 export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void {
@@ -107,6 +122,82 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
       const flows = await loadFlows();
       removeFlow(flows, name);
       await saveFlows(flows);
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
+  // Export/import (tech-request: sharing an Automation or Flow between people or
+  // machines as a portable file — see core/automation/bundle.ts). Every handler here
+  // returns `null` when the user cancels the native dialog rather than throwing, since
+  // a cancel isn't a failure.
+
+  ipcMain.handle('export_automation', async (_event, id: string): Promise<string | null> => {
+    try {
+      const automations = await loadAutomations();
+      const automation = automations.find((a) => a.id === id);
+      if (automation === undefined) throw new Error('automation no longer exists');
+      const bundle = buildAutomationBundle(automation);
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export automation',
+        defaultPath: `${sanitizeFileName(automation.name)}.omnyssh-automation.json`,
+        filters: [{ name: 'OmnySSH automation', extensions: ['json'] }]
+      });
+      if (canceled || !filePath) return null;
+      await writeFile(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
+      return filePath;
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
+  ipcMain.handle('export_flow', async (_event, name: string): Promise<string | null> => {
+    try {
+      const [flows, automations] = await Promise.all([loadFlows(), loadAutomations()]);
+      const flow = flows.find((f) => f.name === name);
+      if (flow === undefined) throw new Error('flow no longer exists');
+      const bundle = buildFlowBundle(flow, new Map(automations.map((a) => [a.id, a])));
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export flow',
+        defaultPath: `${sanitizeFileName(flow.name)}.omnyssh-flow.json`,
+        filters: [{ name: 'OmnySSH flow', extensions: ['json'] }]
+      });
+      if (canceled || !filePath) return null;
+      await writeFile(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
+      return filePath;
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
+  ipcMain.handle('import_bundle', async (): Promise<ImportResultDto | null> => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Import automation or flow',
+        filters: [{ name: 'OmnySSH automation/flow', extensions: ['json'] }],
+        properties: ['openFile']
+      });
+      if (canceled || filePaths.length === 0) return null;
+
+      const content = await readFile(filePaths[0], 'utf-8');
+      let raw: unknown;
+      try {
+        raw = JSON.parse(content);
+      } catch {
+        throw new Error('not a valid JSON file');
+      }
+      const bundle = parseBundle(raw);
+
+      const [automations, flows] = await Promise.all([loadAutomations(), loadFlows()]);
+      if (bundle.kind === 'omnyssh-automation') {
+        const merged = mergeAutomationBundle(bundle, automations);
+        await saveAutomations(merged.automations);
+        return merged.result;
+      }
+      const merged = mergeFlowBundle(bundle, automations, flows);
+      await saveAutomations(merged.automations);
+      await saveFlows(merged.flows);
+      return merged.result;
     } catch (err) {
       throw toCommandError(err);
     }

@@ -1,11 +1,16 @@
 <script lang="ts">
   // The flow's parameters, drawn as the graph's permanent starting node instead of a
-  // toolbar above the canvas — "parameters flow in from here." No `Handle`s: a param
-  // is visible to every node via `{{params.<name>}}` regardless of edges, so a real
-  // connection into it would claim a dependency that doesn't exist (see
-  // flowCanvasTypes.ts's note on `START_NODE_ID`). Reads/writes `params` through
-  // `FLOW_PARAMS_CONTEXT` rather than `Node.data`, so typing into any field here never
-  // has to rebuild FlowEditor's node array.
+  // toolbar above the canvas — "parameters flow in from here." Reads/writes `params`
+  // through `FLOW_PARAMS_CONTEXT` rather than `Node.data`, so typing into any field
+  // here never has to rebuild FlowEditor's node array.
+  //
+  // One source `Handle` (right) lets the user drag a line from here to any node,
+  // purely so the canvas *looks* connected — a param is visible to every node via
+  // `{{params.<name>}}` regardless of edges, so this never becomes a real dependency
+  // edge. FlowEditor.svelte renders it dashed/muted and keeps it out of the saved
+  // `FlowDto.edges` entirely, routing it into `startLinks` instead (see
+  // flowCanvasTypes.ts's note on `START_NODE_ID`). No target handle: nothing ever
+  // depends on Start, so nothing should be able to connect into it.
   //
   // Every row — new or already-saved — is the same plain, unboxed-at-rest field, and
   // behaves the same way: edits (rename, re-kind) apply on every keystroke, no
@@ -18,7 +23,7 @@
   // very key `{#each}` tracks it by, and would also defeat the focus-the-new-row step
   // right after clicking "+".
   import { getContext, tick } from 'svelte';
-  import type { NodeProps } from '@xyflow/svelte';
+  import { Handle, Position, type NodeProps } from '@xyflow/svelte';
   import { Icon } from '$lib/theme';
   import Select from '$lib/components/Select.svelte';
   import type { FlowParamKindDto } from '$lib/bindings';
@@ -64,6 +69,8 @@
 </script>
 
 <div class="w-64 space-y-2.5 rounded-lg border border-accent/50 bg-surface p-3 text-left shadow-sm">
+  <Handle type="source" position={Position.Right} />
+
   <div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-accent">
     <Icon name="play" size={11} />
     Start

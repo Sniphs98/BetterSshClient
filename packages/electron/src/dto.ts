@@ -7,6 +7,7 @@ import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
 import type { Snippet } from './core/config/snippets.js';
 import type { Automation, AutomationKind, Flow, FlowParam, FlowParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
+import type { ImportResult } from './core/automation/bundle.js';
 import type { ConnectionStatus, Metrics } from './event.js';
 import type { ProcessInfo } from './core/ssh/metrics.js';
 import type { DetectedService, ServiceKind, ServiceMetric } from './core/ssh/services/types.js';
@@ -174,6 +175,7 @@ export interface FlowDto {
   params: FlowParamDto[];
   nodes: FlowNodeDto[];
   edges: FlowEdgeDto[];
+  startLinks?: string[];
 }
 
 export function flowToDto(flow: Flow): FlowDto {
@@ -198,6 +200,13 @@ export interface NodeResultDto {
 export function nodeResultToDto(result: NodeResult): NodeResultDto {
   return result;
 }
+
+/** What `import_bundle` resolves with — `null` when the user canceled the file picker,
+ *  otherwise which kind of thing landed in the library and under what name (a Flow's
+ *  may differ from the file's own, if it collided with one already there — see
+ *  `mergeFlowBundle`), so the renderer can say what happened rather than just refresh
+ *  silently. */
+export type ImportResultDto = ImportResult;
 
 export interface CommandError {
   message: string;

@@ -1,17 +1,24 @@
 import { writable } from 'svelte/store';
-import type { ConnectionStatusDto, HostDto } from '$lib/bindings';
+import type { AutomationDto, ConnectionStatusDto, HostDto } from '$lib/bindings';
 import type { Status } from '$lib/theme';
 import type { Session } from './sessions';
 
-// The ⌘K overlay and the host-picker are one component in two modes (tech-gui.md §2):
-// `navigate` lists open sessions + hosts (jump to a session, or open a host); `pickHost`
-// is scoped to "pick a host for this action" and hands the choice back to its caller.
-export type PaletteMode = 'navigate' | 'pickHost';
+// The ⌘K overlay and every action-scoped picker are one component in several modes
+// (tech-gui.md §2): `navigate` lists open sessions + hosts (jump to a session, or open
+// a host); `pickHost` is scoped to "pick a host for this action" and hands the choice
+// back to its caller; `pickAutomation` is the same idea for "pick (or create) an
+// Automation for this flow node" (FlowEditor.svelte's "+"/drag-to-empty).
+export type PaletteMode = 'navigate' | 'pickHost' | 'pickAutomation';
 
-// A selectable row. Sessions surface only in the navigator; the picker is host-only.
+// A selectable row. Sessions surface only in the navigator; a picker mode is scoped to
+// its own kind. `newAutomation` is a pinned, always-matching row — not a real
+// Automation — offered first in `pickAutomation` mode so creating one inline never
+// needs a separate "no results" state.
 export type PaletteItem =
   | { kind: 'session'; session: Session }
-  | { kind: 'host'; host: HostDto };
+  | { kind: 'host'; host: HostDto }
+  | { kind: 'automation'; automation: AutomationDto }
+  | { kind: 'newAutomation' };
 
 function hostHaystack(h: HostDto): string {
   return `${h.name} ${h.hostname} ${h.user} ${h.tags.join(' ')}`.toLowerCase();
@@ -19,6 +26,10 @@ function hostHaystack(h: HostDto): string {
 
 function sessionHaystack(s: Session): string {
   return `${s.hostName} ${s.kind}`.toLowerCase();
+}
+
+function automationHaystack(a: AutomationDto): string {
+  return `${a.name} ${a.kind}`.toLowerCase();
 }
 
 // All whitespace-separated tokens must appear (AND), so "web prod" narrows to a host
@@ -32,13 +43,21 @@ function matches(haystack: string, query: string): boolean {
 }
 
 /** The filtered, ordered rows for the current mode: sessions first, then hosts (the
- *  picker drops the sessions). Order mirrors the stores so the list is stable. */
+ *  host picker drops the sessions); the automation picker is its own list entirely,
+ *  the pinned "new" row always first. Order mirrors the stores so the list is stable. */
 export function paletteItems(
   mode: PaletteMode,
   hosts: HostDto[],
   sessions: Session[],
+  automations: AutomationDto[],
   query: string
 ): PaletteItem[] {
+  if (mode === 'pickAutomation') {
+    const automationRows: PaletteItem[] = automations
+      .filter((a) => matches(automationHaystack(a), query))
+      .map((automation) => ({ kind: 'automation', automation }));
+    return [{ kind: 'newAutomation' }, ...automationRows];
+  }
   const hostRows: PaletteItem[] = hosts
     .filter((h) => matches(hostHaystack(h), query))
     .map((host) => ({ kind: 'host', host }));
@@ -55,7 +74,18 @@ export function paletteItems(
  *  the same ids) never snaps the selection back to the top mid-navigation. */
 export function paletteSignature(items: PaletteItem[]): string {
   return items
-    .map((it) => (it.kind === 'session' ? `s:${it.session.id}` : `h:${it.host.name}`))
+    .map((it) => {
+      switch (it.kind) {
+        case 'session':
+          return `s:${it.session.id}`;
+        case 'host':
+          return `h:${it.host.name}`;
+        case 'automation':
+          return `a:${it.automation.id}`;
+        case 'newAutomation':
+          return 'new-automation';
+      }
+    })
     .join('\u0000');
 }
 
@@ -84,38 +114,71 @@ export interface PaletteState {
   mode: PaletteMode;
 }
 
+/** What `pickAutomation()` resolves with: an existing Automation, `'new'` (the pinned
+ *  row was chosen — the caller opens its own add-automation form), or `null` (dismissed
+ *  without choosing). */
+export type AutomationPickResult = AutomationDto | 'new' | null;
+
 function createPalette() {
   const { subscribe, set } = writable<PaletteState>({ open: false, mode: 'navigate' });
-  // A pending `pickHost()` resolver. Every open/close settles it exactly once so a
-  // caller never hangs when the user switches to the navigator or dismisses the picker.
-  let pending: ((host: HostDto | null) => void) | null = null;
+  // Pending resolvers for whichever picker is in flight — at most one of the two is
+  // ever non-null, since only one mode can be open at a time, but both are settled on
+  // every open/choose/close so a caller of either never hangs when the palette moves on
+  // to something else out from under it (e.g. ⌘K opening the navigator mid-pick).
+  let pendingHost: ((host: HostDto | null) => void) | null = null;
+  let pendingAutomation: ((result: AutomationPickResult) => void) | null = null;
 
-  function settle(host: HostDto | null): void {
-    const resolve = pending;
-    pending = null;
-    resolve?.(host);
+  function settleAll(): void {
+    const host = pendingHost;
+    const automation = pendingAutomation;
+    pendingHost = null;
+    pendingAutomation = null;
+    host?.(null);
+    automation?.(null);
   }
 
   return {
     subscribe,
     /** ⌘K navigator: jump to an open session or open a host. */
     open(): void {
-      settle(null);
+      settleAll();
       set({ open: true, mode: 'navigate' });
     },
     /** Action-scoped host picker; resolves with the chosen host, or null if dismissed. */
     pickHost(): Promise<HostDto | null> {
-      settle(null);
+      settleAll();
       set({ open: true, mode: 'pickHost' });
-      return new Promise((resolve) => (pending = resolve));
+      return new Promise((resolve) => (pendingHost = resolve));
     },
-    /** Picker mode: hand the chosen host back to the caller and close. */
+    /** Action-scoped Automation picker (FlowEditor's "+"/drag-to-empty) — see
+     *  `AutomationPickResult`'s doc comment for what it resolves with. */
+    pickAutomation(): Promise<AutomationPickResult> {
+      settleAll();
+      set({ open: true, mode: 'pickAutomation' });
+      return new Promise((resolve) => (pendingAutomation = resolve));
+    },
+    /** Host-picker mode: hand the chosen host back to its caller and close. Captures the
+     *  resolver *before* settling the other (idle) one — `settleAll` would otherwise
+     *  null this one out too, resolving it with `null` instead of `host`. */
     choose(host: HostDto): void {
-      settle(host);
+      const resolve = pendingHost;
+      pendingHost = null;
+      pendingAutomation?.(null);
+      pendingAutomation = null;
+      resolve?.(host);
+      set({ open: false, mode: 'navigate' });
+    },
+    /** Automation-picker mode: hand the chosen result back to its caller and close. */
+    chooseAutomation(result: AutomationDto | 'new'): void {
+      const resolve = pendingAutomation;
+      pendingAutomation = null;
+      pendingHost?.(null);
+      pendingHost = null;
+      resolve?.(result);
       set({ open: false, mode: 'navigate' });
     },
     close(): void {
-      settle(null);
+      settleAll();
       set({ open: false, mode: 'navigate' });
     }
   };

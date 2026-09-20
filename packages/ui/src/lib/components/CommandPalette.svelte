@@ -4,11 +4,12 @@
   // hand a chosen host back to its caller (the spawner buttons). Keyboard-first — type
   // to filter, ↑/↓ to move, ↵ to select, esc to dismiss. Glass/blur per the brandbook.
   import { tick } from 'svelte';
-  import { Icon, StatusDot } from '$lib/theme';
+  import { Icon, StatusDot, Chip } from '$lib/theme';
   import { palette, paletteItems, paletteSignature, nextIndex, hostStatusDot } from '$lib/stores/palette';
   import { hosts } from '$lib/stores/hosts';
   import { statuses } from '$lib/stores/statuses';
   import { sessions, sessionLabel, sessionStatusDot } from '$lib/stores/sessions';
+  import { automations } from '$lib/stores/automations';
   import { activeEntity } from '$lib/stores/activeEntity';
   import { spawnSession } from '$lib/stores/navigation';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
@@ -19,7 +20,7 @@
   let query = $state('');
   let selected = $state(0);
 
-  const items = $derived(paletteItems($palette.mode, $hosts, $sessions, query));
+  const items = $derived(paletteItems($palette.mode, $hosts, $sessions, $automations, query));
   // A value-stable key over the result set: unchanged by a background status flip (same
   // ids, new objects), so the reset effect below can ignore those (see the effect).
   const itemsSignature = $derived(paletteSignature(items));
@@ -27,16 +28,22 @@
   const firstHost = $derived(items.findIndex((it) => it.kind === 'host'));
 
   const placeholder = $derived(
-    $palette.mode === 'pickHost' ? 'Pick a host…' : 'Search hosts and sessions…'
+    $palette.mode === 'pickHost'
+      ? 'Pick a host…'
+      : $palette.mode === 'pickAutomation'
+        ? 'Pick or create an automation…'
+        : 'Search hosts and sessions…'
   );
   const emptyMessage = $derived(
     $palette.mode === 'pickHost'
       ? query
         ? 'No matching hosts.'
         : 'No hosts configured.'
-      : query
-        ? 'No matches.'
-        : 'No hosts or sessions yet.'
+      : $palette.mode === 'pickAutomation'
+        ? 'No matching automations.' // the pinned "new" row means this mode is never truly empty
+        : query
+          ? 'No matches.'
+          : 'No hosts or sessions yet.'
   );
 
   // Focus returns here when the overlay closes, so a keyboard user is not dropped to
@@ -78,15 +85,26 @@
   function selectAt(i: number): void {
     const item = items[i];
     if (!item) return;
-    if (item.kind === 'session') {
-      activeEntity.activateSession(item.session.id);
-      palette.close();
-    } else if ($palette.mode === 'pickHost') {
-      palette.choose(item.host);
-    } else {
-      // Navigator default action for a host: open a shell (the primary connect path).
-      spawnSession('terminal', item.host.name);
-      palette.close();
+    switch (item.kind) {
+      case 'session':
+        activeEntity.activateSession(item.session.id);
+        palette.close();
+        break;
+      case 'host':
+        if ($palette.mode === 'pickHost') {
+          palette.choose(item.host);
+        } else {
+          // Navigator default action for a host: open a shell (the primary connect path).
+          spawnSession('terminal', item.host.name);
+          palette.close();
+        }
+        break;
+      case 'automation':
+        palette.chooseAutomation(item.automation);
+        break;
+      case 'newAutomation':
+        palette.chooseAutomation('new');
+        break;
     }
   }
 
@@ -146,7 +164,11 @@
     class="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[14vh]"
     role="dialog"
     aria-modal="true"
-    aria-label={$palette.mode === 'pickHost' ? 'Pick a host' : 'Command palette'}
+    aria-label={$palette.mode === 'pickHost'
+      ? 'Pick a host'
+      : $palette.mode === 'pickAutomation'
+        ? 'Pick an automation'
+        : 'Command palette'}
   >
     <button
       type="button"
@@ -199,12 +221,19 @@
                   <StatusDot status={sessionStatusDot[item.session.status]} />
                   <Icon name={item.session.kind} size={16} />
                   <span class="min-w-0 flex-1 truncate">{sessionLabel(item.session)}</span>
-                {:else}
+                {:else if item.kind === 'host'}
                   <StatusDot status={hostStatusDot($statuses.get(item.host.name))} />
                   <span class="min-w-0 flex-1 truncate font-medium">{item.host.name}</span>
                   <span class="shrink-0 truncate font-mono text-xs {selected === i ? '' : 'text-faint'}">
                     {item.host.user}@{displayHostname(item.host.hostname, $streamerMode)}
                   </span>
+                {:else if item.kind === 'automation'}
+                  <Icon name="automations" size={16} />
+                  <span class="min-w-0 flex-1 truncate font-medium">{item.automation.name}</span>
+                  <Chip>{item.automation.kind === 'remote' ? 'remote' : 'local'}</Chip>
+                {:else}
+                  <Icon name="plus" size={16} />
+                  <span class="min-w-0 flex-1 truncate font-medium">New automation…</span>
                 {/if}
               </button>
             </li>

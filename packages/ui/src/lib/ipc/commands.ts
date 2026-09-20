@@ -8,6 +8,7 @@ import type {
   FlowDto,
   HostDto,
   HostInputDto,
+  ImportResultDto,
   SnippetDto,
   TerminalBytes,
   UpdateConfigDto,
@@ -291,4 +292,32 @@ export async function deleteFlow(name: string): Promise<void> {
 export async function runFlow(name: string, paramValues: Record<string, string>): Promise<void> {
   const res = await commands.runFlow(name, paramValues);
   if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Prompts a native save dialog and writes the automation to a portable JSON file, for
+ *  sharing it with someone else or another machine. Resolves the chosen path, or `null`
+ *  if the dialog was canceled. */
+export async function exportAutomation(id: string): Promise<string | null> {
+  const res = await commands.exportAutomation(id);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Same as `exportAutomation`, but for a Flow — the file also bundles every Automation
+ *  the flow's nodes reference, so it's self-contained on a machine that's never seen
+ *  them. */
+export async function exportFlow(name: string): Promise<string | null> {
+  const res = await commands.exportFlow(name);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Prompts a native open dialog for an exported `.json` file and merges it into the
+ *  local library (a fresh id for every imported Automation; an imported Flow is renamed
+ *  on a name collision rather than overwriting the existing one). Resolves what was
+ *  added, or `null` if the dialog was canceled. */
+export async function importBundle(): Promise<ImportResultDto | null> {
+  const res = await commands.importBundle();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
 }

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -82,5 +82,19 @@ describe('saveFlows / loadFlows round trip', () => {
     ];
     await saveFlows(original, path);
     expect(await loadFlows(path)).toEqual(original);
+  });
+
+  it('round-trips startLinks — the Start node\'s decorative canvas connections', async () => {
+    const original = [flow({ startLinks: ['n1', 'n2'] })];
+    await saveFlows(original, path);
+    expect(await loadFlows(path)).toEqual(original);
+  });
+
+  it('omits startLinks entirely from the saved file when empty, rather than writing `startLinks = []`', async () => {
+    const original = [flow({ startLinks: [] })];
+    await saveFlows(original, path);
+    const raw = await readFile(path, 'utf-8');
+    expect(raw).not.toContain('startLinks');
+    expect((await loadFlows(path))[0].startLinks).toBeUndefined();
   });
 });

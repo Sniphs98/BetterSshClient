@@ -144,6 +144,15 @@ export const commands = {
   },
   async runFlow(name: string, paramValues: Record<string, string>): Promise<Result<null, CommandError>> {
     return call('run_flow', name, paramValues);
+  },
+  async exportAutomation(id: string): Promise<Result<string | null, CommandError>> {
+    return call('export_automation', id);
+  },
+  async exportFlow(name: string): Promise<Result<string | null, CommandError>> {
+    return call('export_flow', name);
+  },
+  async importBundle(): Promise<Result<ImportResultDto | null, CommandError>> {
+    return call('import_bundle');
   }
 };
 
@@ -272,7 +281,16 @@ export type FileEntryDto = { name: string; path: string; size: number; isDir: bo
 export type FilePreview = { sessionId: number; path: string; content: string };
 /** A graph of Automations wired together with dependency edges, plus the parameters
  *  (at most one `'host'`-kind) it asks for right before it runs. */
-export type FlowDto = { name: string; params: FlowParamDto[]; nodes: FlowNodeDto[]; edges: FlowEdgeDto[] };
+export type FlowDto = {
+  name: string;
+  params: FlowParamDto[];
+  nodes: FlowNodeDto[];
+  edges: FlowEdgeDto[];
+  /** Node ids the canvas draws a decorative line from the Start node to — never a real
+   *  dependency edge (every param is already visible to every node regardless of
+   *  edges), round-tripped purely so the line is still there next time the flow opens. */
+  startLinks?: string[] | null;
+};
 /** `to` depends on `from` — `from` must complete before `to` can start. */
 export type FlowEdgeDto = { from: string; to: string };
 /** One placement of a reusable Automation into a Flow. */
@@ -325,6 +343,10 @@ export type HostSourceDto = 'sshConfig' | 'manual';
 export type HostStatusChanged = { hostName: string; status: ConnectionStatusDto };
 /** Full host list broadcast, emitted by `reload_hosts`. */
 export type HostsLoaded = HostDto[];
+/** What `import_bundle` resolves with — `null` when the file picker was canceled,
+ *  otherwise which kind of thing was added and under what name (a Flow's may differ
+ *  from the file's own, if it collided with an existing one). */
+export type ImportResultDto = { kind: 'automation' | 'flow'; name: string };
 /** Key setup finished successfully — key auth is configured. */
 export type KeySetupComplete = { hostName: string; keyPath: string };
 /** Key setup failed before touching the server's auth config. */

@@ -20,12 +20,19 @@ export type AutomationFlowEdge = Edge;
 /** The one, permanent "Start" node — the flow's parameters, drawn as a node instead of
  *  a toolbar so the graph reads as "parameters flow in from here." It carries no data
  *  of its own (`FlowStartNode.svelte` reads/writes `params` via `FLOW_PARAMS_CONTEXT`
- *  instead) and has no handles — parameters are referenced by every node via
- *  `{{params.<name>}}` regardless of edges (unlike `{{nodes.<label>.output}}`, whose
- *  scope really is direct predecessors), so a real connection into it would claim a
- *  dependency relationship that doesn't exist. Never saved as a `FlowNode` — it's
- *  filtered out before building the `FlowDto` (see `isAutomationNode` in
- *  FlowEditor.svelte) and always reappears at a fixed position on reopen. */
+ *  instead). Never saved as a `FlowNode` — it's filtered out before building the
+ *  `FlowDto` (see `isAutomationNode` in FlowEditor.svelte) and always reappears at a
+ *  fixed position on reopen.
+ *
+ *  It has one source `Handle`, so the user *can* drag a line from it to any node —
+ *  purely cosmetic. A param is referenced by every node via `{{params.<name>}}`
+ *  regardless of edges (unlike `{{nodes.<label>.output}}`, whose scope really is direct
+ *  predecessors), so a real `FlowEdge` out of Start would claim a dependency
+ *  relationship that doesn't exist — the backend's `validateFlow` rejects any edge
+ *  whose endpoint isn't a real `FlowNode` id, and Start isn't one. FlowEditor.svelte
+ *  keeps these lines out of `canvasEdges`' save path entirely, routing them into
+ *  `FlowDto.startLinks` (a plain list of target node ids, round-tripped like a node's
+ *  `position`) instead. */
 export const START_NODE_ID = '__start__';
 export type StartNodeData = Record<string, never>;
 export type StartFlowNode = Node<StartNodeData, 'start'>;

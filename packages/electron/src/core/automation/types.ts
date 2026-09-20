@@ -66,6 +66,13 @@ export interface Flow {
   params: FlowParam[];
   nodes: FlowNode[];
   edges: FlowEdge[];
+  /** Node ids the canvas draws a line from the Start node to — purely decorative
+   *  ("params flow in from here"), never read by `topoOrder`/`validateFlow`/`runFlow`.
+   *  A real dependency edge (`FlowEdge`) would falsely claim a node depends on Start,
+   *  when every param is already visible to every node regardless of edges (see
+   *  `FlowParam`'s doc comment); this is round-tripped only so the line the user drew
+   *  is still there next time the flow opens, the same way `FlowNode.position` is. */
+  startLinks?: string[];
 }
 
 export type NodeStatus = 'success' | 'failed' | 'skipped';

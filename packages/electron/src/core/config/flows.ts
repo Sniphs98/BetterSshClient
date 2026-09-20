@@ -76,16 +76,23 @@ function flowFromToml(raw: Record<string, unknown>): Flow {
   const params = Array.isArray(raw.params) ? raw.params.map((p) => flowParamFromToml(p as Record<string, unknown>, raw.name as string)) : [];
   const nodes = Array.isArray(raw.nodes) ? raw.nodes.map((n) => flowNodeFromToml(n as Record<string, unknown>, raw.name as string)) : [];
   const edges = Array.isArray(raw.edges) ? raw.edges.map((e) => flowEdgeFromToml(e as Record<string, unknown>, raw.name as string)) : [];
-  return { name: raw.name, params, nodes, edges };
+  const startLinks = Array.isArray(raw.startLinks)
+    ? raw.startLinks.filter((s): s is string => typeof s === 'string')
+    : undefined;
+  return { name: raw.name, params, nodes, edges, startLinks };
 }
 
 function flowToToml(flow: Flow): Record<string, unknown> {
-  return {
+  const out: Record<string, unknown> = {
     name: flow.name,
     params: flow.params.map(flowParamToToml),
     nodes: flow.nodes.map(flowNodeToToml),
     edges: flow.edges.map((e) => ({ from: e.from, to: e.to }))
   };
+  // Omitted when empty, like a node's `position` — keeps a flow with no decorative
+  // Start-node links out of the TOML entirely rather than writing `startLinks = []`.
+  if (flow.startLinks !== undefined && flow.startLinks.length > 0) out.startLinks = flow.startLinks;
+  return out;
 }
 
 function parseFlowsFile(content: string): FlowsFile {

@@ -20,19 +20,19 @@
   // as the graph's own permanent "Start" node (FlowStartNode.svelte) rather than a
   // toolbar above the canvas — see flowCanvasTypes.ts's note on `START_NODE_ID`.
   import { onMount, setContext } from 'svelte';
-  import { SvelteFlow, Background, BackgroundVariant, Controls, type Connection } from '@xyflow/svelte';
+  import { SvelteFlow, Background, BackgroundVariant, Controls, type Connection, type OnConnectEnd } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import type { AutomationDto, FlowDto, FlowParamDto, FlowParamKindDto } from '$lib/bindings';
   import { Button, Icon } from '$lib/theme';
-  import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import { automations, flows } from '$lib/stores/automations';
   import { listAutomations, listFlows, saveAutomation, saveFlow } from '$lib/ipc/commands';
   import { activeEntity } from '$lib/stores/activeEntity';
+  import { palette } from '$lib/stores/palette';
   import { theme } from '$lib/stores/theme';
   import FlowCanvasNode from './FlowCanvasNode.svelte';
   import FlowStartNode from './FlowStartNode.svelte';
   import AutomationEditor from './AutomationEditor.svelte';
-  import { formFromAutomation } from './automationForm';
+  import { emptyForm, formFromAutomation } from './automationForm';
   import {
     FLOW_NODE_ACTIONS_CONTEXT,
     FLOW_PARAMS_CONTEXT,
@@ -102,10 +102,41 @@
       };
     })
   ]);
-  let canvasEdges = $state<AutomationFlowEdge[]>(
-    initial.edges.map((e) => ({ id: `${e.from}->${e.to}`, source: e.from, target: e.to }))
-  );
-  let addMenuAnchor = $state<{ x: number; y: number } | null>(null);
+  /** A decorative "params flow in from here" line, never a real `FlowEdge` — see
+   *  flowCanvasTypes.ts's note on `START_NODE_ID`. Dashed + faded so it reads as
+   *  cosmetic rather than a dependency, the same visual language a disabled control
+   *  elsewhere in this app uses for "present but not load-bearing". */
+  function startLinkEdge(targetId: string): AutomationFlowEdge {
+    return {
+      id: `${START_NODE_ID}->${targetId}`,
+      source: START_NODE_ID,
+      target: targetId,
+      style: 'stroke-dasharray: 4 4; opacity: 0.55;'
+    };
+  }
+
+  let canvasEdges = $state<AutomationFlowEdge[]>([
+    ...initial.edges.map((e) => ({ id: `${e.from}->${e.to}`, source: e.from, target: e.to })),
+    // Dropping a link to a node id that no longer exists (the Automation/node was
+    // deleted since this was last saved) rather than letting svelte-flow choke on an
+    // edge with a dangling target.
+    ...(initial.startLinks ?? [])
+      .filter((targetId) => initial.nodes.some((n) => n.id === targetId))
+      .map(startLinkEdge)
+  ]);
+  /** Where a newly picked/created Automation lands: `position` is a drag-to-empty
+   *  drop's flow coordinates (`null` for the toolbar's "+" button, which just appends
+   *  at a default grid spot), `wireFrom` is the node the drag started at (`null` for
+   *  the "+" button — nothing to wire). Shared by every way a node gets added. */
+  interface NodeTarget {
+    position: { x: number; y: number } | null;
+    wireFrom: string | null;
+  }
+
+  // The "+ New automation…" row inside the picker — opens the same add-automation form
+  // the library screen uses; on save, the new Automation is placed as a node using the
+  // `target` it was opened with (still known here, carried over from that call).
+  let newAutomationDialog = $state<{ id: string; target: NodeTarget } | null>(null);
   let error = $state<string | null>(null);
   let saving = $state(false);
   let nameEl = $state<HTMLInputElement>();
@@ -137,6 +168,51 @@
         : n
     );
     editingAutomationId = null;
+  }
+
+  /** Places `automation` as a new node — at `target.position` if given (a drag-to-empty
+   *  drop), otherwise the default append-to-grid spot — and, if `target.wireFrom` names
+   *  a node, wires an edge from it to the new node (a real dependency edge, unless
+   *  `wireFrom` is the Start node, in which case it's the decorative `startLinkEdge`
+   *  instead — see that function's doc comment). Shared by every way a node gets added:
+   *  the toolbar's "+" menu, the drag-to-empty popup, and creating a brand new
+   *  Automation from either of those. */
+  function addAutomationNode(automation: AutomationDto, target: NodeTarget): void {
+    const id = crypto.randomUUID();
+    canvasNodes = [
+      ...canvasNodes,
+      {
+        id,
+        type: 'automation',
+        position: target.position ?? layoutPosition(canvasNodes.filter(isAutomationNode).length),
+        data: {
+          automationId: automation.id,
+          label: uniqueLabel(automation.name),
+          continueOnError: false,
+          automationName: automation.name,
+          automationKind: automation.kind
+        }
+      }
+    ];
+    if (target.wireFrom) {
+      canvasEdges = [
+        ...canvasEdges,
+        target.wireFrom === START_NODE_ID
+          ? startLinkEdge(id)
+          : { id: `${target.wireFrom}->${id}`, source: target.wireFrom, target: id }
+      ];
+    }
+  }
+
+  async function submitNewAutomation(automation: AutomationDto): Promise<void> {
+    await saveAutomation(automation);
+    automations.set(await listAutomations());
+    // Read before nulling: `newAutomationDialog` is a plain $state variable (not a
+    // reactive `{@const}` alias), so this is a real snapshot — see Automations.svelte's
+    // note on why the order matters for a value read inside a callback like this one.
+    const target = newAutomationDialog?.target ?? { position: null, wireFrom: null };
+    newAutomationDialog = null;
+    addAutomationNode(automation, target);
   }
 
   onMount(() => {
@@ -184,45 +260,61 @@
     return `${slug}-${i}`;
   }
 
-  function openAddMenu(e: MouseEvent): void {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    addMenuAnchor = { x: rect.left, y: rect.bottom + 6 };
+  /** Opens the shared Automation picker (⌘K's own overlay, in `pickAutomation` mode —
+   *  the same "centered over everything" component the SFTP/host spawners already use
+   *  for "pick a host") for either the toolbar's "+" button (`target` all-null) or a
+   *  drag-to-empty drop (`target` carrying where/what to wire). Picking an existing
+   *  Automation places it immediately; picking "New automation…" opens the add form
+   *  first and places it once that's saved (see `submitNewAutomation`). */
+  async function openAutomationPicker(target: NodeTarget): Promise<void> {
+    const result = await palette.pickAutomation();
+    if (result === null) return;
+    if (result === 'new') {
+      newAutomationDialog = { id: crypto.randomUUID(), target };
+      return;
+    }
+    addAutomationNode(result, target);
   }
-
-  const addMenuItems: ContextMenuItem[] = $derived(
-    $automations.length === 0
-      ? [{ label: 'No automations yet — create one first', onSelect: () => {}, disabled: true }]
-      : $automations.map((a) => ({
-          label: `${a.name} (${a.kind})`,
-          onSelect: () => {
-            canvasNodes = [
-              ...canvasNodes,
-              {
-                id: crypto.randomUUID(),
-                type: 'automation',
-                position: layoutPosition(canvasNodes.filter(isAutomationNode).length),
-                data: {
-                  automationId: a.id,
-                  label: uniqueLabel(a.name),
-                  continueOnError: false,
-                  automationName: a.name,
-                  automationKind: a.kind
-                }
-              }
-            ];
-          }
-        }))
-  );
 
   /** A dependency edge: connecting from a node's source (right) handle to another's
    *  target (left) handle means "the target depends on the source" — `to` waits for
-   *  `from`, matching `FlowEdge`'s own `{ from, to }` shape exactly. */
+   *  `from`, matching `FlowEdge`'s own `{ from, to }` shape exactly.
+   *
+   *  svelte-flow's `Handle` always adds a plain edge to the store *itself* the instant a
+   *  drag connects two handles (`store.addEdge`, inside `Handle.svelte`'s
+   *  `onConnectExtended`) — this callback runs only afterward, as a notification, with
+   *  that edge already sitting in `canvasEdges`. So for a connection out of the Start
+   *  node — never a real dependency, see `startLinkEdge`'s doc comment — this restyles
+   *  the edge already added rather than pushing a second one (which the `exists`-style
+   *  guard an earlier version had would've just silently dropped anyway). Every other
+   *  connection needs no handling here at all; the store already added it correctly. */
   function onconnect(connection: Connection): void {
-    if (!connection.source || !connection.target || connection.source === connection.target) return;
-    const exists = canvasEdges.some((e) => e.source === connection.source && e.target === connection.target);
-    if (exists) return;
-    canvasEdges = [...canvasEdges, { id: `${connection.source}->${connection.target}`, source: connection.source, target: connection.target }];
+    if (!connection.source || !connection.target || connection.source !== START_NODE_ID) return;
+    canvasEdges = canvasEdges.map((e) =>
+      e.source === connection.source && e.target === connection.target ? startLinkEdge(e.target) : e
+    );
   }
+
+  /** Dragging a connection out from a node's handle and releasing over empty canvas
+   *  space, instead of dropping it on another node, opens the same Automation picker as
+   *  the toolbar's "+" button — whatever gets picked (or newly created) is wired to the
+   *  node the drag started from. `connectionState.isValid` is `null`/`false` whenever
+   *  the drag didn't end on a valid target handle (dropped on the pane, or over a node
+   *  with no compatible handle); `fromNode` is null only when no drag was actually in
+   *  progress (e.g. this fires from a stray click), which this ignores. The new node's
+   *  position is a simple offset from the source node's own — no need for svelte-flow's
+   *  screen-to-flow-coordinate conversion (its `useSvelteFlow()` hook isn't callable
+   *  from here anyway, since this component isn't itself rendered inside a
+   *  `<SvelteFlow>`/`<SvelteFlowProvider>` tree), and the picker is centered on screen
+   *  now rather than anchored to the drop point, so no screen position is needed either. */
+  const onconnectend: OnConnectEnd = (_event, connectionState) => {
+    if (connectionState.isValid || !connectionState.fromNode) return;
+    const source = canvasNodes.find((n) => n.id === connectionState.fromNode!.id);
+    void openAutomationPicker({
+      position: source ? { x: source.position.x + 260, y: source.position.y } : null,
+      wireFrom: connectionState.fromNode.id
+    });
+  };
 
   async function save(): Promise<void> {
     const flowNameTrimmed = name.trim();
@@ -250,6 +342,14 @@
       return;
     }
 
+    // A connection out of the Start node is decorative, never a real dependency (see
+    // startLinkEdge's doc comment) — split out of `edges` into `startLinks` (target ids
+    // only) rather than sent as a FlowEdge, which the backend's validateFlow would
+    // reject outright (Start isn't a FlowNode, so an edge naming it as `from` fails "an
+    // edge references a node that is not in this flow").
+    const realEdges = canvasEdges.filter((e) => e.source !== START_NODE_ID);
+    const startLinks = canvasEdges.filter((e) => e.source === START_NODE_ID).map((e) => e.target);
+
     // n.position is a $state proxy (svelte-flow's bind:nodes lives in a $state array,
     // and Svelte 5 deep-proxies nested objects) — Electron's ipcRenderer.invoke sends
     // this over the structured-clone algorithm, which throws "An object could not be
@@ -266,7 +366,8 @@
         continueOnError: n.data.continueOnError,
         position: { x: n.position.x, y: n.position.y }
       })),
-      edges: canvasEdges.map((e) => ({ from: e.source, to: e.target }))
+      edges: realEdges.map((e) => ({ from: e.source, to: e.target })),
+      startLinks: startLinks.length > 0 ? startLinks : undefined
     };
     error = null;
     saving = true;
@@ -328,15 +429,22 @@
         class="absolute right-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-full border border-default bg-surface text-fg shadow-soft transition hover:bg-surface-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         title="Add an automation to this flow"
         aria-label="Add an automation to this flow"
-        onclick={openAddMenu}
+        onclick={() => openAutomationPicker({ position: null, wireFrom: null })}
       >
         <Icon name="plus" size={18} />
       </button>
-      {#if addMenuAnchor}
-        <ContextMenu x={addMenuAnchor.x} y={addMenuAnchor.y} items={addMenuItems} onClose={() => (addMenuAnchor = null)} />
-      {/if}
 
-      <SvelteFlow bind:nodes={canvasNodes} bind:edges={canvasEdges} {nodeTypes} {onconnect} colorMode={$theme} class="h-full w-full" fitView minZoom={0.3}>
+      <SvelteFlow
+        bind:nodes={canvasNodes}
+        bind:edges={canvasEdges}
+        {nodeTypes}
+        {onconnect}
+        {onconnectend}
+        colorMode={$theme}
+        class="h-full w-full"
+        fitView
+        minZoom={0.3}
+      >
         <Background variant={BackgroundVariant.Dots} />
         <Controls showLock={false} />
       </SvelteFlow>
@@ -351,5 +459,15 @@
     initial={formFromAutomation(editingAutomation)}
     onSubmit={submitAutomationEdit}
     onCancel={() => (editingAutomationId = null)}
+  />
+{/if}
+
+{#if newAutomationDialog}
+  <AutomationEditor
+    mode="add"
+    id={newAutomationDialog.id}
+    initial={emptyForm()}
+    onSubmit={submitNewAutomation}
+    onCancel={() => (newAutomationDialog = null)}
   />
 {/if}
