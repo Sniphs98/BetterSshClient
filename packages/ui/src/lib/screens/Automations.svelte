@@ -8,13 +8,13 @@
   import { onMount } from 'svelte';
   import type { AutomationDto, FlowDto } from '$lib/bindings';
   import { Surface, Chip, Icon, Button } from '$lib/theme';
-  import { listAutomations, saveAutomation, deleteAutomation, listFlows, deleteFlow, runFlow } from '$lib/ipc/commands';
-  import { automations, flows, automationsTab, flowRun, beginFlowRun } from '$lib/stores/automations';
+  import { listAutomations, saveAutomation, deleteAutomation, listFlows, deleteFlow } from '$lib/ipc/commands';
+  import { automations, flows, automationsTab, flowRun, runFlowNow } from '$lib/stores/automations';
   import { lastError } from '$lib/stores/notifications';
-  import { palette } from '$lib/stores/palette';
   import { activeEntity } from '$lib/stores/activeEntity';
   import { emptyForm, formFromAutomation } from './automationForm';
   import AutomationEditor from './AutomationEditor.svelte';
+  import FlowRunDialog from './FlowRunDialog.svelte';
   import Modal from '$lib/components/Modal.svelte';
 
   type Dialog =
@@ -22,7 +22,7 @@
     | { kind: 'editAutomation'; automation: AutomationDto }
     | { kind: 'deleteAutomation'; automation: AutomationDto }
     | { kind: 'deleteFlow'; flow: FlowDto }
-    | { kind: 'runFlow'; flow: FlowDto; values: Record<string, string> };
+    | { kind: 'runFlow'; flow: FlowDto };
 
   let dialog = $state<Dialog | null>(null);
 
@@ -66,40 +66,16 @@
     dialog = null;
   }
 
-  /** Runs `name` with `paramValues` (empty for a flow with no parameters). Called
-   *  either directly (no parameters to collect) or after the "Run flow" dialog
-   *  gathers them — see `openRunDialog`. Spread into a plain object first: when this
-   *  came from the dialog, `paramValues` is `dialog.values`, a `$state` proxy nested
-   *  inside another — Electron's IPC send uses structured clone, which throws "An
-   *  object could not be cloned" on a proxy (the same bug class `FlowEditor.svelte`'s
-   *  `save()` had for a node's `position`). */
-  async function run(name: string, paramValues: Record<string, string>): Promise<void> {
-    beginFlowRun(name);
-    try {
-      await runFlow(name, { ...paramValues });
-    } catch (e) {
-      lastError.set(message(e));
-    }
-  }
-
-  /** A flow with no parameters runs immediately; otherwise open a dialog to collect
-   *  one value per parameter first (a host picker for a `'host'` param, a text input —
-   *  prefilled from its `default` — for a `'text'` one) so the same flow can be run
-   *  identically against different hosts / inputs each time. */
+  /** A flow with no parameters runs immediately; otherwise FlowRunDialog collects one
+   *  value per parameter first (a host picker for a `'host'` param, a text input for a
+   *  `'text'` one) so the same flow can be run identically against different hosts /
+   *  inputs each time. */
   function openRunDialog(flow: FlowDto): void {
     if (flow.params.length === 0) {
-      void run(flow.name, {});
+      void runFlowNow(flow.name, {});
       return;
     }
-    const values: Record<string, string> = {};
-    for (const p of flow.params) values[p.name] = p.default ?? '';
-    dialog = { kind: 'runFlow', flow, values };
-  }
-
-  async function pickRunHost(paramName: string): Promise<void> {
-    if (dialog?.kind !== 'runFlow') return;
-    const host = await palette.pickHost();
-    if (host) dialog.values[paramName] = host.name;
+    dialog = { kind: 'runFlow', flow };
   }
 
   function isRunning(name: string): boolean {
@@ -290,55 +266,20 @@
     </div>
   </Modal>
 {:else if dialog?.kind === 'runFlow'}
-  {@const d = dialog}
-  <Modal label="Run flow" onClose={() => (dialog = null)}>
-    <div class="space-y-3 px-5 py-4">
-      <h2 class="text-sm font-semibold">Run “{d.flow.name}”</h2>
-      <p class="text-sm text-muted">This flow needs a few values before it runs.</p>
-      <div class="space-y-3">
-        {#each d.flow.params as param (param.name)}
-          {#if param.kind === 'host'}
-            <!-- Not a <label>: wrapping a <button> in one lets the label text win the
-                 accessible-name computation over the button's own "Choose a host…"
-                 text in some engines, so the two are kept as siblings instead. -->
-            <div class="space-y-1 text-xs font-medium text-muted">
-              <span>{param.label || param.name}</span>
-              <button
-                type="button"
-                class="w-full truncate rounded-lg bg-surface-inset px-3 py-2 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-focus {d
-                  .values[param.name]
-                  ? 'text-fg'
-                  : 'text-faint'}"
-                onclick={() => pickRunHost(param.name)}
-              >
-                {d.values[param.name] || 'Choose a host…'}
-              </button>
-            </div>
-          {:else}
-            <label class="block space-y-1 text-xs font-medium text-muted">
-              <span>{param.label || param.name}</span>
-              <input
-                bind:value={d.values[param.name]}
-                class="w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-focus"
-              />
-            </label>
-          {/if}
-        {/each}
-      </div>
-      <div class="flex justify-end gap-2 pt-1">
-        <Button variant="ghost" onclick={() => (dialog = null)}>Cancel</Button>
-        <Button
-          variant="primary"
-          disabled={d.flow.params.some((p) => !d.values[p.name]?.trim())}
-          onclick={() => {
-            const { flow, values } = d;
-            dialog = null;
-            void run(flow.name, values);
-          }}
-        >
-          Run
-        </Button>
-      </div>
-    </div>
-  </Modal>
+  {@const flow = dialog.flow}
+  <FlowRunDialog
+    {flow}
+    onRun={(values) => {
+      // `{@const}` isn't a one-time snapshot — `flow` re-reads `dialog.flow` on every
+      // access, live, for as long as this block is mounted. Reading `flow.name` here
+      // into a plain local *before* nulling `dialog` is what makes it a real snapshot;
+      // reading it after (or inlining `flow.name` into the runFlowNow call below) would
+      // throw "Cannot read properties of null (reading 'flow')", since by then `flow`
+      // itself evaluates to `dialog.flow` on an already-null `dialog`.
+      const name = flow.name;
+      dialog = null;
+      void runFlowNow(name, values);
+    }}
+    onCancel={() => (dialog = null)}
+  />
 {/if}

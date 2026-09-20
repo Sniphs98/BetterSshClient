@@ -12,13 +12,15 @@
   import SftpPane from './SftpPane.svelte';
   import FileEditor from './FileEditor.svelte';
   import SftpTerminalDrawer from './SftpTerminalDrawer.svelte';
+  import FlowRunDialog from './FlowRunDialog.svelte';
   import { isEditableFile, languageForFile } from './fileEdit';
-  import type { FileEntryDto } from '$lib/bindings';
+  import type { FileEntryDto, FlowDto } from '$lib/bindings';
   import { get } from 'svelte/store';
   import { sessions, type Session } from '$lib/stores/sessions';
   import { hosts } from '$lib/stores/hosts';
   import { sftp, markedEntries, formatBytes, type PaneSide } from '$lib/stores/sftp';
   import { lastError } from '$lib/stores/notifications';
+  import { runFlowNow } from '$lib/stores/automations';
   import {
     sftpOpen,
     sftpList,
@@ -34,7 +36,8 @@
     listLocalDir,
     previewLocalFile,
     readLocalFile,
-    writeLocalFile
+    writeLocalFile,
+    listFlows
   } from '$lib/ipc/commands';
 
   let { session, active }: { session: Session; active: boolean } = $props();
@@ -68,6 +71,14 @@
   let fileEditor = $state<{ side: PaneSide; path: string; language: string; content: string } | null>(
     null
   );
+
+  // "Run flow with this file" (a file's context menu, both panes): once a flow is
+  // picked from the fresh-fetched, file-eligible list, this holds the flow plus the
+  // values to prefill FlowRunDialog with — the clicked file's path in the flow's first
+  // `'text'` param (there's no schema for "this param wants a file", so the first one
+  // is the documented convention), and, for a remote-pane file, this session's host in
+  // the flow's `'host'` param, if it has one — the file already lives on that host.
+  let fileFlowRun = $state<{ flow: FlowDto; initialValues: Record<string, string> } | null>(null);
 
   // Delete is destructive and irreversible (no trash can over SFTP), so — unlike the
   // other mutations here — it asks first. Reads the live `remoteMarked` selection at
@@ -452,7 +463,51 @@
   // SftpPane's oncontextmenu) offers the batch actions rather than just the one entry.
   // The remote side already supports rename/delete via the core; the local side is
   // browse + upload only — there's no local filesystem mutation command (yet).
-  function remoteEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto): ContextMenuItem[] {
+  // Fetches the current Flow library fresh (this tab never keeps its own copy — the
+  // Automations screen may have changed it since) and opens a second-level menu, at the
+  // same spot, listing the ones that can actually take a file: at least one `'text'`
+  // param to hold its path. Selecting one opens FlowRunDialog prefilled (see
+  // fileFlowRun's doc comment) rather than running immediately, so the user still
+  // confirms/adjusts the other values first.
+  async function openFileFlowPicker(
+    side: PaneSide,
+    entry: FileEntryDto,
+    hostName: string | undefined,
+    x: number,
+    y: number
+  ): Promise<void> {
+    let eligible: FlowDto[];
+    try {
+      eligible = (await listFlows()).filter((f) => f.params.some((p) => p.kind === 'text'));
+    } catch (err) {
+      lastError.set(errMsg(err));
+      return;
+    }
+    contextMenu = {
+      side,
+      x,
+      y,
+      items:
+        eligible.length === 0
+          ? [{ label: 'No flows accept a file input yet', onSelect: () => {}, disabled: true }]
+          : eligible.map((flow) => ({
+              label: flow.name,
+              icon: 'play',
+              onSelect: () => {
+                const initialValues: Record<string, string> = {};
+                const textParam = flow.params.find((p) => p.kind === 'text');
+                if (textParam) initialValues[textParam.name] = entry.path;
+                if (hostName) {
+                  const hostParam = flow.params.find((p) => p.kind === 'host');
+                  if (hostParam) initialValues[hostParam.name] = hostName;
+                }
+                fileFlowRun = { flow, initialValues };
+              }
+            }))
+    };
+  }
+
+  function remoteEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto, event: MouseEvent): ContextMenuItem[] {
     const count = remoteMarked.length;
     const files = remoteMarkedFiles.length;
     return [
@@ -460,6 +515,12 @@
       { label: files > 1 ? `Download ${files} files` : 'Download', icon: 'download', onSelect: download, disabled: files === 0 },
       { label: 'Rename', icon: 'edit', onSelect: () => openPrompt('rename'), disabled: !singleRemoteMark },
       { label: count > 1 ? `Delete ${count} items` : 'Delete', icon: 'trash', danger: true, onSelect: () => (deleteConfirm = true), disabled: count === 0 },
+      {
+        label: 'Run flow with this file…',
+        icon: 'play',
+        onSelect: () => void openFileFlowPicker('remote', entry, session.hostName, event.clientX, event.clientY),
+        disabled: entry.isDir
+      },
       { label: 'New folder', icon: 'plus', onSelect: () => openPrompt('mkdir') },
       { label: 'Refresh', icon: 'refresh', onSelect: () => refreshRemote(currentView.remote.path) }
     ];
@@ -472,12 +533,20 @@
     ];
   }
 
-  function localEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto): ContextMenuItem[] {
+  function localEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto, event: MouseEvent): ContextMenuItem[] {
     const marked = markedEntries(currentView.local).length;
     const files = localMarkedFiles.length;
     return [
       { label: 'Open', icon: entry.isDir ? 'folder' : 'file', onSelect: () => openEntry('local', entry), disabled: marked > 1 },
       { label: files > 1 ? `Upload ${files} files` : 'Upload', icon: 'upload', onSelect: upload, disabled: files === 0 },
+      {
+        label: 'Run flow with this file…',
+        icon: 'play',
+        // No host to prefill — this file isn't necessarily on any host yet. A remote
+        // automation's host param is left for the FlowRunDialog's own picker.
+        onSelect: () => void openFileFlowPicker('local', entry, undefined, event.clientX, event.clientY),
+        disabled: entry.isDir
+      },
       { label: 'Refresh', icon: 'refresh', onSelect: () => void refreshLocal(currentView.local.path) }
     ];
   }
@@ -488,7 +557,7 @@
 
   function openEntryContextMenu(side: PaneSide, entry: FileEntryDto, event: MouseEvent): void {
     if (!view) return;
-    const items = side === 'remote' ? remoteEntryMenuItems(view, entry) : localEntryMenuItems(view, entry);
+    const items = side === 'remote' ? remoteEntryMenuItems(view, entry, event) : localEntryMenuItems(view, entry, event);
     contextMenu = { side, x: event.clientX, y: event.clientY, items };
   }
 
@@ -824,6 +893,19 @@
     initialContent={fileEditor.content}
     onSave={saveEditor}
     onClose={closeEditor}
+  />
+{/if}
+
+{#if active && fileFlowRun}
+  <FlowRunDialog
+    flow={fileFlowRun.flow}
+    initialValues={fileFlowRun.initialValues}
+    onRun={(values) => {
+      const name = fileFlowRun?.flow.name;
+      fileFlowRun = null;
+      if (name) void runFlowNow(name, values);
+    }}
+    onCancel={() => (fileFlowRun = null)}
   />
 {/if}
 

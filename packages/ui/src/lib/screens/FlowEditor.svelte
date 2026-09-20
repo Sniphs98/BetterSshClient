@@ -22,21 +22,25 @@
   import { onMount, setContext } from 'svelte';
   import { SvelteFlow, Background, BackgroundVariant, Controls, type Connection } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
-  import type { FlowDto, FlowParamDto, FlowParamKindDto } from '$lib/bindings';
+  import type { AutomationDto, FlowDto, FlowParamDto, FlowParamKindDto } from '$lib/bindings';
   import { Button, Icon } from '$lib/theme';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import { automations, flows } from '$lib/stores/automations';
-  import { listFlows, saveFlow } from '$lib/ipc/commands';
+  import { listAutomations, listFlows, saveAutomation, saveFlow } from '$lib/ipc/commands';
   import { activeEntity } from '$lib/stores/activeEntity';
   import { theme } from '$lib/stores/theme';
   import FlowCanvasNode from './FlowCanvasNode.svelte';
   import FlowStartNode from './FlowStartNode.svelte';
+  import AutomationEditor from './AutomationEditor.svelte';
+  import { formFromAutomation } from './automationForm';
   import {
+    FLOW_NODE_ACTIONS_CONTEXT,
     FLOW_PARAMS_CONTEXT,
     START_NODE_ID,
     type AnyFlowNode,
     type AutomationFlowEdge,
     type AutomationFlowNode,
+    type FlowNodeActionsContext,
     type StartFlowNode
   } from './flowCanvasTypes';
 
@@ -105,6 +109,35 @@
   let error = $state<string | null>(null);
   let saving = $state(false);
   let nameEl = $state<HTMLInputElement>();
+
+  // Editing a node's underlying Automation (its command/kind/timeout, not just this
+  // node's label or wiring) reuses the library's own AutomationEditor modal rather than
+  // a second form — opened via FLOW_NODE_ACTIONS_CONTEXT from FlowCanvasNode's
+  // double-click/edit button. Looked up from the live `automations` store (not
+  // snapshotted onto the node) so the form always shows the current definition.
+  let editingAutomationId = $state<string | null>(null);
+  const editingAutomation = $derived($automations.find((a) => a.id === editingAutomationId) ?? null);
+
+  setContext<FlowNodeActionsContext>(FLOW_NODE_ACTIONS_CONTEXT, {
+    editAutomation: (automationId: string) => {
+      editingAutomationId = automationId;
+    }
+  });
+
+  async function submitAutomationEdit(automation: AutomationDto): Promise<void> {
+    await saveAutomation(automation);
+    automations.set(await listAutomations());
+    // The node's automationName/automationKind are a denormalized snapshot (see
+    // flowCanvasTypes.ts's FlowCanvasNodeData doc comment) — refresh it on the canvas
+    // node(s) using this automation so a rename/re-kind shows immediately without
+    // reopening the flow.
+    canvasNodes = canvasNodes.map((n) =>
+      isAutomationNode(n) && n.data.automationId === automation.id
+        ? { ...n, data: { ...n.data, automationName: automation.name, automationKind: automation.kind } }
+        : n
+    );
+    editingAutomationId = null;
+  }
 
   onMount(() => {
     if (!notFound) nameEl?.focus();
@@ -310,3 +343,13 @@
     </div>
   {/if}
 </section>
+
+{#if editingAutomation}
+  <AutomationEditor
+    mode="edit"
+    id={editingAutomation.id}
+    initial={formFromAutomation(editingAutomation)}
+    onSubmit={submitAutomationEdit}
+    onCancel={() => (editingAutomationId = null)}
+  />
+{/if}

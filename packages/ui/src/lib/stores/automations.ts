@@ -1,5 +1,7 @@
 import { writable } from 'svelte/store';
 import type { AutomationDto, FlowDto, NodeResultDto } from '$lib/bindings';
+import { runFlow } from '$lib/ipc/commands';
+import { lastError } from './notifications';
 
 // The reusable Automation library and the Flows that wire them into a graph, mirroring
 // automations.toml/flows.toml (like `stores/snippets.ts` mirrors snippets.toml).
@@ -39,6 +41,22 @@ export const flowRun = writable<FlowRun | null>(null);
  *  fires, before the first `automation-flow-started` arrives. */
 export function beginFlowRun(flowName: string): void {
   flowRun.set({ flowName, phase: { kind: 'running', nodes: new Map() } });
+}
+
+/** Starts `flowName` with `paramValues`, opening the run-progress panel immediately —
+ *  the one place a run is actually kicked off, shared by the Automations screen's own
+ *  "Run" button and any other entry point (e.g. SFTP's "Run flow with this file"
+ *  context menu item) so both get the same progress-panel and error handling for free.
+ *  Spread `paramValues` into a plain object first: callers often hand this a `$state`
+ *  proxy (a dialog's bound values), and Electron's IPC send uses structured clone,
+ *  which throws "An object could not be cloned" on a proxy. */
+export async function runFlowNow(flowName: string, paramValues: Record<string, string>): Promise<void> {
+  beginFlowRun(flowName);
+  try {
+    await runFlow(flowName, { ...paramValues });
+  } catch (e) {
+    lastError.set(e instanceof Error ? e.message : String(e));
+  }
 }
 
 /** Dismiss the panel. The background run keeps going if it was mid-flight; its

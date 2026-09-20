@@ -213,6 +213,26 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
 
   await progress.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // A node's underlying Automation (its command, kind, timeout — not just this node's
+  // label/wiring) is editable from inside the flow itself: an edit button on the node,
+  // and double-clicking its automation-name row, both reuse the library's own form.
+  await page.getByText('release', { exact: true }).click();
+  const notifyNode = page.locator('.svelte-flow__node', { hasText: 'Notify · local' });
+  await notifyNode.getByRole('button', { name: 'Edit Notify' }).click();
+  const editAutomation = page.getByRole('dialog', { name: 'Edit automation' });
+  await expect(editAutomation).toBeVisible();
+  await editAutomation.getByLabel('Name').fill('Notify v2');
+  await editAutomation.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const renamedNode = page.locator('.svelte-flow__node', { hasText: 'Notify v2 · local' });
+  await expect(renamedNode).toBeVisible();
+
+  await renamedNode.getByTitle('Double-click to edit Notify v2').dblclick();
+  const reopened = page.getByRole('dialog', { name: 'Edit automation' });
+  await expect(reopened).toBeVisible();
+  await reopened.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
 test('a remote automation has no host of its own — the flow asks for one at run time', async ({ page }) => {

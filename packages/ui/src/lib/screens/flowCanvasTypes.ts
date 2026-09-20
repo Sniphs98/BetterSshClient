@@ -50,3 +50,15 @@ export interface FlowParamsContext {
 }
 
 export const FLOW_PARAMS_CONTEXT = 'flow-params';
+
+/** Passed via `setContext(FLOW_NODE_ACTIONS_CONTEXT, …)` from FlowEditor.svelte down to
+ *  FlowCanvasNode.svelte, so a node can ask its parent to open the underlying
+ *  Automation for editing (double-click, or the node's own edit button) without an
+ *  event round-trip through svelte-flow's `data`. FlowEditor owns the dialog because
+ *  the edit form is a page-level Modal, not something a single graph node can render
+ *  itself. */
+export interface FlowNodeActionsContext {
+  editAutomation: (automationId: string) => void;
+}
+
+export const FLOW_NODE_ACTIONS_CONTEXT = 'flow-node-actions';

@@ -163,6 +163,14 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
             }
             case 'sftp_close':
               return Promise.resolve(null);
+            // A minimal Flow library — just enough for the "Run flow with this file"
+            // context menu item (SftpView.svelte) to have something file-eligible (a
+            // `'text'` param) to list and prefill. No `run_flow`/`automation-*` stub:
+            // the feature under test is the prefill, not a full run.
+            case 'list_flows':
+              return Promise.resolve([
+                { name: 'unzip', params: [{ name: 'archive', kind: 'text' }], nodes: [], edges: [] }
+              ]);
             case 'terminal_open': {
               const sid = ++nextTerminal;
               return Promise.resolve(sid);
@@ -402,6 +410,40 @@ test('right-click on empty pane space offers New folder without selecting anythi
 
   await menu.getByRole('menuitem', { name: 'New folder' }).click();
   await expect(page.getByRole('dialog', { name: 'New folder' })).toBeVisible();
+});
+
+test('"Run flow with this file" prefills the clicked file\'s path and this host', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+
+  await remotePane.getByTitle('app.log').click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await menu.getByRole('menuitem', { name: 'Run flow with this file…' }).click();
+
+  // Fetching the flow library is async, so the first menu closes and a second one opens
+  // once it resolves — listing every flow with a `'text'` param to hold the file's path.
+  const flowMenu = page.getByRole('menu');
+  await expect(flowMenu).toBeVisible();
+  await flowMenu.getByRole('menuitem', { name: 'unzip' }).click();
+
+  const runDialog = page.getByRole('dialog', { name: 'Run flow' });
+  await expect(runDialog).toBeVisible();
+  await expect(runDialog.getByRole('textbox')).toHaveValue('/app.log');
+
+  await runDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('"Run flow with this file" is disabled for a directory', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('var')).toBeVisible();
+
+  await remotePane.getByTitle('var').click({ button: 'right' });
+  await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Run flow with this file…' })).toBeDisabled();
 });
 
 test("a host's default path opens the remote pane there instead of the server root", async ({
