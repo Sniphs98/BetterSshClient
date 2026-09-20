@@ -6,6 +6,21 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { defaultHost, type Host, type HostSource } from '../ssh/client.js';
 import { loadHosts, mergeHosts, saveHosts } from './hosts.js';
+import { getSecretCipher, setSecretCipher, type SecretCipher } from './secretCipher.js';
+
+/** A reversible fake cipher — no real crypto needed to prove `saveHosts`/`loadHosts`
+ *  actually route a password through whatever `getSecretCipher()` returns. */
+function fakeCipher(available = true): SecretCipher {
+  return {
+    available,
+    encrypt: (plainText) => Buffer.from(`fake:${plainText}`, 'utf-8'),
+    decrypt: (ciphertext) => {
+      const s = ciphertext.toString('utf-8');
+      if (!s.startsWith('fake:')) throw new Error('not fake-encrypted');
+      return s.slice('fake:'.length);
+    }
+  };
+}
 
 // Ported from crates/omnyssh-core/src/config/mod.rs's #[cfg(test)] module.
 
@@ -90,6 +105,8 @@ describe('hosts.toml I/O', () => {
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
     await rm(tmp, { recursive: true, force: true });
+    // Tests below install a fake cipher — never leak it past the test that set it.
+    setSecretCipher(fakeCipher(false));
   });
 
   it('round-trips fields and filters to manual hosts only', async () => {
@@ -139,9 +156,55 @@ describe('hosts.toml I/O', () => {
     expect(content).not.toContain('password');
   });
 
-  it('persists a password in plaintext', async () => {
+  it('persists a password in plaintext when no cipher is installed (the default)', async () => {
+    expect(getSecretCipher().available).toBe(false);
     await saveHosts([{ ...defaultHost(), name: 'a', password: 'secret' }]);
     const loaded = await loadHosts();
     expect(loaded[0].password).toBe('secret');
+  });
+
+  it('encrypts a password on disk when a cipher is available, and decrypts it back on load', async () => {
+    setSecretCipher(fakeCipher());
+    await saveHosts([{ ...defaultHost(), name: 'a', password: 'secret' }]);
+
+    const raw = await readFile(join(tmp, 'omnyssh', 'hosts.toml'), 'utf-8');
+    expect(raw).not.toContain('secret');
+    expect(raw).toContain('enc:v1:');
+
+    const loaded = await loadHosts();
+    expect(loaded[0].password).toBe('secret');
+  });
+
+  it('still loads a legacy plaintext password even once a cipher is available', async () => {
+    // A hosts.toml from before this feature, or written while encryption was
+    // unavailable — either way, a bare `password = "secret"` with no "enc:v1:"
+    // prefix is already plaintext and must not be run through the cipher.
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const dir = join(tmp, 'omnyssh');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'hosts.toml'), '[[hosts]]\nname = "a"\npassword = "secret"\n');
+
+    setSecretCipher(fakeCipher());
+    const loaded = await loadHosts();
+    expect(loaded[0].password).toBe('secret');
+  });
+
+  it('falls back to plaintext on save when the cipher reports itself unavailable', async () => {
+    setSecretCipher(fakeCipher(false));
+    await saveHosts([{ ...defaultHost(), name: 'a', password: 'secret' }]);
+    const raw = await readFile(join(tmp, 'omnyssh', 'hosts.toml'), 'utf-8');
+    expect(raw).toContain('password = "secret"');
+  });
+
+  it('drops an undecryptable password rather than failing the whole file to load', async () => {
+    // Simulates the OS key having changed (a new machine, a restored profile, …) —
+    // the ciphertext this cipher wrote is no longer valid for it.
+    setSecretCipher(fakeCipher());
+    await saveHosts([{ ...defaultHost(), name: 'a', password: 'secret' }, { ...defaultHost(), name: 'b' }]);
+
+    setSecretCipher({ ...fakeCipher(), decrypt: () => { throw new Error('wrong key'); } });
+    const loaded = await loadHosts();
+    expect(loaded.map((h) => h.name)).toEqual(['a', 'b']);
+    expect(loaded[0].password).toBeUndefined();
   });
 });

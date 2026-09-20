@@ -6,6 +6,7 @@ import type { Host } from '../ssh/client.js';
 import { hostFromToml, hostToToml } from '../ssh/client.js';
 import { appConfigDir, hostsConfigPath, sshConfigPath } from './platform.js';
 import { loadFromFile } from './sshConfig.js';
+import { getSecretCipher } from './secretCipher.js';
 
 /**
  * `hosts.toml` I/O + manual/ssh-config merge. Ported from
@@ -16,12 +17,44 @@ interface HostsFile {
   hosts: Host[];
 }
 
+// A stored password is OS-encrypted via `getSecretCipher()` (see secretCipher.ts) —
+// this prefix on the on-disk string is what tells `decryptFromDisk` a value is
+// ciphertext rather than a legacy (or encryption-unavailable) plaintext password, so
+// it knows whether to run it through the cipher at all.
+const ENCRYPTED_PREFIX = 'enc:v1:';
+
+/** Encrypts `host.password` for disk when a cipher is actually available, leaving it
+ *  as plaintext otherwise (e.g. no OS keyring on this Linux setup) — better to keep
+ *  working than to refuse to save the host at all. */
+function encryptForDisk(host: Host): Host {
+  if (host.password === undefined) return host;
+  const cipher = getSecretCipher();
+  if (!cipher.available) return host;
+  return { ...host, password: ENCRYPTED_PREFIX + cipher.encrypt(host.password).toString('base64') };
+}
+
+/** The inverse of `encryptForDisk`. A value without the prefix is either a
+ *  never-encrypted legacy password (a `hosts.toml` from before this existed) or one
+ *  saved while encryption was unavailable — both already plaintext, nothing to do.
+ *  A value that fails to decrypt (the OS key changed, or this file was copied to a
+ *  different user/machine) drops just that one secret rather than failing the whole
+ *  file to load — the user simply re-enters it. */
+function decryptFromDisk(host: Host): Host {
+  if (host.password === undefined || !host.password.startsWith(ENCRYPTED_PREFIX)) return host;
+  const ciphertext = Buffer.from(host.password.slice(ENCRYPTED_PREFIX.length), 'base64');
+  try {
+    return { ...host, password: getSecretCipher().decrypt(ciphertext) };
+  } catch {
+    return { ...host, password: undefined };
+  }
+}
+
 function parseHostsFile(content: string): HostsFile {
   if (content.trim() === '') return { hosts: [] };
   const raw = parse(content) as { hosts?: unknown };
   if (raw.hosts === undefined) return { hosts: [] };
   if (!Array.isArray(raw.hosts)) throw new Error('hosts.toml: "hosts" must be an array');
-  return { hosts: raw.hosts.map((h) => hostFromToml(h as Record<string, unknown>)) };
+  return { hosts: raw.hosts.map((h) => decryptFromDisk(hostFromToml(h as Record<string, unknown>))) };
 }
 
 /** Loads manually-added hosts from `~/.config/omnyssh/hosts.toml`.
@@ -43,7 +76,7 @@ export async function saveHosts(hosts: Host[]): Promise<void> {
   const path = hostsConfigPath();
 
   const manual = hosts.filter((h) => h.source === 'manual');
-  const content = stringify({ hosts: manual.map(hostToToml) });
+  const content = stringify({ hosts: manual.map((h) => hostToToml(encryptForDisk(h))) });
 
   // Write to a temp file and rename for atomic replacement (avoids a corrupt
   // hosts.toml if the process is interrupted mid-write).
@@ -55,6 +88,10 @@ export async function saveHosts(hosts: Host[]): Promise<void> {
     await rm(tmpPath, { force: true });
     throw err;
   }
+  // Not applied on Windows (no POSIX mode bits) — the encrypted password above is
+  // this platform's actual protection instead: `safeStorage`/DPAPI ties the
+  // ciphertext to the current Windows user account, so even another account
+  // reading this same file can't decrypt it.
   if (process.platform !== 'win32') {
     await chmod(path, 0o600).catch(() => {});
   }

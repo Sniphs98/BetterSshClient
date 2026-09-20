@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
 import { join } from 'node:path';
 
 import { APP_ORIGIN, registerAppProtocolHandler, registerAppScheme } from './appProtocol.js';
@@ -12,6 +12,7 @@ import { registerSystemIpc } from './ipc/system.js';
 import { registerTerminalIpc } from './ipc/terminal.js';
 import { registerUpdateIpc } from './ipc/update.js';
 import { loadAllHosts } from './core/config/hosts.js';
+import { setSecretCipher } from './core/config/secretCipher.js';
 import { GuiState } from './state/guiState.js';
 import { loadWindowGeometry, trackWindowGeometry } from './windowState.js';
 
@@ -85,6 +86,18 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
+  // Backs every stored Host password with OS-level encryption (Windows DPAPI / macOS
+  // Keychain / Linux libsecret) instead of hosts.toml's previous plaintext — must run
+  // before the `loadAllHosts()` a few lines down, and before any IPC handler that
+  // might load/save hosts, so nothing ever reads/writes a password without it.
+  setSecretCipher({
+    get available() {
+      return safeStorage.isEncryptionAvailable();
+    },
+    encrypt: (plainText) => safeStorage.encryptString(plainText),
+    decrypt: (ciphertext) => safeStorage.decryptString(ciphertext)
+  });
+
   registerAppProtocolHandler(join(__dirname, '..', '..', 'ui', 'build'));
 
   registerHostsIpc(ipcMain, state);
