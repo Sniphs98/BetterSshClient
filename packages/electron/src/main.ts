@@ -5,6 +5,8 @@ import { APP_ORIGIN, registerAppProtocolHandler, registerAppScheme } from './app
 import { registerAutomationsIpc } from './ipc/automations.js';
 import { registerHostsIpc } from './ipc/hosts.js';
 import { registerKeySetupIpc } from './ipc/keysetup.js';
+import { registerRdpIpc } from './ipc/rdp.js';
+import { registerRemoteDesktopIpc } from './ipc/remoteDesktop.js';
 import { registerSettingsIpc } from './ipc/settings.js';
 import { registerSftpIpc } from './ipc/sftp.js';
 import { registerSnippetsIpc } from './ipc/snippets.js';
@@ -109,6 +111,8 @@ app.whenReady().then(async () => {
   registerKeySetupIpc(ipcMain, state);
   registerUpdateIpc(ipcMain);
   registerAutomationsIpc(ipcMain, state);
+  registerRemoteDesktopIpc(ipcMain);
+  registerRdpIpc(ipcMain);
 
   // Pre-load the shared host config so the first `list_hosts` paints
   // immediately, before the renderer's own `reload_hosts` call. A load

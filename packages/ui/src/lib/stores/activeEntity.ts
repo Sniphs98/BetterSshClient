@@ -9,6 +9,7 @@ export type ActiveEntity =
   | { kind: 'dashboard' }
   | { kind: 'snippets' }
   | { kind: 'automations' }
+  | { kind: 'remoteDesktop' }
   | { kind: 'settings' }
   | { kind: 'session'; id: number }
   /** A single Flow filling the whole content area — the svelte-flow canvas needs the
@@ -24,6 +25,7 @@ function createActiveEntity() {
     selectDashboard: () => set({ kind: 'dashboard' }),
     selectSnippets: () => set({ kind: 'snippets' }),
     selectAutomations: () => set({ kind: 'automations' }),
+    selectRemoteDesktop: () => set({ kind: 'remoteDesktop' }),
     selectSettings: () => set({ kind: 'settings' }),
     activateSession: (id: number) => set({ kind: 'session', id }),
     selectFlow: (flowName: string | null) => set({ kind: 'flow', flowName })

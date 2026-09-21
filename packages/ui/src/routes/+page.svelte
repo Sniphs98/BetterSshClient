@@ -14,6 +14,7 @@
   import Snippets from '$lib/screens/Snippets.svelte';
   import Automations from '$lib/screens/Automations.svelte';
   import FlowEditor from '$lib/screens/FlowEditor.svelte';
+  import RemoteDesktop from '$lib/screens/RemoteDesktop.svelte';
   import Settings from '$lib/screens/Settings.svelte';
   import TerminalView from '$lib/screens/TerminalView.svelte';
   import SftpView from '$lib/screens/SftpView.svelte';
@@ -33,6 +34,7 @@
     $activeEntity.kind === 'dashboard' ||
       $activeEntity.kind === 'snippets' ||
       $activeEntity.kind === 'automations' ||
+      $activeEntity.kind === 'remoteDesktop' ||
       $activeEntity.kind === 'settings' ||
       $activeEntity.kind === 'flow'
   );
@@ -59,6 +61,8 @@
             <Snippets />
           {:else if $activeEntity.kind === 'automations'}
             <Automations />
+          {:else if $activeEntity.kind === 'remoteDesktop'}
+            <RemoteDesktop />
           {:else if $activeEntity.kind === 'flow'}
             <!-- Keyed so switching between two different flows (or from an existing
                  flow to a fresh "new flow" draft) fully remounts the editor rather

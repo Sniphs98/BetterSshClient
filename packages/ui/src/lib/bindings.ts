@@ -153,6 +153,18 @@ export const commands = {
   },
   async importBundle(): Promise<Result<ImportResultDto | null, CommandError>> {
     return call('import_bundle');
+  },
+  async listRemoteDesktopConnections(): Promise<Result<RemoteDesktopConnectionDto[], CommandError>> {
+    return call('list_remote_desktop_connections');
+  },
+  async saveRemoteDesktopConnection(input: RemoteDesktopConnectionInputDto): Promise<Result<null, CommandError>> {
+    return call('save_remote_desktop_connection', input);
+  },
+  async deleteRemoteDesktopConnection(id: string): Promise<Result<null, CommandError>> {
+    return call('delete_remote_desktop_connection', id);
+  },
+  async rdpLaunch(connectionId: string): Promise<Result<null, CommandError>> {
+    return call('rdp_launch', connectionId);
   }
 };
 
@@ -386,6 +398,35 @@ export type NodeResultDto = {
 export type NodeStatusDto = 'success' | 'failed' | 'skipped';
 /** A single process in the "top processes" panel. */
 export type ProcessDto = { name: string; cpuPercent: number; memPercent: number };
+/** A saved RDP/VNC connection profile as the frontend sees it — password omitted,
+ *  `hasPassword` tells the editor whether one is stored. */
+export type RemoteDesktopConnectionDto = {
+  id: string;
+  name: string;
+  protocol: RemoteDesktopProtocolDto;
+  hostname: string;
+  port: number;
+  username?: string | null;
+  hasPassword: boolean;
+  domain?: string | null;
+  viewOnly?: boolean | null;
+};
+/** Inbound form payload for `save_remote_desktop_connection`. Omitting `password`
+ *  means "keep the stored value" on an edit. */
+export type RemoteDesktopConnectionInputDto = {
+  id: string;
+  name: string;
+  protocol: RemoteDesktopProtocolDto;
+  hostname: string;
+  port: number;
+  username?: string | null;
+  password?: string | null;
+  domain?: string | null;
+  viewOnly?: boolean | null;
+};
+/** Only `'rdp'` is reachable from the UI for now — `'vnc'` exists so a later pass is
+ *  additive, not a migration. */
+export type RemoteDesktopProtocolDto = 'rdp' | 'vnc';
 /** A service detected on a host with its quick-scan metrics. */
 export type ServiceDto = { kind: ServiceKindDto; metrics: ServiceMetricDto[] };
 /** A service kind detected on a host. */

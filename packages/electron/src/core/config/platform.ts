@@ -45,3 +45,7 @@ export function automationsConfigPath(): string {
 export function flowsConfigPath(): string {
   return join(appConfigDir(), 'flows.toml');
 }
+
+export function remoteDesktopConfigPath(): string {
+  return join(appConfigDir(), 'remote-desktop.toml');
+}

@@ -30,4 +30,5 @@ export type IconName =
   | 'automations'
   | 'arrow-left'
   | 'eye'
-  | 'eye-off';
+  | 'eye-off'
+  | 'monitor';

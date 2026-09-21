@@ -7,6 +7,7 @@ import { hostFromToml, hostToToml } from '../ssh/client.js';
 import { appConfigDir, hostsConfigPath, sshConfigPath } from './platform.js';
 import { loadFromFile } from './sshConfig.js';
 import { getSecretCipher } from './secretCipher.js';
+import { decryptSecret, encryptSecret } from './secretField.js';
 
 /**
  * `hosts.toml` I/O + manual/ssh-config merge. Ported from
@@ -17,36 +18,15 @@ interface HostsFile {
   hosts: Host[];
 }
 
-// A stored password is OS-encrypted via `getSecretCipher()` (see secretCipher.ts) —
-// this prefix on the on-disk string is what tells `decryptFromDisk` a value is
-// ciphertext rather than a legacy (or encryption-unavailable) plaintext password, so
-// it knows whether to run it through the cipher at all.
-const ENCRYPTED_PREFIX = 'enc:v1:';
-
-/** Encrypts `host.password` for disk when a cipher is actually available, leaving it
- *  as plaintext otherwise (e.g. no OS keyring on this Linux setup) — better to keep
- *  working than to refuse to save the host at all. */
+/** Encrypts `host.password` for disk via `secretField.ts` (OS-backed, see
+ *  secretCipher.ts), falling back to plaintext when no cipher is available. */
 function encryptForDisk(host: Host): Host {
-  if (host.password === undefined) return host;
-  const cipher = getSecretCipher();
-  if (!cipher.available) return host;
-  return { ...host, password: ENCRYPTED_PREFIX + cipher.encrypt(host.password).toString('base64') };
+  return { ...host, password: encryptSecret(host.password, getSecretCipher()) };
 }
 
-/** The inverse of `encryptForDisk`. A value without the prefix is either a
- *  never-encrypted legacy password (a `hosts.toml` from before this existed) or one
- *  saved while encryption was unavailable — both already plaintext, nothing to do.
- *  A value that fails to decrypt (the OS key changed, or this file was copied to a
- *  different user/machine) drops just that one secret rather than failing the whole
- *  file to load — the user simply re-enters it. */
+/** The inverse of `encryptForDisk`. */
 function decryptFromDisk(host: Host): Host {
-  if (host.password === undefined || !host.password.startsWith(ENCRYPTED_PREFIX)) return host;
-  const ciphertext = Buffer.from(host.password.slice(ENCRYPTED_PREFIX.length), 'base64');
-  try {
-    return { ...host, password: getSecretCipher().decrypt(ciphertext) };
-  } catch {
-    return { ...host, password: undefined };
-  }
+  return { ...host, password: decryptSecret(host.password, getSecretCipher()) };
 }
 
 function parseHostsFile(content: string): HostsFile {

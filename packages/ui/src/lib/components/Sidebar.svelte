@@ -4,6 +4,7 @@
   // sessions list, and the footer (palette + theme toggle, §5.1). The active
   // highlight is the brand's accent inversion, so exactly one filled row — a
   // selector or a session — is visible at any moment (the §2 invariant, made legible).
+  import { get } from 'svelte/store';
   import Logo from './Logo.svelte';
   import ThemeToggle from './ThemeToggle.svelte';
   import { Button, Icon, StatusDot, type IconName } from '$lib/theme';
@@ -16,9 +17,21 @@
     type SessionKind
   } from '$lib/stores/sessions';
   import { sidebarCollapsed } from '$lib/stores/ui';
+  import { sidebarMode, type SidebarMode } from '$lib/stores/sidebarMode';
   import { spawnSession, closeSession } from '$lib/stores/navigation';
   import { palette } from '$lib/stores/palette';
   import { support } from '$lib/stores/support';
+
+  // Flipping the top switch swaps which selector/spawner rows show below it; an open
+  // session (terminal/sftp) is never affected — only a currently-active selector
+  // screen that doesn't exist in the new mode gets redirected to that mode's default.
+  function setMode(mode: SidebarMode): void {
+    sidebarMode.set(mode);
+    const active = get(activeEntity);
+    if (active.kind === 'session') return;
+    if (mode === 'ssh') activeEntity.selectDashboard();
+    else activeEntity.selectRemoteDesktop();
+  }
 
   // Action-first spawn (tech-gui.md §2): a spawner opens the host-picker, then creates
   // a session of its kind for the chosen host. A dismissed picker spawns nothing.
@@ -27,14 +40,16 @@
     if (host) spawnSession(kind, host.name);
   }
 
-  type Selector = { kind: 'dashboard' | 'snippets' | 'automations'; label: string; icon: IconName };
+  type Selector = { kind: 'dashboard' | 'snippets' | 'automations' | 'remoteDesktop'; label: string; icon: IconName };
   type Spawner = { kind: SessionKind; label: string; icon: IconName };
 
-  const selectors: Selector[] = [
+  const sshSelectors: Selector[] = [
     { kind: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
     { kind: 'snippets', label: 'Snippets', icon: 'snippets' },
     { kind: 'automations', label: 'Automations', icon: 'automations' }
   ];
+  const remoteDesktopSelectors: Selector[] = [{ kind: 'remoteDesktop', label: 'Remote Desktop', icon: 'monitor' }];
+  const selectors = $derived($sidebarMode === 'ssh' ? sshSelectors : remoteDesktopSelectors);
   const spawners: Spawner[] = [
     { kind: 'sftp', label: 'SFTP', icon: 'sftp' },
     { kind: 'terminal', label: 'Terminal', icon: 'terminal' }
@@ -69,6 +84,51 @@
 
   <!-- Entry points stay pinned; only the sessions list scrolls (tech-gui.md §2). -->
   <nav class="flex min-h-0 flex-1 flex-col px-2 py-2">
+    <!-- Top switch: swaps the SSH-centric app for the Remote Desktop area below.
+         The open-sessions list further down is unaffected either way. -->
+    <div class="shrink-0 pb-2">
+      {#if $sidebarCollapsed}
+        <button
+          type="button"
+          class="{rowBase} {focusRing} justify-center text-muted hover:bg-surface-inset hover:text-fg"
+          title={$sidebarMode === 'ssh' ? 'Switch to Remote Desktop' : 'Switch to SSH'}
+          onclick={() => setMode($sidebarMode === 'ssh' ? 'remoteDesktop' : 'ssh')}
+        >
+          <Icon name={$sidebarMode === 'ssh' ? 'monitor' : 'terminal'} />
+        </button>
+      {:else}
+        <!-- Each segment is aria-labelled "Switch to …" rather than taking its name
+             from the visible text: the Remote Desktop segment would otherwise share an
+             accessible name with the selector row of the same label below it, leaving a
+             screen reader with two identically-announced buttons that do different
+             things. -->
+        <div class="grid grid-cols-2 gap-1 rounded-lg bg-surface-inset p-1 text-xs font-medium">
+          <button
+            type="button"
+            class="rounded-md px-2 py-1.5 transition {focusRing} {$sidebarMode === 'ssh'
+              ? 'bg-accent text-accent-fg'
+              : 'text-muted hover:text-fg'}"
+            aria-label="Switch to SSH"
+            aria-current={$sidebarMode === 'ssh' ? 'true' : undefined}
+            onclick={() => setMode('ssh')}
+          >
+            SSH
+          </button>
+          <button
+            type="button"
+            class="rounded-md px-2 py-1.5 transition {focusRing} {$sidebarMode === 'remoteDesktop'
+              ? 'bg-accent text-accent-fg'
+              : 'text-muted hover:text-fg'}"
+            aria-label="Switch to Remote Desktop"
+            aria-current={$sidebarMode === 'remoteDesktop' ? 'true' : undefined}
+            onclick={() => setMode('remoteDesktop')}
+          >
+            Remote Desktop
+          </button>
+        </div>
+      {/if}
+    </div>
+
     <ul class="shrink-0 space-y-1">
       {#each selectors as sel (sel.kind)}
         <li>
@@ -82,7 +142,8 @@
             onclick={() => {
               if (sel.kind === 'dashboard') activeEntity.selectDashboard();
               else if (sel.kind === 'snippets') activeEntity.selectSnippets();
-              else activeEntity.selectAutomations();
+              else if (sel.kind === 'automations') activeEntity.selectAutomations();
+              else activeEntity.selectRemoteDesktop();
             }}
           >
             <Icon name={sel.icon} />
@@ -90,19 +151,21 @@
           </button>
         </li>
       {/each}
-      {#each spawners as sp (sp.kind)}
-        <li>
-          <button
-            type="button"
-            class="{rowBase} {focusRing} {rowState(false)} {$sidebarCollapsed ? 'justify-center' : ''}"
-            title={sp.label}
-            onclick={() => pickAndSpawn(sp.kind)}
-          >
-            <Icon name={sp.icon} />
-            {#if !$sidebarCollapsed}<span class="truncate">{sp.label}</span>{/if}
-          </button>
-        </li>
-      {/each}
+      {#if $sidebarMode === 'ssh'}
+        {#each spawners as sp (sp.kind)}
+          <li>
+            <button
+              type="button"
+              class="{rowBase} {focusRing} {rowState(false)} {$sidebarCollapsed ? 'justify-center' : ''}"
+              title={sp.label}
+              onclick={() => pickAndSpawn(sp.kind)}
+            >
+              <Icon name={sp.icon} />
+              {#if !$sidebarCollapsed}<span class="truncate">{sp.label}</span>{/if}
+            </button>
+          </li>
+        {/each}
+      {/if}
     </ul>
 
     {#if $sessions.length > 0}

@@ -9,6 +9,8 @@ import type {
   HostDto,
   HostInputDto,
   ImportResultDto,
+  RemoteDesktopConnectionDto,
+  RemoteDesktopConnectionInputDto,
   SnippetDto,
   TerminalBytes,
   UpdateConfigDto,
@@ -320,4 +322,31 @@ export async function importBundle(): Promise<ImportResultDto | null> {
   const res = await commands.importBundle();
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
+}
+
+/** Read the saved RDP/VNC connection profiles. */
+export async function listRemoteDesktopConnections(): Promise<RemoteDesktopConnectionDto[]> {
+  const res = await commands.listRemoteDesktopConnections();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Upsert one connection by id and persist the whole list. */
+export async function saveRemoteDesktopConnection(input: RemoteDesktopConnectionInputDto): Promise<void> {
+  const res = await commands.saveRemoteDesktopConnection(input);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Delete the connection with this id. */
+export async function deleteRemoteDesktopConnection(id: string): Promise<void> {
+  const res = await commands.deleteRemoteDesktopConnection(id);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Launches the connection's native RDP client (mstsc/xfreerdp/the OS's registered
+ *  .rdp handler) as its own external window. Fire-and-forget — resolves once the
+ *  client process has been asked to start, not once the user is actually connected. */
+export async function rdpLaunch(connectionId: string): Promise<void> {
+  const res = await commands.rdpLaunch(connectionId);
+  if (res.status === 'error') throw new Error(res.error.message);
 }

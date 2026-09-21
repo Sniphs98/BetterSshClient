@@ -8,6 +8,7 @@ import { normalizeMonitorMode } from './core/ssh/client.js';
 import type { Snippet } from './core/config/snippets.js';
 import type { Automation, AutomationKind, Flow, FlowParam, FlowParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
+import type { RemoteDesktopConnection, RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
 import type { ConnectionStatus, Metrics } from './event.js';
 import type { ProcessInfo } from './core/ssh/metrics.js';
 import type { DetectedService, ServiceKind, ServiceMetric } from './core/ssh/services/types.js';
@@ -214,6 +215,68 @@ export interface CommandError {
 
 export function toCommandError(err: unknown): CommandError {
   return { message: err instanceof Error ? err.message : String(err) };
+}
+
+export type RemoteDesktopProtocolDto = RemoteDesktopProtocol;
+
+/** A saved RDP/VNC connection profile as the frontend sees it — password omitted,
+ *  `hasPassword` tells the editor whether one is stored (mirrors `HostDto.hasKey`). */
+export interface RemoteDesktopConnectionDto {
+  id: string;
+  name: string;
+  protocol: RemoteDesktopProtocolDto;
+  hostname: string;
+  port: number;
+  username?: string;
+  hasPassword: boolean;
+  domain?: string;
+  viewOnly?: boolean;
+}
+
+/** Inbound form payload for `save_remote_desktop_connection`. `password` arrives here
+ *  but never travels back out on `RemoteDesktopConnectionDto`; omitted means "keep the
+ *  stored value" on an edit (see `upsertRemoteDesktopConnection`). */
+export interface RemoteDesktopConnectionInputDto {
+  id: string;
+  name: string;
+  protocol: RemoteDesktopProtocolDto;
+  hostname: string;
+  port: number;
+  username?: string;
+  password?: string;
+  domain?: string;
+  viewOnly?: boolean;
+}
+
+export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection): RemoteDesktopConnectionDto {
+  return {
+    id: connection.id,
+    name: connection.name,
+    protocol: connection.protocol,
+    hostname: connection.hostname,
+    port: connection.port,
+    username: connection.username,
+    hasPassword: connection.password !== undefined,
+    domain: connection.domain,
+    viewOnly: connection.viewOnly
+  };
+}
+
+/** Builds a `RemoteDesktopConnection` from an inbound form payload. No prior record to
+ *  preserve fields from — see `upsertRemoteDesktopConnection` in
+ *  `ipc/remoteDesktop.ts` for the edit-in-place path. */
+export function remoteDesktopConnectionFromInputDto(input: RemoteDesktopConnectionInputDto): RemoteDesktopConnection {
+  return {
+    id: input.id,
+    name: input.name,
+    protocol: input.protocol,
+    hostname: input.hostname,
+    port: input.port,
+    username: input.username,
+    password: input.password,
+    domain: input.domain,
+    viewOnly: input.viewOnly
+  };
 }
 
 // ---------------------------------------------------------------------------
