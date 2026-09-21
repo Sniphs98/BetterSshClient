@@ -11,11 +11,11 @@ import {
 import type { Snippet, Automation, AutomationNode, AutomationParam, NodeResult } from './types.js';
 
 function snippet(partial: Partial<Snippet> & Pick<Snippet, 'id' | 'name'>): Snippet {
-  return { kind: 'local', command: 'echo hi', timeoutSecs: 30, ...partial };
+  return { command: 'echo hi', timeoutSecs: 30, ...partial };
 }
 
 function node(partial: Partial<AutomationNode> & Pick<AutomationNode, 'id' | 'snippetId'>): AutomationNode {
-  return { label: partial.id, continueOnError: false, ...partial };
+  return { label: partial.id, continueOnError: false, target: 'local', ...partial };
 }
 
 function automation(nodes: AutomationNode[], edges: Array<[string, string]> = [], params: AutomationParam[] = []): Automation {
@@ -72,8 +72,8 @@ describe('topoOrder', () => {
 
 describe('validateAutomation', () => {
   const snippetsById = new Map<string, Snippet>([
-    ['local-x', snippet({ id: 'local-x', name: 'Local X', kind: 'local' })],
-    ['remote-y', snippet({ id: 'remote-y', name: 'Remote Y', kind: 'remote' })]
+    ['local-x', snippet({ id: 'local-x', name: 'Local X' })],
+    ['remote-y', snippet({ id: 'remote-y', name: 'Remote Y' })]
   ]);
 
   it('is empty for a valid automation', () => {
@@ -82,7 +82,7 @@ describe('validateAutomation', () => {
   });
 
   it('is empty for a valid automation with a remote node and a host parameter', () => {
-    const f = automation([node({ id: 'a', snippetId: 'remote-y' })], [], hostParam);
+    const f = automation([node({ id: 'a', snippetId: 'remote-y', target: 'remote' })], [], hostParam);
     expect(validateAutomation(f, snippetsById)).toEqual([]);
   });
 
@@ -92,7 +92,7 @@ describe('validateAutomation', () => {
   });
 
   it('flags a remote node when the automation has no host parameter', () => {
-    const f = automation([node({ id: 'a', snippetId: 'remote-y' })]);
+    const f = automation([node({ id: 'a', snippetId: 'remote-y', target: 'remote' })]);
     expect(validateAutomation(f, snippetsById).some((p) => p.includes('no host parameter'))).toBe(true);
   });
 
@@ -121,14 +121,14 @@ describe('validateAutomation', () => {
   });
 
   it('flags a command referencing an unknown parameter', () => {
-    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: '{{params.ghost}}' });
+    const referencing = snippet({ id: 'ref', name: 'Ref', command: '{{params.ghost}}' });
     const byId = new Map(snippetsById).set('ref', referencing);
     const f = automation([node({ id: 'a', snippetId: 'ref' })]);
     expect(validateAutomation(f, byId).some((p) => p.includes('unknown parameter'))).toBe(true);
   });
 
   it('accepts a command referencing a declared parameter, from any node (params are automation-wide)', () => {
-    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: 'echo {{params.version}}' });
+    const referencing = snippet({ id: 'ref', name: 'Ref', command: 'echo {{params.version}}' });
     const byId = new Map(snippetsById).set('ref', referencing);
     const f = automation([node({ id: 'a', snippetId: 'local-x' }), node({ id: 'b', snippetId: 'ref' })], [], [{ name: 'version', kind: 'text' }]);
     expect(validateAutomation(f, byId)).toEqual([]);
@@ -140,7 +140,7 @@ describe('validateAutomation', () => {
   });
 
   it('flags a template reference to a label that is not a direct predecessor', () => {
-    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.a.output}}' });
+    const referencing = snippet({ id: 'ref', name: 'Ref', command: '{{nodes.a.output}}' });
     const byId = new Map(snippetsById).set('ref', referencing);
     // b references "a"'s output but there is no edge a -> b.
     const f = automation([node({ id: 'a', snippetId: 'local-x' }), node({ id: 'b', snippetId: 'ref' })]);
@@ -148,14 +148,14 @@ describe('validateAutomation', () => {
   });
 
   it('accepts a template reference to a direct predecessor', () => {
-    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.a.output}}' });
+    const referencing = snippet({ id: 'ref', name: 'Ref', command: '{{nodes.a.output}}' });
     const byId = new Map(snippetsById).set('ref', referencing);
     const f = automation([node({ id: 'a', snippetId: 'local-x' }), node({ id: 'b', snippetId: 'ref' })], [['a', 'b']]);
     expect(validateAutomation(f, byId)).toEqual([]);
   });
 
   it('flags a template reference to an unknown label', () => {
-    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.ghost.output}}' });
+    const referencing = snippet({ id: 'ref', name: 'Ref', command: '{{nodes.ghost.output}}' });
     const byId = new Map(snippetsById).set('ref', referencing);
     const f = automation([node({ id: 'a', snippetId: 'ref' })]);
     expect(validateAutomation(f, byId).some((p) => p.includes('unknown label'))).toBe(true);
@@ -360,9 +360,9 @@ describe('runAutomation', () => {
 
   it('substitutes a predecessor output into a remote node command', async () => {
     const local = snippet({ id: 'local', name: 'Local', command: 'echo build-123' });
-    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote', command: 'deploy {{nodes.build.output}}' });
+    const remote = snippet({ id: 'remote', name: 'Remote', command: 'deploy {{nodes.build.output}}' });
     const f = automation(
-      [node({ id: 'n1', snippetId: 'local', label: 'build' }), node({ id: 'n2', snippetId: 'remote', label: 'deploy' })],
+      [node({ id: 'n1', snippetId: 'local', label: 'build' }), node({ id: 'n2', snippetId: 'remote', label: 'deploy', target: 'remote' })],
       [['n1', 'n2']],
       hostParam
     );
@@ -390,8 +390,8 @@ describe('runAutomation', () => {
   });
 
   it('substitutes a text parameter into a remote node command alongside the resolved host', async () => {
-    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote', command: 'deploy --version {{params.version}}' });
-    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a' })], [], [...hostParam, { name: 'version', kind: 'text' }]);
+    const remote = snippet({ id: 'remote', name: 'Remote', command: 'deploy --version {{params.version}}' });
+    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a', target: 'remote' })], [], [...hostParam, { name: 'version', kind: 'text' }]);
     const seenCommands: string[] = [];
     const seenHosts: string[] = [];
     await runAutomation(
@@ -416,9 +416,9 @@ describe('runAutomation', () => {
   });
 
   it('reuses one connection per host across multiple nodes targeting it', async () => {
-    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const remote = snippet({ id: 'remote', name: 'Remote' });
     const f = automation(
-      [node({ id: 'n1', snippetId: 'remote', label: 'a' }), node({ id: 'n2', snippetId: 'remote', label: 'b' })],
+      [node({ id: 'n1', snippetId: 'remote', label: 'a', target: 'remote' }), node({ id: 'n2', snippetId: 'remote', label: 'b', target: 'remote' })],
       [],
       hostParam
     );
@@ -440,10 +440,10 @@ describe('runAutomation', () => {
   });
 
   it('disconnects opened connections even if a later node throws unexpectedly', async () => {
-    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const remote = snippet({ id: 'remote', name: 'Remote' });
     const local = snippet({ id: 'local', name: 'Local' });
     const f = automation(
-      [node({ id: 'n1', snippetId: 'remote', label: 'a' }), node({ id: 'n2', snippetId: 'local', label: 'b' })],
+      [node({ id: 'n1', snippetId: 'remote', label: 'a', target: 'remote' }), node({ id: 'n2', snippetId: 'local', label: 'b' })],
       [],
       hostParam
     );
@@ -466,8 +466,8 @@ describe('runAutomation', () => {
   });
 
   it('reports a failed connectHost as a failed node result rather than throwing', async () => {
-    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote' });
-    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a' })], [], hostParam);
+    const remote = snippet({ id: 'remote', name: 'Remote' });
+    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a', target: 'remote' })], [], hostParam);
     const results = await runAutomation(
       f,
       new Map([['remote', remote]]),
@@ -483,8 +483,8 @@ describe('runAutomation', () => {
   });
 
   it('fails a remote node (rather than throwing) when the automation has a host parameter but no value was supplied', async () => {
-    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote' });
-    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a' })], [], hostParam);
+    const remote = snippet({ id: 'remote', name: 'Remote' });
+    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a', target: 'remote' })], [], hostParam);
     const results = await runAutomation(f, new Map([['remote', remote]]), {}, deps());
     expect(results[0].status).toBe('failed');
     expect(results[0].error).toMatch(/no host parameter value/);

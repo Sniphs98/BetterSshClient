@@ -171,6 +171,14 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
               return Promise.resolve([
                 { name: 'unzip', params: [{ name: 'archive', kind: 'text' }], nodes: [], edges: [] }
               ]);
+            // The Snippet library behind "Run snippet with this file" — one snippet that
+            // wants the clicked path, one that ignores it (both are offered, since a
+            // snippet without the placeholder still runs in the current directory).
+            case 'list_snippets':
+              return Promise.resolve([
+                { id: 's1', name: 'extract', command: 'tar -xf {{file}}', timeoutSecs: 300 },
+                { id: 's2', name: 'disk free', command: 'df -h', timeoutSecs: 300 }
+              ]);
             case 'terminal_open': {
               const sid = ++nextTerminal;
               return Promise.resolve(sid);
@@ -555,4 +563,49 @@ test('Open falls back to a read-only preview for a binary file the editor refuse
 
   await expect(page.getByRole('dialog', { name: 'File preview' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Edit /photo.png' })).toHaveCount(0);
+});
+
+test('"Run snippet with this file" types the command into the drawer terminal, path substituted', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+
+  await remotePane.getByTitle('app.log').click({ button: 'right' });
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Run snippet with this file…' }).click();
+
+  // The library is fetched async, so a second menu replaces the first. A snippet that
+  // uses the file says so, which is how the user tells the two apart.
+  const snippetMenu = page.getByRole('menu');
+  await expect(snippetMenu.getByRole('menuitem', { name: 'disk free' })).toBeVisible();
+  await snippetMenu.getByRole('menuitem', { name: 'extract (uses this file)' }).click();
+
+  // Picking it opens the drawer (one gesture) and runs the command there, after the
+  // drawer's own `cd` — with the clicked path shell-quoted in place of {{file}}.
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands))
+    .toContain("tar -xf '/app.log'");
+});
+
+test('a snippet without the file placeholder still runs, in the current directory', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+
+  await remotePane.getByTitle('app.log').click({ button: 'right' });
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Run snippet with this file…' }).click();
+  const snippetMenu = page.getByRole('menu');
+  await expect(snippetMenu.getByRole('menuitem', { name: 'disk free' })).toBeVisible();
+  await snippetMenu.getByRole('menuitem', { name: 'disk free' }).click();
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands))
+    .toContain('df -h');
+
+  // The drawer cd's into the pane's directory first, so "current directory" is honest.
+  const commands = await page.evaluate(() =>
+    (window as unknown as { __terminalCommands: string[] }).__terminalCommands
+  );
+  expect(commands.some((c) => c.startsWith('cd '))).toBe(true);
 });

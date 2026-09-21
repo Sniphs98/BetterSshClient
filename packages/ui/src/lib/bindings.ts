@@ -242,7 +242,6 @@ export const events = makeEvents<EventMap>(EVENT_CHANNELS);
 export type SnippetDto = {
   id: string;
   name: string;
-  kind: SnippetKindDto;
   command: string;
   timeoutSecs: number;
 };
@@ -253,8 +252,9 @@ export type AutomationCompleted = { automationName: string; results: NodeResultD
 export type AutomationFailed = { automationName: string; error: string };
 /** An automation run started. */
 export type AutomationStarted = { automationName: string };
-/** Whether a Snippet runs locally or against a specific remote host. */
-export type SnippetKindDto = 'local' | 'remote';
+/** Where a node's snippet runs: on this machine, or on the host the automation's
+ *  `'host'` param resolves at run time. */
+export type NodeTargetDto = 'local' | 'remote';
 /** One node's result within a running automation. */
 export type AutomationNodeResult = NodeResultDto & { automationName: string };
 /** A node started executing. */
@@ -293,6 +293,7 @@ export type AutomationNodeDto = {
   snippetId: string;
   label: string;
   continueOnError: boolean;
+  target: NodeTargetDto;
   position?: { x: number; y: number } | null;
 };
 /** A value collected from the "run this automation" prompt rather than baked into any node

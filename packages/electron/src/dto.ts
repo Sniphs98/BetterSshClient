@@ -5,7 +5,7 @@
 
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
-import type { Snippet, SnippetKind, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
+import type { Snippet, NodeTarget, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
 import type { RemoteDesktopConnection, RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
 import type { ConnectionStatus, Metrics } from './event.js';
@@ -103,12 +103,11 @@ export function hostFromInputDto(input: HostInputDto): Host {
   };
 }
 
-export type SnippetKindDto = SnippetKind;
+export type NodeTargetDto = NodeTarget;
 
 export interface SnippetDto {
   id: string;
   name: string;
-  kind: SnippetKindDto;
   command: string;
   timeoutSecs: number;
 }
@@ -126,6 +125,7 @@ export interface AutomationNodeDto {
   snippetId: string;
   label: string;
   continueOnError: boolean;
+  target: NodeTargetDto;
   position?: { x: number; y: number };
 }
 

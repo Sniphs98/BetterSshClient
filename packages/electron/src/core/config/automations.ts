@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { parse, stringify } from 'smol-toml';
 
 import { automationsConfigPath } from './platform.js';
-import type { Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind } from '../automation/types.js';
+import type { Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind, NodeTarget } from '../automation/types.js';
 
 /** `automations.toml` I/O — Automations wire Snippets (loaded separately, from
  *  `snippets.ts`/`snippets.toml`) together into a graph. Mirrors
@@ -18,6 +18,8 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
   if (typeof raw.id !== 'string') throw new Error(`automation "${automationName}" has a node missing "id"`);
   if (typeof raw.snippetId !== 'string') throw new Error(`automation "${automationName}" node "${raw.id}" is missing "snippetId"`);
   if (typeof raw.label !== 'string') throw new Error(`automation "${automationName}" node "${raw.id}" is missing "label"`);
+  const target: NodeTarget | undefined = raw.target === 'local' ? 'local' : raw.target === 'remote' ? 'remote' : undefined;
+  if (target === undefined) throw new Error(`automation "${automationName}" node "${raw.id}" has an invalid target`);
   const position =
     raw.position !== undefined && typeof raw.position === 'object' && raw.position !== null
       ? (raw.position as { x?: unknown; y?: unknown })
@@ -27,6 +29,7 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
     snippetId: raw.snippetId,
     label: raw.label,
     continueOnError: raw.continueOnError === true,
+    target,
     position:
       position !== undefined && typeof position.x === 'number' && typeof position.y === 'number'
         ? { x: position.x, y: position.y }
@@ -39,7 +42,8 @@ function automationNodeToToml(node: AutomationNode): Record<string, unknown> {
     id: node.id,
     snippetId: node.snippetId,
     label: node.label,
-    continueOnError: node.continueOnError
+    continueOnError: node.continueOnError,
+    target: node.target
   };
   if (node.position !== undefined) out.position = { x: node.position.x, y: node.position.y };
   return out;

@@ -230,7 +230,6 @@
                 {:else if item.kind === 'snippet'}
                   <Icon name="automations" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">{item.snippet.name}</span>
-                  <Chip>{item.snippet.kind === 'remote' ? 'remote' : 'local'}</Chip>
                 {:else}
                   <Icon name="plus" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">New snippet…</span>

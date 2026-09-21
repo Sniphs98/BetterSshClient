@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Snippet, SnippetKind, Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind } from './types.js';
+import type { Snippet, NodeTarget, Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind } from './types.js';
 
 /**
  * Export/import file format for sharing a single Snippet or Automation between people or
@@ -88,12 +88,9 @@ function arr(v: unknown, ctx: string): unknown[] {
 
 function parseSnippet(raw: unknown, ctx: string): Snippet {
   const o = obj(raw, ctx);
-  const kind: SnippetKind | undefined = o.kind === 'local' ? 'local' : o.kind === 'remote' ? 'remote' : undefined;
-  if (kind === undefined) throw new Error(`${ctx}.kind: must be "local" or "remote"`);
   return {
     id: str(o.id, `${ctx}.id`),
     name: str(o.name, `${ctx}.name`),
-    kind,
     command: str(o.command, `${ctx}.command`),
     timeoutSecs: num(o.timeoutSecs, `${ctx}.timeoutSecs`)
   };
@@ -101,6 +98,8 @@ function parseSnippet(raw: unknown, ctx: string): Snippet {
 
 function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
   const o = obj(raw, ctx);
+  const target: NodeTarget | undefined = o.target === 'local' ? 'local' : o.target === 'remote' ? 'remote' : undefined;
+  if (target === undefined) throw new Error(`${ctx}.target: must be "local" or "remote"`);
   let position: { x: number; y: number } | undefined;
   if (o.position !== undefined && o.position !== null) {
     const p = obj(o.position, `${ctx}.position`);
@@ -111,6 +110,7 @@ function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
     snippetId: str(o.snippetId, `${ctx}.snippetId`),
     label: str(o.label, `${ctx}.label`),
     continueOnError: bool(o.continueOnError, `${ctx}.continueOnError`),
+    target,
     position
   };
 }

@@ -23,8 +23,8 @@ function automation(overrides: Partial<Automation> = {}): Automation {
     name: 'deploy',
     params: [],
     nodes: [
-      { id: 'n1', snippetId: 'a1', label: 'build', continueOnError: false },
-      { id: 'n2', snippetId: 'a2', label: 'deploy', continueOnError: true }
+      { id: 'n1', snippetId: 'a1', label: 'build', continueOnError: false, target: 'local'},
+      { id: 'n2', snippetId: 'a2', label: 'deploy', continueOnError: true, target: 'local'}
     ],
     edges: [{ from: 'n1', to: 'n2' }],
     ...overrides
@@ -60,7 +60,7 @@ describe('saveAutomations / loadAutomations round trip', () => {
   });
 
   it('round-trips a node position', async () => {
-    const original = [automation({ nodes: [{ id: 'n1', snippetId: 'a1', label: 'build', continueOnError: false, position: { x: 12, y: 34 } }] })];
+    const original = [automation({ nodes: [{ id: 'n1', snippetId: 'a1', label: 'build', continueOnError: false, target: 'local', position: { x: 12, y: 34 } }] })];
     await saveAutomations(original, path);
     expect(await loadAutomations(path)).toEqual(original);
   });

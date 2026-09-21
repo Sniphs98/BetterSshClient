@@ -10,7 +10,6 @@
   import type { SnippetDto } from '$lib/bindings';
   import { Button } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
-  import Select from '$lib/components/Select.svelte';
   import { formToSnippet, type SnippetFormFields } from './snippetForm';
 
   let {
@@ -80,19 +79,10 @@
         <input bind:this={nameEl} bind:value={fields.name} class={field} placeholder="Build image" />
       </label>
 
-      <div class="grid grid-cols-2 gap-3">
-        <label class={label}>
-          <span>Runs</span>
-          <Select bind:value={fields.kind} class={field}>
-            <option value="local">locally</option>
-            <option value="remote">on a remote host</option>
-          </Select>
-        </label>
-        <label class={label}>
-          <span>Timeout (seconds)</span>
-          <input bind:value={fields.timeoutSecs} inputmode="numeric" class={field} placeholder="300" />
-        </label>
-      </div>
+      <label class={label}>
+        <span>Timeout (seconds)</span>
+        <input bind:value={fields.timeoutSecs} inputmode="numeric" class={field} placeholder="300" />
+      </label>
 
       <label class={label}>
         <span>Command</span>
@@ -106,11 +96,8 @@
       <p class="text-[11px] text-faint">
         Reference an upstream node's output as {'{{nodes.<label>.output}}'} once this
         snippet is placed in an automation with an edge into it from that node, or an automation
-        parameter's value as {'{{params.<name>}}'}.
-        {#if fields.kind === 'remote'}
-          This snippet runs on whichever host the automation is run with — add a host
-          parameter to the automation if it doesn't have one yet.
-        {/if}
+        parameter's value as {'{{params.<name>}}'}. Whether this runs on this machine or
+        on a host is set per node in the automation, so the same snippet works either way.
       </p>
 
       {#if error}

@@ -97,7 +97,7 @@
           label: n.label,
           continueOnError: n.continueOnError,
           snippetName: snippet?.name ?? 'unknown snippet',
-          snippetKind: snippet?.kind ?? 'local'
+          target: n.target
         }
       };
     })
@@ -128,7 +128,7 @@
    *  drop's flow coordinates (`null` for the toolbar's "+" button, which just appends
    *  at a default grid spot), `wireFrom` is the node the drag started at (`null` for
    *  the "+" button — nothing to wire). Shared by every way a node gets added. */
-  interface NodeTarget {
+  interface NodePlacement {
     position: { x: number; y: number } | null;
     wireFrom: string | null;
   }
@@ -136,7 +136,7 @@
   // The "+ New snippet…" row inside the picker — opens the same add-snippet form
   // the library screen uses; on save, the new Snippet is placed as a node using the
   // `target` it was opened with (still known here, carried over from that call).
-  let newSnippetDialog = $state<{ id: string; target: NodeTarget } | null>(null);
+  let newSnippetDialog = $state<{ id: string; placement: NodePlacement } | null>(null);
   let error = $state<string | null>(null);
   let saving = $state(false);
   let nameEl = $state<HTMLInputElement>();
@@ -160,46 +160,47 @@
     snippets.set(await listSnippets());
     // The node's snippetName/snippetKind are a denormalized snapshot (see
     // automationCanvasTypes.ts's SnippetNodeData doc comment) — refresh it on the canvas
-    // node(s) using this snippet so a rename/re-kind shows immediately without
+    // node(s) using this snippet so a rename shows immediately without
     // reopening the automation.
     canvasNodes = canvasNodes.map((n) =>
       isSnippetNode(n) && n.data.snippetId === snippet.id
-        ? { ...n, data: { ...n.data, snippetName: snippet.name, snippetKind: snippet.kind } }
+        ? { ...n, data: { ...n.data, snippetName: snippet.name } }
         : n
     );
     editingSnippetId = null;
   }
 
-  /** Places `snippet` as a new node — at `target.position` if given (a drag-to-empty
-   *  drop), otherwise the default append-to-grid spot — and, if `target.wireFrom` names
+  /** Places `snippet` as a new node — at `placement.position` if given (a drag-to-empty
+   *  drop), otherwise the default append-to-grid spot — and, if `placement.wireFrom` names
    *  a node, wires an edge from it to the new node (a real dependency edge, unless
    *  `wireFrom` is the Start node, in which case it's the decorative `startLinkEdge`
    *  instead — see that function's doc comment). Shared by every way a node gets added:
    *  the toolbar's "+" menu, the drag-to-empty popup, and creating a brand new
    *  Snippet from either of those. */
-  function addSnippetNode(snippet: SnippetDto, target: NodeTarget): void {
+  function addSnippetNode(snippet: SnippetDto, placement: NodePlacement): void {
     const id = crypto.randomUUID();
     canvasNodes = [
       ...canvasNodes,
       {
         id,
         type: 'snippet',
-        position: target.position ?? layoutPosition(canvasNodes.filter(isSnippetNode).length),
+        position: placement.position ?? layoutPosition(canvasNodes.filter(isSnippetNode).length),
         data: {
           snippetId: snippet.id,
           label: uniqueLabel(snippet.name),
           continueOnError: false,
           snippetName: snippet.name,
-          snippetKind: snippet.kind
+          // A new node runs locally until the user flips it on the node itself.
+          target: 'local' as const
         }
       }
     ];
-    if (target.wireFrom) {
+    if (placement.wireFrom) {
       canvasEdges = [
         ...canvasEdges,
-        target.wireFrom === START_NODE_ID
+        placement.wireFrom === START_NODE_ID
           ? startLinkEdge(id)
-          : { id: `${target.wireFrom}->${id}`, source: target.wireFrom, target: id }
+          : { id: `${placement.wireFrom}->${id}`, source: placement.wireFrom, target: id }
       ];
     }
   }
@@ -210,9 +211,9 @@
     // Read before nulling: `newSnippetDialog` is a plain $state variable (not a
     // reactive `{@const}` alias), so this is a real snapshot — see Snippets.svelte's
     // note on why the order matters for a value read inside a callback like this one.
-    const target = newSnippetDialog?.target ?? { position: null, wireFrom: null };
+    const placement = newSnippetDialog?.placement ?? { position: null, wireFrom: null };
     newSnippetDialog = null;
-    addSnippetNode(snippet, target);
+    addSnippetNode(snippet, placement);
   }
 
   onMount(() => {
@@ -262,18 +263,18 @@
 
   /** Opens the shared Snippet picker (⌘K's own overlay, in `pickSnippet` mode —
    *  the same "centered over everything" component the SFTP/host spawners already use
-   *  for "pick a host") for either the toolbar's "+" button (`target` all-null) or a
-   *  drag-to-empty drop (`target` carrying where/what to wire). Picking an existing
+   *  for "pick a host") for either the toolbar's "+" button (`placement` all-null) or a
+   *  drag-to-empty drop (`placement` carrying where/what to wire). Picking an existing
    *  Snippet places it immediately; picking "New snippet…" opens the add form
    *  first and places it once that's saved (see `submitNewSnippet`). */
-  async function openSnippetPicker(target: NodeTarget): Promise<void> {
+  async function openSnippetPicker(placement: NodePlacement): Promise<void> {
     const result = await palette.pickSnippet();
     if (result === null) return;
     if (result === 'new') {
-      newSnippetDialog = { id: crypto.randomUUID(), target };
+      newSnippetDialog = { id: crypto.randomUUID(), placement };
       return;
     }
-    addSnippetNode(result, target);
+    addSnippetNode(result, placement);
   }
 
   /** A dependency edge: connecting from a node's source (right) handle to another's
@@ -364,6 +365,7 @@
         snippetId: n.data.snippetId,
         label: n.data.label.trim(),
         continueOnError: n.data.continueOnError,
+        target: n.data.target,
         position: { x: n.position.x, y: n.position.y }
       })),
       edges: realEdges.map((e) => ({ from: e.source, to: e.target })),

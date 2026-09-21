@@ -11,11 +11,11 @@ import {
 import type { Snippet, Automation, AutomationNode } from './types.js';
 
 function snippet(partial: Partial<Snippet> & Pick<Snippet, 'id' | 'name'>): Snippet {
-  return { kind: 'local', command: 'echo hi', timeoutSecs: 30, ...partial };
+  return { command: 'echo hi', timeoutSecs: 30, ...partial };
 }
 
 function node(partial: Partial<AutomationNode> & Pick<AutomationNode, 'id' | 'snippetId'>): AutomationNode {
-  return { label: partial.id, continueOnError: false, ...partial };
+  return { label: partial.id, continueOnError: false, target: 'local', ...partial };
 }
 
 function automation(partial: Partial<Automation> & Pick<Automation, 'nodes'>): Automation {
@@ -63,7 +63,7 @@ describe('parseBundle', () => {
     const f = automation({
       name: 'release',
       params: [{ name: 'version', kind: 'text', label: 'Version', default: 'latest' }],
-      nodes: [{ id: 'n1', snippetId: 'a1', label: 'build', continueOnError: true, position: { x: 12, y: 34 } }],
+      nodes: [{ id: 'n1', snippetId: 'a1', label: 'build', continueOnError: true, target: 'local', position: { x: 12, y: 34 } }],
       startLinks: ['n1']
     });
     const bundle = buildAutomationBundle(f, new Map([['a1', a]]));
@@ -81,7 +81,7 @@ describe('parseBundle', () => {
 
   it('rejects a snippet bundle missing a required field', () => {
     expect(() => parseBundle({ kind: 'omnyssh-snippet', version: 1, snippet: { id: 'a1', name: 'Build' } })).toThrow(
-      /snippet\.kind/
+      /snippet\.command/
     );
   });
 
@@ -89,7 +89,7 @@ describe('parseBundle', () => {
     const raw = {
       kind: 'omnyssh-automation',
       version: 1,
-      automation: { name: 'f', params: [], edges: [], nodes: [{ id: 'n1', snippetId: 'a1', label: 'x' }] },
+      automation: { name: 'f', params: [], edges: [], nodes: [{ id: 'n1', snippetId: 'a1', label: 'x', target: 'local' }] },
       snippets: []
     };
     expect(() => parseBundle(raw)).toThrow(/continueOnError/);

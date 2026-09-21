@@ -33,6 +33,22 @@
     '"FiraCode Nerd Font Mono", "FiraCode Nerd Font"';
   const ENCODER = new TextEncoder();
 
+  // Set when a command arrives before the shell exists; flushed right after the
+  // opening `cd`. Only ever one — a second pick before the first has even connected
+  // replaces it rather than queueing a pile-up the user didn't ask for.
+  let queuedCommand: string | undefined;
+
+  /** Types `command` into this shell as if the user had, then presses Enter. Used by
+   *  SftpView's "run a snippet here" — the drawer may still be connecting, so this
+   *  queues rather than dropping the command. */
+  export function runCommand(command: string): void {
+    if (termId == null) {
+      queuedCommand = command;
+      return;
+    }
+    sendInput(ENCODER.encode(`${command}\n`));
+  }
+
   let writeChain: Promise<void> = Promise.resolve();
   function sendInput(bytes: Uint8Array): void {
     if (termId == null || bytes.length === 0) return;
@@ -125,6 +141,13 @@
       // Queued by the pty until the shell is ready to read it — no race with the
       // shell's own startup (same reasoning a `ssh host 'cd X && bash'` relies on).
       sendInput(ENCODER.encode(`cd ${shellQuote(cwd)}\n`));
+      // A snippet the user picked while this shell was still connecting (opening the
+      // drawer and running are one gesture — see SftpView's runSnippetHere), sent
+      // after the cd so it runs in the directory they were looking at.
+      if (queuedCommand !== undefined) {
+        sendInput(ENCODER.encode(`${queuedCommand}\n`));
+        queuedCommand = undefined;
+      }
 
       term.onData((data) => sendInput(ENCODER.encode(data)));
       term.onBinary((data) => sendInput(Uint8Array.from(data, (ch) => ch.charCodeAt(0) & 0xff)));

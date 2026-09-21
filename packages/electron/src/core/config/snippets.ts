@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { parse, stringify } from 'smol-toml';
 
 import { snippetsConfigPath } from './platform.js';
-import type { Snippet, SnippetKind } from '../automation/types.js';
+import type { Snippet } from '../automation/types.js';
 
 /** `snippets.toml` I/O — the reusable Snippet library (Automations live separately,
  *  in `automations.ts`/`automations.toml`). */
@@ -16,14 +16,11 @@ interface SnippetsFile {
 function snippetFromToml(raw: Record<string, unknown>): Snippet {
   if (typeof raw.id !== 'string') throw new Error('snippet is missing "id"');
   if (typeof raw.name !== 'string') throw new Error(`snippet "${raw.id}" is missing "name"`);
-  const kind: SnippetKind | undefined = raw.kind === 'local' ? 'local' : raw.kind === 'remote' ? 'remote' : undefined;
-  if (kind === undefined) throw new Error(`snippet "${raw.name}" has an invalid kind`);
   if (typeof raw.command !== 'string') throw new Error(`snippet "${raw.name}" is missing "command"`);
   if (typeof raw.timeoutSecs !== 'number') throw new Error(`snippet "${raw.name}" is missing "timeoutSecs"`);
   return {
     id: raw.id,
     name: raw.name,
-    kind,
     command: raw.command,
     timeoutSecs: raw.timeoutSecs
   };
@@ -33,7 +30,6 @@ function snippetToToml(snippet: Snippet): Record<string, unknown> {
   return {
     id: snippet.id,
     name: snippet.name,
-    kind: snippet.kind,
     command: snippet.command,
     timeoutSecs: snippet.timeoutSecs
   };

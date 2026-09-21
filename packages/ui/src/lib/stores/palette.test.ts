@@ -23,7 +23,7 @@ function session(id: number, hostName: string, kind: Session['kind'] = 'terminal
 }
 
 function snippet(name: string, extra: Partial<SnippetDto> = {}): SnippetDto {
-  return { id: name, name, kind: 'local', command: 'echo hi', timeoutSecs: 300, ...extra };
+  return { id: name, name, command: 'echo hi', timeoutSecs: 300, ...extra };
 }
 
 describe('paletteItems — filter & sections', () => {
@@ -66,14 +66,14 @@ describe('paletteItems — filter & sections', () => {
   });
 
   it('snippet picker always leads with the pinned "new" row, then matching snippets', () => {
-    const snippets = [snippet('Build'), snippet('Deploy', { kind: 'remote' })];
+    const snippets = [snippet('Build'), snippet('Deploy')];
     const items = paletteItems('pickSnippet', [], [], snippets, '');
     expect(items.map((i) => i.kind)).toEqual(['newSnippet', 'snippet', 'snippet']);
   });
 
-  it('snippet picker filters by name and kind, but the "new" row always survives', () => {
-    const snippets = [snippet('Build'), snippet('Deploy', { kind: 'remote' })];
-    const items = paletteItems('pickSnippet', [], [], snippets, 'remote');
+  it('snippet picker filters by name, but the "new" row always survives', () => {
+    const snippets = [snippet('Build'), snippet('Deploy')];
+    const items = paletteItems('pickSnippet', [], [], snippets, 'deploy');
     expect(items.map((i) => i.kind)).toEqual(['newSnippet', 'snippet']);
     expect(items[1]).toMatchObject({ kind: 'snippet', snippet: { name: 'Deploy' } });
   });

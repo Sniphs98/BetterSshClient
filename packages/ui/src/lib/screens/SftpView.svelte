@@ -5,7 +5,7 @@
   // sftp_* commands, and reads its per-session state from the sftp store (fed by the
   // `sftp-*` events, §3.4). Local browsing uses list_local_dir (returns directly);
   // remote uses sftp_list (arrives as an event). Semantic tokens only (§5.1).
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { Button, Icon } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
@@ -14,7 +14,7 @@
   import SftpTerminalDrawer from './SftpTerminalDrawer.svelte';
   import AutomationRunDialog from './AutomationRunDialog.svelte';
   import { isEditableFile, languageForFile } from './fileEdit';
-  import type { FileEntryDto, AutomationDto } from '$lib/bindings';
+  import type { FileEntryDto, AutomationDto, SnippetDto } from '$lib/bindings';
   import { get } from 'svelte/store';
   import { sessions, type Session } from '$lib/stores/sessions';
   import { hosts } from '$lib/stores/hosts';
@@ -37,8 +37,10 @@
     previewLocalFile,
     readLocalFile,
     writeLocalFile,
-    listAutomations
+    listAutomations,
+    listSnippets
   } from '$lib/ipc/commands';
+  import { fillFilePlaceholder, usesFilePlaceholder } from './snippetPlaceholders';
 
   let { session, active }: { session: Session; active: boolean } = $props();
 
@@ -91,6 +93,10 @@
   // component does (the whole SFTP tab's life, §3.2), same as everything else here.
   let hideLocal = $state(false);
   let showTerminal = $state(false);
+  // Bound to the drawer while it's mounted, so "Run snippet here" can hand it a
+  // command. The drawer queues internally if it is still connecting, which is the
+  // normal case when the same click both opens it and runs something.
+  let terminalDrawer = $state<{ runCommand: (command: string) => void } | undefined>();
   const MIN_TERMINAL_HEIGHT = 140;
   const MAX_TERMINAL_HEIGHT = 640;
   let terminalHeight = $state(260);
@@ -507,6 +513,42 @@
     };
   }
 
+  /** Offers the Snippet library for this file, then types the chosen command into the
+   *  drawer terminal on this host — opening the drawer first if it's closed, so one
+   *  click both reveals the shell and runs the thing. `{{file}}` in the command becomes
+   *  the clicked path; snippets without it just run in the current directory, which is
+   *  why they're offered too rather than filtered out. Remote pane only: the drawer is
+   *  a shell *on the host*, so a local path would mean nothing in it. */
+  async function openFileSnippetPicker(entry: FileEntryDto, x: number, y: number): Promise<void> {
+    let snippets: SnippetDto[];
+    try {
+      snippets = await listSnippets();
+    } catch (err) {
+      lastError.set(errMsg(err));
+      return;
+    }
+    contextMenu = {
+      side: 'remote',
+      x,
+      y,
+      items:
+        snippets.length === 0
+          ? [{ label: 'No snippets saved yet', onSelect: () => {}, disabled: true }]
+          : snippets.map((snippet) => ({
+              label: usesFilePlaceholder(snippet.command) ? `${snippet.name} (uses this file)` : snippet.name,
+              icon: 'play' as const,
+              onSelect: () => {
+                const command = fillFilePlaceholder(snippet.command, entry.path);
+                showTerminal = true;
+                // `bind:this` is only populated once the drawer has actually mounted,
+                // which is after this tick — the drawer then queues the command itself
+                // until its shell finishes connecting.
+                void tick().then(() => terminalDrawer?.runCommand(command));
+              }
+            }))
+    };
+  }
+
   function remoteEntryMenuItems(currentView: NonNullable<typeof view>, entry: FileEntryDto, event: MouseEvent): ContextMenuItem[] {
     const count = remoteMarked.length;
     const files = remoteMarkedFiles.length;
@@ -519,6 +561,12 @@
         label: 'Run automation with this file…',
         icon: 'play',
         onSelect: () => void openFileAutomationPicker('remote', entry, session.hostName, event.clientX, event.clientY),
+        disabled: entry.isDir
+      },
+      {
+        label: 'Run snippet with this file…',
+        icon: 'play',
+        onSelect: () => void openFileSnippetPicker(entry, event.clientX, event.clientY),
         disabled: entry.isDir
       },
       { label: 'New folder', icon: 'plus', onSelect: () => openPrompt('mkdir') },
@@ -797,7 +845,7 @@
                open, to run its initial `cd` (see SftpTerminalDrawer's doc comment) —
                remounting on every later navigation would kill whatever the user is
                running in there each time they browse a different folder. -->
-          <SftpTerminalDrawer hostName={session.hostName} cwd={view.remote.path} />
+          <SftpTerminalDrawer bind:this={terminalDrawer} hostName={session.hostName} cwd={view.remote.path} />
         </div>
       </div>
     {/if}

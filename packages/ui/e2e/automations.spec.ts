@@ -79,21 +79,21 @@ async function boot(page: Page): Promise<void> {
             // the real merge/parse logic is covered by bundle.test.ts on the electron
             // side; this just exercises the renderer's "refresh after import" wiring.
             const id = `imported-${state.snippets.length + 1}`;
-            state.snippets.push({ id, name: 'Imported', kind: 'local', command: 'echo imported', timeoutSecs: 300 });
+            state.snippets.push({ id, name: 'Imported', command: 'echo imported', timeoutSecs: 300 });
             return Promise.resolve({ kind: 'snippet', name: 'Imported' });
           }
           case 'run_automation': {
             const automationName = args[0] as string;
             const paramValues = (args[1] as Record<string, string>) ?? {};
             const automation = state.automations.find((f) => f.name === automationName) as
-              | { nodes: Array<{ id: string; snippetId: string; label: string; continueOnError: boolean }>; edges: Array<{ from: string; to: string }> }
+              | { nodes: Array<{ id: string; snippetId: string; label: string; continueOnError: boolean; target: string }>; edges: Array<{ from: string; to: string }> }
               | undefined;
             if (!automation) {
               setTimeout(() => fire('automation-failed', { automationName, error: 'automation not found' }), 0);
               return Promise.resolve(null);
             }
             const snippetsById = new Map(state.snippets.map((a) => [a.id as string, a]));
-            const needsHost = automation.nodes.some((n) => snippetsById.get(n.snippetId)?.kind === 'remote');
+            const needsHost = automation.nodes.some((n) => n.target === 'remote');
             if (needsHost && !paramValues.host) {
               setTimeout(() => fire('automation-failed', { automationName, error: 'missing host parameter value' }), 0);
               return Promise.resolve(null);
@@ -120,7 +120,7 @@ async function boot(page: Page): Promise<void> {
                 const snippet = snippetsById.get(node.snippetId);
                 const command = (snippet?.command as string) ?? '';
                 const ok = !command.includes('exit 1');
-                const isRemote = snippet?.kind === 'remote';
+                const isRemote = node.target === 'remote';
                 const result = {
                   nodeId: node.id,
                   label: node.label,
@@ -252,18 +252,18 @@ test('build snippets, wire an automation, run it, and see success/failed/skipped
   await progress.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // A node's underlying Snippet (its command, kind, timeout — not just this node's
+  // A node's underlying Snippet (its command and timeout — not just this node's
   // label/wiring) is editable from inside the automation itself: an edit button on the node,
   // and double-clicking its snippet-name row, both reuse the library's own form.
   await page.getByText('release', { exact: true }).click();
-  const notifyNode = page.locator('.svelte-flow__node', { hasText: 'Notify · local' });
+  const notifyNode = page.locator('.svelte-flow__node', { hasText: 'Notify' });
   await notifyNode.getByRole('button', { name: 'Edit Notify' }).click();
   const editSnippet = page.getByRole('dialog', { name: 'Edit snippet' });
   await expect(editSnippet).toBeVisible();
   await editSnippet.getByLabel('Name').fill('Notify v2');
   await editSnippet.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  const renamedNode = page.locator('.svelte-flow__node', { hasText: 'Notify v2 · local' });
+  const renamedNode = page.locator('.svelte-flow__node', { hasText: 'Notify v2' });
   await expect(renamedNode).toBeVisible();
 
   await renamedNode.getByTitle('Double-click to edit Notify v2').dblclick();
@@ -296,7 +296,7 @@ test('connecting the Start node to a snippet node is a cosmetic link — dashed,
   // The Start node has one source handle (no target) — connecting it to Build's target
   // handle draws a "params automation in from here" line, purely visual.
   const startNode = page.locator('.svelte-flow__node', { hasText: 'Start' });
-  const buildNode = page.locator('.svelte-flow__node', { hasText: 'Build · local' });
+  const buildNode = page.locator('.svelte-flow__node', { hasText: 'Build' });
   await startNode.locator('.svelte-flow__handle.source').click();
   await buildNode.locator('.svelte-flow__handle.target').click();
   await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
@@ -321,7 +321,7 @@ test('connecting the Start node to a snippet node is a cosmetic link — dashed,
   await expect(page.locator('.svelte-flow__edge-path')).toHaveAttribute('style', /stroke-dasharray/);
 });
 
-test('a remote snippet has no host of its own — the automation asks for one at run time', async ({ page }) => {
+test('a node set to run on a host carries no host itself — the automation asks for one at run time', async ({ page }) => {
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
@@ -330,9 +330,10 @@ test('a remote snippet has no host of its own — the automation asks for one at
   await page.getByRole('button', { name: 'New snippet' }).first().click();
   const snippetEditor = page.getByRole('dialog', { name: 'New snippet' });
   await snippetEditor.getByLabel('Name').fill('Deploy');
-  await snippetEditor.getByLabel('Runs').selectOption('remote');
-  // No host field should appear on the snippet itself.
+  // Neither a host nor a local/remote choice belongs on the snippet any more — both
+  // are the placing node's concern.
   await expect(snippetEditor.getByText('Host', { exact: true })).toHaveCount(0);
+  await expect(snippetEditor.getByLabel('Runs')).toHaveCount(0);
   await snippetEditor.getByLabel('Command').fill('echo deployed');
   await snippetEditor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -360,6 +361,13 @@ test('a remote snippet has no host of its own — the automation asks for one at
 
   await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
   await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Deploy/ }).click();
+
+  // A node runs locally until it's flipped — where it runs is the node's call now,
+  // so this is what makes the automation need the host parameter at all.
+  const deployNode = page.locator('.svelte-flow__node', { hasText: 'Deploy' });
+  await expect(deployNode.getByRole('button', { name: 'local' })).toHaveAttribute('aria-pressed', 'true');
+  await deployNode.getByRole('button', { name: 'on host' }).click();
+  await expect(deployNode.getByRole('button', { name: 'on host' })).toHaveAttribute('aria-pressed', 'true');
 
   await page.getByRole('button', { name: 'Create automation' }).click();
   await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
@@ -410,7 +418,7 @@ test('the "+" menu can create a brand new snippet inline and drops it straight o
 
   // The new Snippet landed both in the library and as a node on this canvas —
   // no need to reopen the "+" menu and pick it a second time.
-  await expect(page.locator('.svelte-flow__node', { hasText: 'Provision · local' })).toBeVisible();
+  await expect(page.locator('.svelte-flow__node', { hasText: 'Provision' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Create automation' }).click();
   await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
@@ -442,7 +450,7 @@ test('dragging a connection out to empty canvas space offers the snippet picker 
   // re-fit, which a raw mouse drag (unlike `.click()`) won't auto-scroll to reach.
   await page.getByRole('button', { name: 'Fit View' }).click();
 
-  const buildNode = page.locator('.svelte-flow__node', { hasText: 'Build · local' });
+  const buildNode = page.locator('.svelte-flow__node', { hasText: 'Build' });
   const handle = buildNode.locator('.svelte-flow__handle.source');
   const handleBox = await handle.boundingBox();
   const paneBox = await page.locator('.svelte-flow__pane').boundingBox();
@@ -466,7 +474,7 @@ test('dragging a connection out to empty canvas space offers the snippet picker 
   // A second "Build" node, wired from the first one by a real dependency edge — this
   // is the one case where a drag-to-empty connection IS a real AutomationEdge (source is an
   // snippet node, not Start).
-  await expect(page.locator('.svelte-flow__node', { hasText: 'Build · local' })).toHaveCount(2);
+  await expect(page.locator('.svelte-flow__node', { hasText: 'Build' })).toHaveCount(2);
   await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
   await expect(page.locator('.svelte-flow__edge-path')).not.toHaveAttribute('style', /stroke-dasharray/);
 });

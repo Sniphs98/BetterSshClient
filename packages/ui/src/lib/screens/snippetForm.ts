@@ -1,29 +1,26 @@
 // Pure Snippet form + validation logic, kept free of Svelte components so it's
 // unit-testable; `SnippetEditor.svelte` renders it. Mirrors `hostForm.ts`'s shape
 // (raw string fields, a `formToSnippet` result union) and its numeric-field
-// validation style (`timeoutSecs`, like `hostForm.ts`'s `port`). No host field here —
-// a `kind: 'remote'` snippet's target is resolved at run time from the *automation*'s
-// host parameter, not baked into the snippet, so the same snippet runs
-// identically against whichever host that automation is run with this time.
+// validation style (`timeoutSecs`, like `hostForm.ts`'s `port`). No host or local/remote
+// field here — where a snippet runs is the placing node's call (`AutomationNode.target`),
+// and a remote node's host comes from the automation's host parameter at run time.
 
-import type { SnippetDto, SnippetKindDto } from '$lib/bindings';
+import type { SnippetDto } from '$lib/bindings';
 
 export interface SnippetFormFields {
   name: string;
-  kind: SnippetKindDto;
   command: string;
   timeoutSecs: string;
 }
 
 export function emptyForm(): SnippetFormFields {
-  return { name: '', kind: 'local', command: '', timeoutSecs: '300' };
+  return { name: '', command: '', timeoutSecs: '300' };
 }
 
 /** Seed the edit form from an `SnippetDto`. */
 export function formFromSnippet(a: SnippetDto): SnippetFormFields {
   return {
     name: a.name,
-    kind: a.kind,
     command: a.command,
     timeoutSecs: String(a.timeoutSecs)
   };
@@ -52,6 +49,6 @@ export function formToSnippet(f: SnippetFormFields, id: string): SnippetFormResu
 
   return {
     ok: true,
-    snippet: { id, name, kind: f.kind, command, timeoutSecs }
+    snippet: { id, name, command, timeoutSecs }
   };
 }

@@ -1,9 +1,9 @@
 import type { Edge, Node } from '@xyflow/svelte';
-import type { SnippetKindDto, AutomationParamDto, AutomationParamKindDto } from '$lib/bindings';
+import type { NodeTargetDto, AutomationParamDto, AutomationParamKindDto } from '$lib/bindings';
 
 // The svelte-flow canvas's node/edge shapes for the Automation graph editor — denormalized
 // from AutomationNodeDto/AutomationEdgeDto (see AutomationEditor.svelte) so the canvas never has to look
-// a snippet up mid-render: `snippetName`/`snippetKind` are snapshotted onto
+// a snippet up mid-render: `snippetName` is snapshotted onto
 // the node's data when it's added or the editor opens, the same way the old
 // checkbox-list editor read them once per render from `$snippets`.
 export interface SnippetNodeData extends Record<string, unknown> {
@@ -11,7 +11,8 @@ export interface SnippetNodeData extends Record<string, unknown> {
   label: string;
   continueOnError: boolean;
   snippetName: string;
-  snippetKind: SnippetKindDto;
+  /** Where this placement runs — the node's own call, not the snippet's. */
+  target: NodeTargetDto;
 }
 
 export type SnippetNode = Node<SnippetNodeData, 'snippet'>;

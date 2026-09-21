@@ -1,11 +1,11 @@
 <script lang="ts">
   // One Snippet placed into an Automation, rendered on the svelte-flow canvas
-  // (AutomationEditor.svelte). Editing happens right on the node — label text and the
-  // continueOnError toggle — via `useSvelteFlow().updateNodeData`, which mutates the
+  // (AutomationEditor.svelte). Editing happens right on the node — label text, where it
+  // runs, and the continueOnError toggle — via `useSvelteFlow().updateNodeData`, which mutates the
   // `nodes` array `bind:nodes` in AutomationEditor, so the parent needs no event plumbing.
   // Interactive elements carry `nodrag`/`nopan` (svelte-flow's escape hatch) so typing
   // or clicking them doesn't start a node drag or a canvas pan. Editing the underlying
-  // *Snippet* (its command, kind, timeout — not just this node's label/wiring) opens
+  // *Snippet* (its command and timeout — not just this node's label/target/wiring) opens
   // the same SnippetEditor form the library screen uses, via double-click or the
   // edit button — see AUTOMATION_NODE_ACTIONS_CONTEXT.
   import { getContext } from 'svelte';
@@ -75,7 +75,29 @@
       }
     }}
   >
-    {data.snippetName} · {data.snippetKind}
+    {data.snippetName}
+  </div>
+
+  <!-- Where this placement runs. On the node rather than on the Snippet, so the same
+       snippet can be a local step in one automation and a remote one in another. -->
+  <div class="nodrag nopan flex items-center gap-1.5 text-[11px] text-muted">
+    <span class="shrink-0">Runs</span>
+    <div class="ml-auto grid grid-cols-2 gap-0.5 rounded bg-surface-inset p-0.5">
+      {#each [{ value: 'local', label: 'local', title: 'Runs on this machine' }, { value: 'remote', label: 'on host', title: "Runs on the host chosen when the automation runs (its host parameter)" }] as option (option.value)}
+        <button
+          type="button"
+          class="rounded px-1.5 py-0.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus {data.target ===
+          option.value
+            ? 'bg-accent text-accent-fg'
+            : 'hover:text-fg'}"
+          title={option.title}
+          aria-pressed={data.target === option.value}
+          onclick={() => updateNodeData(id, { target: option.value })}
+        >
+          {option.label}
+        </button>
+      {/each}
+    </div>
   </div>
 
   <label class="nodrag flex items-center gap-1.5 text-[11px] text-muted">

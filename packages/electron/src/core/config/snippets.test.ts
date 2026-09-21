@@ -19,7 +19,7 @@ afterEach(async () => {
 });
 
 function snippet(overrides: Partial<Snippet> = {}): Snippet {
-  return { id: 'a1', name: 'Build', kind: 'local', command: 'npm run build', timeoutSecs: 300, ...overrides };
+  return { id: 'a1', name: 'Build', command: 'npm run build', timeoutSecs: 300, ...overrides };
 }
 
 describe('loadSnippets', () => {
@@ -42,9 +42,15 @@ describe('loadSnippets', () => {
     await expect(loadSnippets(path)).rejects.toThrow(/missing "id"/);
   });
 
-  it('rejects an invalid kind', async () => {
-    await writeFile(path, '[[snippets]]\nid = "a"\nname = "x"\nkind = "javascript"\ncommand = "x"\ntimeoutSecs = 1\n', 'utf-8');
-    await expect(loadSnippets(path)).rejects.toThrow(/invalid kind/);
+  it('rejects a snippet with no command', async () => {
+    await writeFile(path, '[[snippets]]\nid = "a"\nname = "x"\ntimeoutSecs = 1\n', 'utf-8');
+    await expect(loadSnippets(path)).rejects.toThrow(/missing "command"/);
+  });
+
+  it('ignores a legacy "kind" field — where a snippet runs is the placing node\'s call now', async () => {
+    await writeFile(path, '[[snippets]]\nid = "a"\nname = "x"\nkind = "remote"\ncommand = "x"\ntimeoutSecs = 1\n', 'utf-8');
+    const loaded = await loadSnippets(path);
+    expect(loaded[0]).toEqual({ id: 'a', name: 'x', command: 'x', timeoutSecs: 1 });
   });
 });
 
@@ -56,7 +62,7 @@ describe('saveSnippets / loadSnippets round trip', () => {
   });
 
   it('round-trips a remote snippet (no host — that is an automation-level parameter now)', async () => {
-    const original = [snippet({ id: 'a2', kind: 'remote', command: 'docker ps' })];
+    const original = [snippet({ id: 'a2', command: 'docker ps' })];
     await saveSnippets(original, path);
     expect(await loadSnippets(path)).toEqual(original);
   });

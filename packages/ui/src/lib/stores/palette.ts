@@ -29,7 +29,7 @@ function sessionHaystack(s: Session): string {
 }
 
 function snippetHaystack(a: SnippetDto): string {
-  return `${a.name} ${a.kind}`.toLowerCase();
+  return a.name.toLowerCase();
 }
 
 // All whitespace-separated tokens must appear (AND), so "web prod" narrows to a host

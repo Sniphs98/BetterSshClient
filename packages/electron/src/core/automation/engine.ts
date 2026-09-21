@@ -109,9 +109,9 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
   }
   if (hostParamCount > 1) problems.push('an automation can have at most one host parameter');
 
-  const hasRemoteNode = automation.nodes.some((n) => snippetsById.get(n.snippetId)?.kind === 'remote');
+  const hasRemoteNode = automation.nodes.some((n) => n.target === 'remote');
   if (hasRemoteNode && hostParamCount === 0) {
-    problems.push('this automation runs a remote snippet but has no host parameter — add one so a host can be chosen when the automation runs');
+    problems.push('this automation has a node set to run on a host but no host parameter — add one so a host can be chosen when the automation runs');
   }
 
   for (const edge of automation.edges) {
@@ -240,8 +240,8 @@ export async function runAutomation(
         continue;
       }
       const nodeHostName = hostParam ? paramValues[hostParam.name] : undefined;
-      if (snippet.kind === 'remote' && !nodeHostName) {
-        settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'remote snippet but the automation has no host parameter value', durationMs: 0 });
+      if (node.target === 'remote' && !nodeHostName) {
+        settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'node runs on a host but the automation has no host parameter value', durationMs: 0 });
         continue;
       }
 
@@ -261,7 +261,7 @@ export async function runAutomation(
       let exec: { output: string; ok: boolean; error?: string };
       try {
         const command = substituteTemplate(snippet.command, predecessorsByLabel, paramValues);
-        if (snippet.kind === 'local') {
+        if (node.target === 'local') {
           exec = await deps.runLocal(command, timeoutMs);
         } else {
           const hostName = nodeHostName!;

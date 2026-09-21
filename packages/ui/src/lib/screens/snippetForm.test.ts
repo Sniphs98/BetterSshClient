@@ -21,23 +21,21 @@ describe('formToSnippet', () => {
     });
   });
 
-  it('builds a local snippet with a trimmed name/command and the given id', () => {
+  it('builds a snippet with a trimmed name/command and the given id', () => {
     const r = formToSnippet(fields({ name: ' Build ', command: ' echo hi ' }), 'id1');
     expect(r.ok && r.snippet).toEqual({
       id: 'id1',
       name: 'Build',
-      kind: 'local',
       command: 'echo hi',
       timeoutSecs: 300
     });
   });
 
-  it('builds a remote snippet with no host field — that is resolved by the automation at run time', () => {
-    const r = formToSnippet(fields({ name: 'Deploy', command: 'docker ps', kind: 'remote' }), 'id2');
+  it('builds a snippet with no host and no local/remote field — the placing node decides that', () => {
+    const r = formToSnippet(fields({ name: 'Deploy', command: 'docker ps' }), 'id2');
     expect(r.ok && r.snippet).toEqual({
       id: 'id2',
       name: 'Deploy',
-      kind: 'remote',
       command: 'docker ps',
       timeoutSecs: 300
     });
@@ -60,15 +58,15 @@ describe('formToSnippet', () => {
 });
 
 describe('formFromSnippet', () => {
-  it('round-trips a local snippet', () => {
-    const original: SnippetDto = { id: 'id1', name: 'Build', kind: 'local', command: 'npm run build', timeoutSecs: 60 };
+  it('round-trips a snippet', () => {
+    const original: SnippetDto = { id: 'id1', name: 'Build', command: 'npm run build', timeoutSecs: 60 };
     const f = formFromSnippet(original);
     const r = formToSnippet(f, original.id);
     expect(r.ok && r.snippet).toEqual(original);
   });
 
-  it('round-trips a remote snippet', () => {
-    const original: SnippetDto = { id: 'id1', name: 'Deploy', kind: 'remote', command: 'docker ps', timeoutSecs: 60 };
+  it('round-trips a snippet with a multi-word name', () => {
+    const original: SnippetDto = { id: 'id1', name: 'Deploy to prod', command: 'docker ps', timeoutSecs: 60 };
     const f = formFromSnippet(original);
     const r = formToSnippet(f, original.id);
     expect(r.ok && r.snippet).toEqual(original);
