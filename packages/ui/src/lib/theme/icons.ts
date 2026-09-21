@@ -6,7 +6,6 @@ export type IconName =
   | 'command'
   | 'search'
   | 'dashboard'
-  | 'snippets'
   | 'sftp'
   | 'terminal'
   | 'close'

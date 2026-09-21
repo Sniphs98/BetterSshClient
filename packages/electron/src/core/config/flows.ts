@@ -8,7 +8,7 @@ import type { Flow, FlowEdge, FlowNode, FlowParam, FlowParamKind } from '../auto
 
 /** `flows.toml` I/O — Flows wire Automations (loaded separately, from
  *  `automations.ts`/`automations.toml`) together into a graph. Mirrors
- *  `snippets.ts`'s shape, one level deeper (a flow nests its nodes and edges). */
+ *  `automations.ts`'s shape, one level deeper (a flow nests its nodes and edges). */
 
 interface FlowsFile {
   flows: Flow[];

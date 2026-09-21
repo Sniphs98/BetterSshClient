@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 // Nerd Font glyphs live in the Private Use Area, which no system monospace family
 // carries. Two surfaces render raw remote output — xterm (its own `fontFamily`) and
-// the chrome's `font-mono` utility, used by snippet results and SFTP previews — and
+// the chrome's `font-mono` utility, used by flow-run output and SFTP previews — and
 // their stacks are declared in different files, so they drift silently.
 const UI = new URL('../../../', import.meta.url);
 

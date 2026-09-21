@@ -4,7 +4,7 @@ import { runFlow } from '$lib/ipc/commands';
 import { lastError } from './notifications';
 
 // The reusable Automation library and the Flows that wire them into a graph, mirroring
-// automations.toml/flows.toml (like `stores/snippets.ts` mirrors snippets.toml).
+// automations.toml/flows.toml.
 export const automations = writable<AutomationDto[]>([]);
 export const flows = writable<FlowDto[]>([]);
 

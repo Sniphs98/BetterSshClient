@@ -1,5 +1,5 @@
-<!-- Content follows the active entity (tech-gui.md §2): exactly one of Dashboard,
-     Snippets, or one session. Terminal and SFTP tabs live in a persistent layer so
+<!-- Content follows the active entity (tech-gui.md §2): exactly one selector screen
+     or one session. Terminal and SFTP tabs live in a persistent layer so
      their scrollback / byte stream (terminal) and pane state (SFTP) survive switching
      away — only visibility toggles. The list_hosts call feeds the status-bar count. -->
 <script lang="ts">
@@ -11,7 +11,6 @@
   import { sessions } from '$lib/stores/sessions';
   import AppShell from '$lib/components/AppShell.svelte';
   import Dashboard from '$lib/screens/Dashboard.svelte';
-  import Snippets from '$lib/screens/Snippets.svelte';
   import Automations from '$lib/screens/Automations.svelte';
   import FlowEditor from '$lib/screens/FlowEditor.svelte';
   import RemoteDesktop from '$lib/screens/RemoteDesktop.svelte';
@@ -28,11 +27,10 @@
   });
 
   const activeSessionId = $derived($activeEntity.kind === 'session' ? $activeEntity.id : null);
-  // A selector (Dashboard/Snippets) owns the overlay; a session owns the persistent
+  // A selector (Dashboard/Automations/...) owns the overlay; a session owns the persistent
   // layer. The two are mutually exclusive — the §2 exactly-one-active invariant.
   const selectorActive = $derived(
     $activeEntity.kind === 'dashboard' ||
-      $activeEntity.kind === 'snippets' ||
       $activeEntity.kind === 'automations' ||
       $activeEntity.kind === 'remoteDesktop' ||
       $activeEntity.kind === 'settings' ||
@@ -57,8 +55,6 @@
         <div class="h-full overflow-auto overscroll-contain">
           {#if $activeEntity.kind === 'dashboard'}
             <Dashboard />
-          {:else if $activeEntity.kind === 'snippets'}
-            <Snippets />
           {:else if $activeEntity.kind === 'automations'}
             <Automations />
           {:else if $activeEntity.kind === 'remoteDesktop'}

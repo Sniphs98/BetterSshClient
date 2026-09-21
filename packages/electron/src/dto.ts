@@ -5,7 +5,6 @@
 
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
-import type { Snippet } from './core/config/snippets.js';
 import type { Automation, AutomationKind, Flow, FlowParam, FlowParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
 import type { RemoteDesktopConnection, RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
@@ -102,25 +101,6 @@ export function hostFromInputDto(input: HostInputDto): Host {
     monitorPort: input.monitorPort,
     defaultPath: input.defaultPath
   };
-}
-
-export type SnippetScopeDto = 'global' | 'host';
-
-export interface SnippetDto {
-  name: string;
-  command: string;
-  scope: SnippetScopeDto;
-  host?: string;
-  tags?: string[];
-  params?: string[];
-}
-
-export function snippetToDto(snippet: Snippet): SnippetDto {
-  return snippet;
-}
-
-export function snippetFromDto(dto: SnippetDto): Snippet {
-  return dto;
 }
 
 export type AutomationKindDto = AutomationKind;

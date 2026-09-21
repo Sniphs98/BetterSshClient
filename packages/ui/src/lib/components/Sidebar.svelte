@@ -40,12 +40,11 @@
     if (host) spawnSession(kind, host.name);
   }
 
-  type Selector = { kind: 'dashboard' | 'snippets' | 'automations' | 'remoteDesktop'; label: string; icon: IconName };
+  type Selector = { kind: 'dashboard' | 'automations' | 'remoteDesktop'; label: string; icon: IconName };
   type Spawner = { kind: SessionKind; label: string; icon: IconName };
 
   const sshSelectors: Selector[] = [
     { kind: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { kind: 'snippets', label: 'Snippets', icon: 'snippets' },
     { kind: 'automations', label: 'Automations', icon: 'automations' }
   ];
   const remoteDesktopSelectors: Selector[] = [{ kind: 'remoteDesktop', label: 'Remote Desktop', icon: 'monitor' }];
@@ -141,7 +140,6 @@
             aria-current={$activeEntity.kind === sel.kind ? 'page' : undefined}
             onclick={() => {
               if (sel.kind === 'dashboard') activeEntity.selectDashboard();
-              else if (sel.kind === 'snippets') activeEntity.selectSnippets();
               else if (sel.kind === 'automations') activeEntity.selectAutomations();
               else activeEntity.selectRemoteDesktop();
             }}
@@ -233,7 +231,7 @@
       <Icon name="telegram" />
     </Button>
     <!-- Settings is a selector-like screen; the gear holds the active highlight like
-         Dashboard/Snippets do, and stays icon-only so it survives collapse (§5.1). -->
+         Dashboard/Automations do, and stays icon-only so it survives collapse (§5.1). -->
     <button
       type="button"
       class="grid h-9 w-9 place-items-center rounded-full transition {focusRing} {$activeEntity.kind ===

@@ -72,7 +72,6 @@ test('the top switch swaps the SSH sidebar for the Remote Desktop area', async (
 
   // SSH mode (default): the existing selectors/spawners are all there.
   await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Snippets', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Automations', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'SFTP', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible();
@@ -101,7 +100,7 @@ test('create, edit, connect to, and delete an RDP connection', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Remote Desktop' })).toBeVisible();
 
   // Two "New connection" buttons while the list is empty (toolbar + empty state),
-  // same as the Snippets/Automations screens.
+  // same as the Automations screen.
   await page.getByRole('button', { name: 'New connection' }).first().click();
   const editor = page.getByRole('dialog', { name: 'New RDP connection' });
   // `exact` — a substring match on "Name" would also hit "Hostname / IP" and "Username".

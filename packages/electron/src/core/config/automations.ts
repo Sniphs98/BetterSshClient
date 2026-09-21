@@ -7,7 +7,7 @@ import { automationsConfigPath } from './platform.js';
 import type { Automation, AutomationKind } from '../automation/types.js';
 
 /** `automations.toml` I/O — the reusable Automation library (Flows live separately,
- *  in `flows.ts`/`flows.toml`). Mirrors `snippets.ts` exactly. */
+ *  in `flows.ts`/`flows.toml`). */
 
 interface AutomationsFile {
   automations: Automation[];

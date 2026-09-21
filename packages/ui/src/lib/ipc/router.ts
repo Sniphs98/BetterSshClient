@@ -21,7 +21,6 @@ import type {
   SftpDirListed,
   SftpDisconnected,
   SftpOpDone,
-  SnippetResult,
   TransferProgressDto
 } from '$lib/bindings';
 import {
@@ -35,7 +34,6 @@ import { hosts } from '$lib/stores/hosts';
 import { statuses } from '$lib/stores/statuses';
 import { metrics, mergeMetrics } from '$lib/stores/metrics';
 import { services } from '$lib/stores/services';
-import { snippetRun, reduceRunResult } from '$lib/stores/snippets';
 import { sessions } from '$lib/stores/sessions';
 import { sftp } from '$lib/stores/sftp';
 import { closeSession } from '$lib/stores/navigation';
@@ -80,10 +78,6 @@ export function applyServicesDetected(payload: { hostName: string; services: Ser
 
 export function applyServicesFailed(payload: { hostName: string; message: string }): void {
   services.update((m) => new Map(m).set(payload.hostName, { kind: 'failed', message: payload.message }));
-}
-
-export function applySnippetResult(payload: SnippetResult): void {
-  snippetRun.update((run) => reduceRunResult(run, payload));
 }
 
 // A terminal's remote shell exited or its connection dropped (tech-gui.md §3.4). The

@@ -95,7 +95,7 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
   };
 }
 
-/** Case-insensitive substring filter over name / hostname (mirrors `filterSnippets`).
+/** Case-insensitive substring filter over name / hostname.
  *  An empty query keeps everything; order is preserved. */
 export function filterConnections(list: RemoteDesktopConnectionDto[], query: string): RemoteDesktopConnectionDto[] {
   const q = query.trim().toLowerCase();

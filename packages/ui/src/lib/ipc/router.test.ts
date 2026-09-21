@@ -5,7 +5,6 @@ import { hosts } from '$lib/stores/hosts';
 import { statuses } from '$lib/stores/statuses';
 import { metrics } from '$lib/stores/metrics';
 import { services } from '$lib/stores/services';
-import { snippetRun, beginRun, clearRun } from '$lib/stores/snippets';
 import { sessions } from '$lib/stores/sessions';
 import { lastError } from '$lib/stores/notifications';
 import { keySetup, dismissKeySetup, beginKeySetup } from '$lib/stores/keySetup';
@@ -25,7 +24,6 @@ import {
   applyMetricsUpdated,
   applyServicesDetected,
   applyServicesFailed,
-  applySnippetResult,
   applyTerminalExited,
   terminalDidExit,
   onOrphanTerminalExit,
@@ -151,16 +149,6 @@ describe('ipc event router', () => {
     applyError('boom');
 
     expect(get(lastError)).toBe('boom');
-  });
-
-  it('routes a snippet-result into the active run, keyed by host', () => {
-    beginRun('deploy', ['web-1', 'web-2']);
-    applySnippetResult({ hostName: 'web-2', snippetName: 'deploy', ok: true, output: 'done' });
-
-    const run = get(snippetRun);
-    expect(run?.entries[0].pending).toBe(true); // web-1 untouched
-    expect(run?.entries[1]).toEqual({ hostName: 'web-2', pending: false, ok: true, output: 'done' });
-    clearRun();
   });
 
   it('terminal-exited closes the tab matched by backend id', () => {

@@ -1,7 +1,7 @@
 <script lang="ts">
   // Add/edit Automation form: the reusable, named shell-command building block a Flow
   // places as a node. Validation mirrors the TUI-style forms elsewhere (`hostForm.ts`,
-  // `snippetForm.ts`) via `formToAutomation`; on submit the parent persists + refreshes,
+  // `automationForm.ts`) via `formToAutomation`; on submit the parent persists + refreshes,
   // and a rejected save surfaces inline without closing. Semantic tokens only. No host
   // field for a remote automation — its target host is a Flow-level parameter,
   // collected when the flow runs (see FlowEditor's Parameters section), so the same

@@ -34,10 +34,6 @@ export function hostsConfigPath(): string {
   return join(appConfigDir(), 'hosts.toml');
 }
 
-export function snippetsConfigPath(): string {
-  return join(appConfigDir(), 'snippets.toml');
-}
-
 export function automationsConfigPath(): string {
   return join(appConfigDir(), 'automations.toml');
 }

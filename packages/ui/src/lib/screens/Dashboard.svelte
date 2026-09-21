@@ -33,7 +33,7 @@
   let disablePasswordAuth = $state(true);
 
   // Host search (task 6): a round toggle slides a filter field out to its left and the
-  // grid filters live. Frontend-only, like the snippet search — the core stays untouched.
+  // grid filters live. Frontend-only — the core stays untouched.
   let query = $state('');
   let searchOpen = $state(false);
   let searchInput = $state<HTMLInputElement>();

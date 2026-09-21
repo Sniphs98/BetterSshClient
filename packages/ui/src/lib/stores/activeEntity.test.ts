@@ -13,7 +13,7 @@ describe('activeEntity — exactly one active', () => {
   });
 
   it('activating a session deactivates the selectors', () => {
-    activeEntity.selectSnippets();
+    activeEntity.selectAutomations();
     activeEntity.activateSession(7);
     expect(get(activeEntity)).toEqual({ kind: 'session', id: 7 });
   });
@@ -24,9 +24,9 @@ describe('activeEntity — exactly one active', () => {
     expect(get(activeEntity)).toEqual({ kind: 'dashboard' });
   });
 
-  it('the two selectors are mutually exclusive', () => {
-    activeEntity.selectSnippets();
-    expect(get(activeEntity)).toEqual({ kind: 'snippets' });
+  it('the selectors are mutually exclusive', () => {
+    activeEntity.selectRemoteDesktop();
+    expect(get(activeEntity)).toEqual({ kind: 'remoteDesktop' });
     activeEntity.selectDashboard();
     expect(get(activeEntity)).toEqual({ kind: 'dashboard' });
   });

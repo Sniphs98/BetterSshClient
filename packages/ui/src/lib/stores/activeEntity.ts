@@ -7,7 +7,6 @@ import { writable } from 'svelte/store';
 // activating a session deactivates the selectors.
 export type ActiveEntity =
   | { kind: 'dashboard' }
-  | { kind: 'snippets' }
   | { kind: 'automations' }
   | { kind: 'remoteDesktop' }
   | { kind: 'settings' }
@@ -23,7 +22,6 @@ function createActiveEntity() {
   return {
     subscribe,
     selectDashboard: () => set({ kind: 'dashboard' }),
-    selectSnippets: () => set({ kind: 'snippets' }),
     selectAutomations: () => set({ kind: 'automations' }),
     selectRemoteDesktop: () => set({ kind: 'remoteDesktop' }),
     selectSettings: () => set({ kind: 'settings' }),

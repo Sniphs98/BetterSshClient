@@ -1,7 +1,7 @@
 /**
  * Automations v2 — graph-based, shell-only nodes.
  *
- * Two-tier model: a reusable `Automation` library (like snippets — a named shell
+ * Two-tier model: a reusable `Automation` library (a named shell
  * command, local or against one specific remote host) and `Flow`s that place
  * Automations as nodes and wire dependency edges between them. `FlowNode.automationId`
  * references `Automation.id` (a stable id, never `.name`), so renaming an Automation

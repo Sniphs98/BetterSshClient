@@ -6,7 +6,7 @@ import { remoteDesktopConnectionFromInputDto, remoteDesktopConnectionToDto, toCo
 import type { RemoteDesktopConnectionDto, RemoteDesktopConnectionInputDto } from '../dto.js';
 
 /**
- * Remote-desktop connection-profile CRUD. Mirrors `ipc/snippets.ts`'s shape, but
+ * Remote-desktop connection-profile CRUD. Mirrors `ipc/automations.ts`'s shape, but
  * upserts by `id` (like Automations) rather than by name, since a connection's name is
  * just a label, not its on-disk key.
  */

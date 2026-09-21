@@ -9,7 +9,6 @@ import { registerRdpIpc } from './ipc/rdp.js';
 import { registerRemoteDesktopIpc } from './ipc/remoteDesktop.js';
 import { registerSettingsIpc } from './ipc/settings.js';
 import { registerSftpIpc } from './ipc/sftp.js';
-import { registerSnippetsIpc } from './ipc/snippets.js';
 import { registerSystemIpc } from './ipc/system.js';
 import { registerTerminalIpc } from './ipc/terminal.js';
 import { registerUpdateIpc } from './ipc/update.js';
@@ -103,7 +102,6 @@ app.whenReady().then(async () => {
   registerAppProtocolHandler(join(__dirname, '..', '..', 'ui', 'build'));
 
   registerHostsIpc(ipcMain, state);
-  registerSnippetsIpc(ipcMain);
   registerSettingsIpc(ipcMain);
   registerSystemIpc(ipcMain);
   registerTerminalIpc(ipcMain, state);

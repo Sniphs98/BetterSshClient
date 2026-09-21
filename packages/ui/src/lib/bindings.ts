@@ -21,22 +21,6 @@ export const commands = {
   async deleteHost(name: string): Promise<Result<null, CommandError>> {
     return call('delete_host', name);
   },
-  async listSnippets(): Promise<Result<SnippetDto[], CommandError>> {
-    return call('list_snippets');
-  },
-  async saveSnippet(snippet: SnippetDto): Promise<Result<null, CommandError>> {
-    return call('save_snippet', snippet);
-  },
-  async deleteSnippet(name: string): Promise<Result<null, CommandError>> {
-    return call('delete_snippet', name);
-  },
-  async executeSnippet(
-    snippetName: string,
-    hostNames: string[],
-    params: Partial<{ [key in string]: string }>
-  ): Promise<Result<null, CommandError>> {
-    return call('execute_snippet', snippetName, hostNames, params);
-  },
   async terminalOpen(
     hostName: string,
     cols: number,
@@ -191,7 +175,6 @@ const EVENT_CHANNELS = {
   sftpDirListed: 'sftp-dir-listed',
   sftpDisconnected: 'sftp-disconnected',
   sftpOpDone: 'sftp-op-done',
-  snippetResult: 'snippet-result',
   terminalExited: 'terminal-exited',
   transferProgress: 'transfer-progress',
   updateAvailable: 'update-available'
@@ -218,7 +201,6 @@ type EventMap = {
   sftpDirListed: SftpDirListed;
   sftpDisconnected: SftpDisconnected;
   sftpOpDone: SftpOpDone;
-  snippetResult: SnippetResult;
   terminalExited: TerminalExited;
   transferProgress: TransferProgress;
   updateAvailable: UpdateAvailable;
@@ -445,19 +427,6 @@ export type SftpDirListed = { sessionId: number; path: string; entries: FileEntr
 export type SftpDisconnected = { sessionId: number; reason: string };
 /** A mutating SFTP op (upload/download/mkdir/rename/delete) finished. */
 export type SftpOpDone = { sessionId: number; ok: boolean; error?: string | null };
-/** A saved command snippet as the frontend sees it. */
-export type SnippetDto = {
-  name: string;
-  command: string;
-  scope: SnippetScopeDto;
-  host?: string | null;
-  tags?: string[] | null;
-  params?: string[] | null;
-};
-/** Result of running a snippet on one host. */
-export type SnippetResult = { hostName: string; snippetName: string; ok: boolean; output: string };
-/** Snippet scope. */
-export type SnippetScopeDto = 'global' | 'host';
 /** Raw PTY output bytes for a terminal session. */
 export type TerminalBytes = number[];
 /** A terminal session's remote shell exited or its connection dropped. */

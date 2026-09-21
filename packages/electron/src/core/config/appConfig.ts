@@ -36,7 +36,6 @@ export interface KeybindingsConfig {
   search: string;
   dashboard: string;
   fileManager: string;
-  snippets: string;
   nextScreen: string;
   nextTab: string;
 }
@@ -78,7 +77,6 @@ function defaultKeybindings(): KeybindingsConfig {
     search: '/',
     dashboard: 'F1',
     fileManager: 'F2',
-    snippets: 'F3',
     nextScreen: 'Tab',
     nextTab: 'Ctrl+N'
   };
