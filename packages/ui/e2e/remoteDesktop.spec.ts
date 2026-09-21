@@ -100,7 +100,7 @@ test('create, edit, connect to, and delete an RDP connection', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Remote Desktop' })).toBeVisible();
 
   // Two "New connection" buttons while the list is empty (toolbar + empty state),
-  // same as the Automations screen.
+  // same as the Snippets screen.
   await page.getByRole('button', { name: 'New connection' }).first().click();
   const editor = page.getByRole('dialog', { name: 'New RDP connection' });
   // `exact` — a substring match on "Name" would also hit "Hostname / IP" and "Username".

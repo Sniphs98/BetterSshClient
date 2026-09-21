@@ -108,32 +108,32 @@ export const commands = {
   async saveUpdateConfig(config: UpdateConfigDto): Promise<Result<null, CommandError>> {
     return call('save_update_config', config);
   },
+  async listSnippets(): Promise<Result<SnippetDto[], CommandError>> {
+    return call('list_snippets');
+  },
+  async saveSnippet(snippet: SnippetDto): Promise<Result<null, CommandError>> {
+    return call('save_snippet', snippet);
+  },
+  async deleteSnippet(id: string): Promise<Result<null, CommandError>> {
+    return call('delete_snippet', id);
+  },
   async listAutomations(): Promise<Result<AutomationDto[], CommandError>> {
     return call('list_automations');
   },
   async saveAutomation(automation: AutomationDto): Promise<Result<null, CommandError>> {
     return call('save_automation', automation);
   },
-  async deleteAutomation(id: string): Promise<Result<null, CommandError>> {
-    return call('delete_automation', id);
+  async deleteAutomation(name: string): Promise<Result<null, CommandError>> {
+    return call('delete_automation', name);
   },
-  async listFlows(): Promise<Result<FlowDto[], CommandError>> {
-    return call('list_flows');
+  async runAutomation(name: string, paramValues: Record<string, string>): Promise<Result<null, CommandError>> {
+    return call('run_automation', name, paramValues);
   },
-  async saveFlow(flow: FlowDto): Promise<Result<null, CommandError>> {
-    return call('save_flow', flow);
+  async exportSnippet(id: string): Promise<Result<string | null, CommandError>> {
+    return call('export_snippet', id);
   },
-  async deleteFlow(name: string): Promise<Result<null, CommandError>> {
-    return call('delete_flow', name);
-  },
-  async runFlow(name: string, paramValues: Record<string, string>): Promise<Result<null, CommandError>> {
-    return call('run_flow', name, paramValues);
-  },
-  async exportAutomation(id: string): Promise<Result<string | null, CommandError>> {
-    return call('export_automation', id);
-  },
-  async exportFlow(name: string): Promise<Result<string | null, CommandError>> {
-    return call('export_flow', name);
+  async exportAutomation(name: string): Promise<Result<string | null, CommandError>> {
+    return call('export_automation', name);
   },
   async importBundle(): Promise<Result<ImportResultDto | null, CommandError>> {
     return call('import_bundle');
@@ -155,11 +155,11 @@ export const commands = {
 /** user-defined events **/
 
 const EVENT_CHANNELS = {
-  automationFlowStarted: 'automation-flow-started',
+  automationStarted: 'automation-started',
   automationNodeStarted: 'automation-node-started',
   automationNodeResult: 'automation-node-result',
-  automationFlowCompleted: 'automation-flow-completed',
-  automationFlowFailed: 'automation-flow-failed',
+  automationCompleted: 'automation-completed',
+  automationFailed: 'automation-failed',
   error: 'error',
   filePreview: 'file-preview',
   hostStatusChanged: 'host-status-changed',
@@ -181,11 +181,11 @@ const EVENT_CHANNELS = {
 } as const;
 
 type EventMap = {
-  automationFlowStarted: AutomationFlowStarted;
+  automationStarted: AutomationStarted;
   automationNodeStarted: AutomationNodeStarted;
   automationNodeResult: AutomationNodeResult;
-  automationFlowCompleted: AutomationFlowCompleted;
-  automationFlowFailed: AutomationFlowFailed;
+  automationCompleted: AutomationCompleted;
+  automationFailed: AutomationFailed;
   error: Error;
   filePreview: FilePreview;
   hostStatusChanged: HostStatusChanged;
@@ -237,28 +237,28 @@ function makeEvents<T extends Record<string, unknown>>(channels: Record<keyof T,
 export const events = makeEvents<EventMap>(EVENT_CHANNELS);
 
 /** user-defined types **/
-/** A reusable, named shell-command building block for Automations — local (on the
+/** A reusable, named shell-command building block for Snippets — local (on the
  *  OmnySSH host machine) or against one specific remote host. */
-export type AutomationDto = {
+export type SnippetDto = {
   id: string;
   name: string;
-  kind: AutomationKindDto;
+  kind: SnippetKindDto;
   command: string;
   timeoutSecs: number;
 };
-/** Every node in a completed flow run has settled (success, failed, or skipped). */
-export type AutomationFlowCompleted = { flowName: string; results: NodeResultDto[] };
-/** An engine-level failure (e.g. the flow no longer exists) — not a node failing,
- *  which instead shows up as a `'failed'` result inside `AutomationFlowCompleted`. */
-export type AutomationFlowFailed = { flowName: string; error: string };
-/** A flow run started. */
-export type AutomationFlowStarted = { flowName: string };
-/** Whether an Automation runs locally or against a specific remote host. */
-export type AutomationKindDto = 'local' | 'remote';
-/** One node's result within a running flow. */
-export type AutomationNodeResult = NodeResultDto & { flowName: string };
+/** Every node in a completed automation run has settled (success, failed, or skipped). */
+export type AutomationCompleted = { automationName: string; results: NodeResultDto[] };
+/** An engine-level failure (e.g. the automation no longer exists) — not a node failing,
+ *  which instead shows up as a `'failed'` result inside `AutomationCompleted`. */
+export type AutomationFailed = { automationName: string; error: string };
+/** An automation run started. */
+export type AutomationStarted = { automationName: string };
+/** Whether a Snippet runs locally or against a specific remote host. */
+export type SnippetKindDto = 'local' | 'remote';
+/** One node's result within a running automation. */
+export type AutomationNodeResult = NodeResultDto & { automationName: string };
 /** A node started executing. */
-export type AutomationNodeStarted = { flowName: string; nodeId: string; label: string };
+export type AutomationNodeStarted = { automationName: string; nodeId: string; label: string };
 export type CommandError = { message: string };
 /** Live connection state for a host. Internally tagged so the frontend
  *  consumes a discriminated union keyed on `kind`. */
@@ -273,34 +273,34 @@ export type Error = { message: string };
 export type FileEntryDto = { name: string; path: string; size: number; isDir: boolean };
 /** Preview bytes for a remote file. Stamped with `sessionId`. */
 export type FilePreview = { sessionId: number; path: string; content: string };
-/** A graph of Automations wired together with dependency edges, plus the parameters
+/** A graph of Snippets wired together with dependency edges, plus the parameters
  *  (at most one `'host'`-kind) it asks for right before it runs. */
-export type FlowDto = {
+export type AutomationDto = {
   name: string;
-  params: FlowParamDto[];
-  nodes: FlowNodeDto[];
-  edges: FlowEdgeDto[];
+  params: AutomationParamDto[];
+  nodes: AutomationNodeDto[];
+  edges: AutomationEdgeDto[];
   /** Node ids the canvas draws a decorative line from the Start node to — never a real
    *  dependency edge (every param is already visible to every node regardless of
-   *  edges), round-tripped purely so the line is still there next time the flow opens. */
+   *  edges), round-tripped purely so the line is still there next time the automation opens. */
   startLinks?: string[] | null;
 };
 /** `to` depends on `from` — `from` must complete before `to` can start. */
-export type FlowEdgeDto = { from: string; to: string };
-/** One placement of a reusable Automation into a Flow. */
-export type FlowNodeDto = {
+export type AutomationEdgeDto = { from: string; to: string };
+/** One placement of a reusable Snippet into an Automation. */
+export type AutomationNodeDto = {
   id: string;
-  automationId: string;
+  snippetId: string;
   label: string;
   continueOnError: boolean;
   position?: { x: number; y: number } | null;
 };
-/** A value collected from the "run this flow" prompt rather than baked into any node
- *  — `'host'` supplies the target for every remote node in the flow, `'text'` is a
- *  free-form value substituted via `{{params.<name>}}`. A flow may declare at most one
+/** A value collected from the "run this automation" prompt rather than baked into any node
+ *  — `'host'` supplies the target for every remote node in the automation, `'text'` is a
+ *  free-form value substituted via `{{params.<name>}}`. An automation may declare at most one
  *  `'host'` param. */
-export type FlowParamDto = { name: string; kind: FlowParamKindDto; label?: string | null; default?: string | null };
-export type FlowParamKindDto = 'text' | 'host';
+export type AutomationParamDto = { name: string; kind: AutomationParamKindDto; label?: string | null; default?: string | null };
+export type AutomationParamKindDto = 'text' | 'host';
 /** A host as the frontend sees it — password and private-key material omitted. */
 export type HostDto = {
   name: string;
@@ -338,9 +338,9 @@ export type HostStatusChanged = { hostName: string; status: ConnectionStatusDto 
 /** Full host list broadcast, emitted by `reload_hosts`. */
 export type HostsLoaded = HostDto[];
 /** What `import_bundle` resolves with — `null` when the file picker was canceled,
- *  otherwise which kind of thing was added and under what name (a Flow's may differ
+ *  otherwise which kind of thing was added and under what name (an Automation's may differ
  *  from the file's own, if it collided with an existing one). */
-export type ImportResultDto = { kind: 'automation' | 'flow'; name: string };
+export type ImportResultDto = { kind: 'snippet' | 'automation'; name: string };
 /** Key setup finished successfully — key auth is configured. */
 export type KeySetupComplete = { hostName: string; keyPath: string };
 /** Key setup failed before touching the server's auth config. */
@@ -366,7 +366,7 @@ export type MetricsDto = {
 export type MetricsUpdated = { hostName: string; metrics: MetricsDto };
 /** How a host is watched. `tcpPort` means reachability only — no login, no metrics. */
 export type MonitorModeDto = 'ssh' | 'tcpPort';
-/** One node's outcome within a flow run. */
+/** One node's outcome within an automation run. */
 export type NodeResultDto = {
   nodeId: string;
   label: string;

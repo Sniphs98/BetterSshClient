@@ -11,11 +11,11 @@ export type ActiveEntity =
   | { kind: 'remoteDesktop' }
   | { kind: 'settings' }
   | { kind: 'session'; id: number }
-  /** A single Flow filling the whole content area — the svelte-flow canvas needs the
-   *  room a modal can't give it. `flowName: null` is a new, unsaved flow; a string
-   *  is the name of the existing Flow being edited (Flow has no separate id — its
-   *  name is already the unique key `upsertFlow` keys on). */
-  | { kind: 'flow'; flowName: string | null };
+  /** A single Automation filling the whole content area — the svelte-flow canvas needs the
+   *  room a modal can't give it. `automationName: null` is a new, unsaved automation; a string
+   *  is the name of the existing Automation being edited (Automation has no separate id — its
+   *  name is already the unique key `upsertAutomation` keys on). */
+  | { kind: 'automation'; automationName: string | null };
 
 function createActiveEntity() {
   const { subscribe, set } = writable<ActiveEntity>({ kind: 'dashboard' });
@@ -26,7 +26,7 @@ function createActiveEntity() {
     selectRemoteDesktop: () => set({ kind: 'remoteDesktop' }),
     selectSettings: () => set({ kind: 'settings' }),
     activateSession: (id: number) => set({ kind: 'session', id }),
-    selectFlow: (flowName: string | null) => set({ kind: 'flow', flowName })
+    selectAutomation: (automationName: string | null) => set({ kind: 'automation', automationName })
   };
 }
 

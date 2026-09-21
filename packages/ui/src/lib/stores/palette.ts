@@ -1,24 +1,24 @@
 import { writable } from 'svelte/store';
-import type { AutomationDto, ConnectionStatusDto, HostDto } from '$lib/bindings';
+import type { SnippetDto, ConnectionStatusDto, HostDto } from '$lib/bindings';
 import type { Status } from '$lib/theme';
 import type { Session } from './sessions';
 
 // The ⌘K overlay and every action-scoped picker are one component in several modes
 // (tech-gui.md §2): `navigate` lists open sessions + hosts (jump to a session, or open
 // a host); `pickHost` is scoped to "pick a host for this action" and hands the choice
-// back to its caller; `pickAutomation` is the same idea for "pick (or create) an
-// Automation for this flow node" (FlowEditor.svelte's "+"/drag-to-empty).
-export type PaletteMode = 'navigate' | 'pickHost' | 'pickAutomation';
+// back to its caller; `pickSnippet` is the same idea for "pick (or create) an
+// Snippet for this automation node" (AutomationEditor.svelte's "+"/drag-to-empty).
+export type PaletteMode = 'navigate' | 'pickHost' | 'pickSnippet';
 
 // A selectable row. Sessions surface only in the navigator; a picker mode is scoped to
-// its own kind. `newAutomation` is a pinned, always-matching row — not a real
-// Automation — offered first in `pickAutomation` mode so creating one inline never
+// its own kind. `newSnippet` is a pinned, always-matching row — not a real
+// Snippet — offered first in `pickSnippet` mode so creating one inline never
 // needs a separate "no results" state.
 export type PaletteItem =
   | { kind: 'session'; session: Session }
   | { kind: 'host'; host: HostDto }
-  | { kind: 'automation'; automation: AutomationDto }
-  | { kind: 'newAutomation' };
+  | { kind: 'snippet'; snippet: SnippetDto }
+  | { kind: 'newSnippet' };
 
 function hostHaystack(h: HostDto): string {
   return `${h.name} ${h.hostname} ${h.user} ${h.tags.join(' ')}`.toLowerCase();
@@ -28,7 +28,7 @@ function sessionHaystack(s: Session): string {
   return `${s.hostName} ${s.kind}`.toLowerCase();
 }
 
-function automationHaystack(a: AutomationDto): string {
+function snippetHaystack(a: SnippetDto): string {
   return `${a.name} ${a.kind}`.toLowerCase();
 }
 
@@ -43,20 +43,20 @@ function matches(haystack: string, query: string): boolean {
 }
 
 /** The filtered, ordered rows for the current mode: sessions first, then hosts (the
- *  host picker drops the sessions); the automation picker is its own list entirely,
+ *  host picker drops the sessions); the snippet picker is its own list entirely,
  *  the pinned "new" row always first. Order mirrors the stores so the list is stable. */
 export function paletteItems(
   mode: PaletteMode,
   hosts: HostDto[],
   sessions: Session[],
-  automations: AutomationDto[],
+  snippets: SnippetDto[],
   query: string
 ): PaletteItem[] {
-  if (mode === 'pickAutomation') {
-    const automationRows: PaletteItem[] = automations
-      .filter((a) => matches(automationHaystack(a), query))
-      .map((automation) => ({ kind: 'automation', automation }));
-    return [{ kind: 'newAutomation' }, ...automationRows];
+  if (mode === 'pickSnippet') {
+    const snippetRows: PaletteItem[] = snippets
+      .filter((a) => matches(snippetHaystack(a), query))
+      .map((snippet) => ({ kind: 'snippet', snippet }));
+    return [{ kind: 'newSnippet' }, ...snippetRows];
   }
   const hostRows: PaletteItem[] = hosts
     .filter((h) => matches(hostHaystack(h), query))
@@ -80,10 +80,10 @@ export function paletteSignature(items: PaletteItem[]): string {
           return `s:${it.session.id}`;
         case 'host':
           return `h:${it.host.name}`;
-        case 'automation':
-          return `a:${it.automation.id}`;
-        case 'newAutomation':
-          return 'new-automation';
+        case 'snippet':
+          return `a:${it.snippet.id}`;
+        case 'newSnippet':
+          return 'new-snippet';
       }
     })
     .join('\u0000');
@@ -114,10 +114,10 @@ export interface PaletteState {
   mode: PaletteMode;
 }
 
-/** What `pickAutomation()` resolves with: an existing Automation, `'new'` (the pinned
- *  row was chosen — the caller opens its own add-automation form), or `null` (dismissed
+/** What `pickSnippet()` resolves with: an existing Snippet, `'new'` (the pinned
+ *  row was chosen — the caller opens its own add-snippet form), or `null` (dismissed
  *  without choosing). */
-export type AutomationPickResult = AutomationDto | 'new' | null;
+export type SnippetPickResult = SnippetDto | 'new' | null;
 
 function createPalette() {
   const { subscribe, set } = writable<PaletteState>({ open: false, mode: 'navigate' });
@@ -126,15 +126,15 @@ function createPalette() {
   // every open/choose/close so a caller of either never hangs when the palette moves on
   // to something else out from under it (e.g. ⌘K opening the navigator mid-pick).
   let pendingHost: ((host: HostDto | null) => void) | null = null;
-  let pendingAutomation: ((result: AutomationPickResult) => void) | null = null;
+  let pendingSnippet: ((result: SnippetPickResult) => void) | null = null;
 
   function settleAll(): void {
     const host = pendingHost;
-    const automation = pendingAutomation;
+    const snippet = pendingSnippet;
     pendingHost = null;
-    pendingAutomation = null;
+    pendingSnippet = null;
     host?.(null);
-    automation?.(null);
+    snippet?.(null);
   }
 
   return {
@@ -150,12 +150,12 @@ function createPalette() {
       set({ open: true, mode: 'pickHost' });
       return new Promise((resolve) => (pendingHost = resolve));
     },
-    /** Action-scoped Automation picker (FlowEditor's "+"/drag-to-empty) — see
-     *  `AutomationPickResult`'s doc comment for what it resolves with. */
-    pickAutomation(): Promise<AutomationPickResult> {
+    /** Action-scoped Snippet picker (AutomationEditor's "+"/drag-to-empty) — see
+     *  `SnippetPickResult`'s doc comment for what it resolves with. */
+    pickSnippet(): Promise<SnippetPickResult> {
       settleAll();
-      set({ open: true, mode: 'pickAutomation' });
-      return new Promise((resolve) => (pendingAutomation = resolve));
+      set({ open: true, mode: 'pickSnippet' });
+      return new Promise((resolve) => (pendingSnippet = resolve));
     },
     /** Host-picker mode: hand the chosen host back to its caller and close. Captures the
      *  resolver *before* settling the other (idle) one — `settleAll` would otherwise
@@ -163,15 +163,15 @@ function createPalette() {
     choose(host: HostDto): void {
       const resolve = pendingHost;
       pendingHost = null;
-      pendingAutomation?.(null);
-      pendingAutomation = null;
+      pendingSnippet?.(null);
+      pendingSnippet = null;
       resolve?.(host);
       set({ open: false, mode: 'navigate' });
     },
-    /** Automation-picker mode: hand the chosen result back to its caller and close. */
-    chooseAutomation(result: AutomationDto | 'new'): void {
-      const resolve = pendingAutomation;
-      pendingAutomation = null;
+    /** Snippet-picker mode: hand the chosen result back to its caller and close. */
+    chooseSnippet(result: SnippetDto | 'new'): void {
+      const resolve = pendingSnippet;
+      pendingSnippet = null;
       pendingHost?.(null);
       pendingHost = null;
       resolve?.(result);

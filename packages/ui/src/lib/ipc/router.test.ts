@@ -8,10 +8,10 @@ import { services } from '$lib/stores/services';
 import { sessions } from '$lib/stores/sessions';
 import { lastError } from '$lib/stores/notifications';
 import { keySetup, dismissKeySetup, beginKeySetup } from '$lib/stores/keySetup';
-import { flowRun, dismissFlowRun, beginFlowRun } from '$lib/stores/automations';
+import { automationRun, dismissAutomationRun, beginAutomationRun } from '$lib/stores/automations';
 import {
-  applyAutomationFlowCompleted,
-  applyAutomationFlowFailed,
+  applyAutomationCompleted,
+  applyAutomationFailed,
   applyAutomationNodeResult,
   applyAutomationNodeStarted,
   applyError,
@@ -229,17 +229,17 @@ describe('ipc event router', () => {
     dismissKeySetup();
   });
 
-  it('routes flow-run node events into the active run, then a terminal outcome', () => {
-    beginFlowRun('deploy');
-    applyAutomationNodeStarted({ flowName: 'deploy', nodeId: 'n1', label: 'build' });
-    let run = get(flowRun);
+  it('routes automation-run node events into the active run, then a terminal outcome', () => {
+    beginAutomationRun('deploy');
+    applyAutomationNodeStarted({ automationName: 'deploy', nodeId: 'n1', label: 'build' });
+    let run = get(automationRun);
     expect(run?.phase.kind).toBe('running');
     if (run?.phase.kind === 'running') {
       expect(run.phase.nodes.get('n1')).toEqual({ status: 'running', label: 'build' });
     }
 
-    applyAutomationNodeResult({ flowName: 'deploy', nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 });
-    run = get(flowRun);
+    applyAutomationNodeResult({ automationName: 'deploy', nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 });
+    run = get(automationRun);
     if (run?.phase.kind === 'running') {
       expect(run.phase.nodes.get('n1')).toEqual({
         status: 'done',
@@ -249,21 +249,21 @@ describe('ipc event router', () => {
       throw new Error('expected running phase');
     }
 
-    applyAutomationFlowCompleted({
-      flowName: 'deploy',
+    applyAutomationCompleted({
+      automationName: 'deploy',
       results: [{ nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 }]
     });
-    expect(get(flowRun)).toEqual({
-      flowName: 'deploy',
+    expect(get(automationRun)).toEqual({
+      automationName: 'deploy',
       phase: { kind: 'completed', results: [{ nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 }] }
     });
-    dismissFlowRun();
+    dismissAutomationRun();
   });
 
-  it('a flow-run failure shows even with no open run', () => {
-    dismissFlowRun();
-    applyAutomationFlowFailed({ flowName: 'deploy', error: "flow 'deploy' no longer exists" });
-    expect(get(flowRun)).toEqual({ flowName: 'deploy', phase: { kind: 'failed', error: "flow 'deploy' no longer exists" } });
-    dismissFlowRun();
+  it('an automation-run failure shows even with no open run', () => {
+    dismissAutomationRun();
+    applyAutomationFailed({ automationName: 'deploy', error: "automation 'deploy' no longer exists" });
+    expect(get(automationRun)).toEqual({ automationName: 'deploy', phase: { kind: 'failed', error: "automation 'deploy' no longer exists" } });
+    dismissAutomationRun();
   });
 });

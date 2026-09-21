@@ -3,9 +3,9 @@
 
 import { commands, type Channel } from '$lib/bindings';
 import type {
-  AutomationDto,
+  SnippetDto,
   FileEntryDto,
-  FlowDto,
+  AutomationDto,
   HostDto,
   HostInputDto,
   ImportResultDto,
@@ -175,7 +175,7 @@ export async function writeLocalFile(path: string, content: string): Promise<voi
 
 /** Start auto SSH-key setup for a host; progress + the outcome arrive as `key-setup-*`
  *  events (tech-gui.md §4.2). `disablePasswordAuth` is the user's choice, made in the
- *  confirm dialog before this fires — false stops the flow right after key auth is
+ *  confirm dialog before this fires — false stops the automation right after key auth is
  *  verified and never touches sshd_config. Fire-and-forget — only an unknown host
  *  rejects here. */
 export async function startKeySetup(hostName: string, disablePasswordAuth: boolean): Promise<void> {
@@ -216,76 +216,76 @@ export async function saveUpdateConfig(config: UpdateConfigDto): Promise<void> {
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
-/** Read the reusable Automation library. */
+/** Read the reusable Snippet library. */
+export async function listSnippets(): Promise<SnippetDto[]> {
+  const res = await commands.listSnippets();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Upsert one Snippet by id and persist the whole library. */
+export async function saveSnippet(snippet: SnippetDto): Promise<void> {
+  const res = await commands.saveSnippet(snippet);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Delete the snippet named `id`. Rejects if any Automation still references it. */
+export async function deleteSnippet(id: string): Promise<void> {
+  const res = await commands.deleteSnippet(id);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Read the saved Automations. */
 export async function listAutomations(): Promise<AutomationDto[]> {
   const res = await commands.listAutomations();
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
 }
 
-/** Upsert one Automation by id and persist the whole library. */
+/** Upsert one Automation by name and persist. Rejects with the validation problem(s) if the
+ *  graph is structurally invalid (unknown snippet, a cycle, a template reference
+ *  that isn't a direct dependency, …). */
 export async function saveAutomation(automation: AutomationDto): Promise<void> {
   const res = await commands.saveAutomation(automation);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
-/** Delete the automation named `id`. Rejects if any Flow still references it. */
-export async function deleteAutomation(id: string): Promise<void> {
-  const res = await commands.deleteAutomation(id);
+/** Delete the automation named `name`. */
+export async function deleteAutomation(name: string): Promise<void> {
+  const res = await commands.deleteAutomation(name);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
-/** Read the saved Flows. */
-export async function listFlows(): Promise<FlowDto[]> {
-  const res = await commands.listFlows();
-  if (res.status === 'error') throw new Error(res.error.message);
-  return res.data;
-}
-
-/** Upsert one Flow by name and persist. Rejects with the validation problem(s) if the
- *  graph is structurally invalid (unknown automation, a cycle, a template reference
- *  that isn't a direct dependency, …). */
-export async function saveFlow(flow: FlowDto): Promise<void> {
-  const res = await commands.saveFlow(flow);
+/** Run an Automation; progress and the outcome arrive as `automation-*` events.
+ *  `paramValues` is whatever the "run this automation" prompt collected — a value for every
+ *  `AutomationParam` the automation declares, keyed by name (empty object for an automation with none).
+ *  Fire-and-forget — only an unknown/already-running automation rejects here; a missing
+ *  param value surfaces as `automation-failed`, not a rejection. */
+export async function runAutomation(name: string, paramValues: Record<string, string>): Promise<void> {
+  const res = await commands.runAutomation(name, paramValues);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
-/** Delete the flow named `name`. */
-export async function deleteFlow(name: string): Promise<void> {
-  const res = await commands.deleteFlow(name);
-  if (res.status === 'error') throw new Error(res.error.message);
-}
-
-/** Run a Flow; progress and the outcome arrive as `automation-*` events.
- *  `paramValues` is whatever the "run this flow" prompt collected — a value for every
- *  `FlowParam` the flow declares, keyed by name (empty object for a flow with none).
- *  Fire-and-forget — only an unknown/already-running flow rejects here; a missing
- *  param value surfaces as `automation-flow-failed`, not a rejection. */
-export async function runFlow(name: string, paramValues: Record<string, string>): Promise<void> {
-  const res = await commands.runFlow(name, paramValues);
-  if (res.status === 'error') throw new Error(res.error.message);
-}
-
-/** Prompts a native save dialog and writes the automation to a portable JSON file, for
+/** Prompts a native save dialog and writes the snippet to a portable JSON file, for
  *  sharing it with someone else or another machine. Resolves the chosen path, or `null`
  *  if the dialog was canceled. */
-export async function exportAutomation(id: string): Promise<string | null> {
-  const res = await commands.exportAutomation(id);
+export async function exportSnippet(id: string): Promise<string | null> {
+  const res = await commands.exportSnippet(id);
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
 }
 
-/** Same as `exportAutomation`, but for a Flow — the file also bundles every Automation
- *  the flow's nodes reference, so it's self-contained on a machine that's never seen
+/** Same as `exportSnippet`, but for an Automation — the file also bundles every Snippet
+ *  the automation's nodes reference, so it's self-contained on a machine that's never seen
  *  them. */
-export async function exportFlow(name: string): Promise<string | null> {
-  const res = await commands.exportFlow(name);
+export async function exportAutomation(name: string): Promise<string | null> {
+  const res = await commands.exportAutomation(name);
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
 }
 
 /** Prompts a native open dialog for an exported `.json` file and merges it into the
- *  local library (a fresh id for every imported Automation; an imported Flow is renamed
+ *  local library (a fresh id for every imported Snippet; an imported Automation is renamed
  *  on a name collision rather than overwriting the existing one). Resolves what was
  *  added, or `null` if the dialog was canceled. */
 export async function importBundle(): Promise<ImportResultDto | null> {

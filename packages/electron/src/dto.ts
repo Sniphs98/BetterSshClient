@@ -5,7 +5,7 @@
 
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
-import type { Automation, AutomationKind, Flow, FlowParam, FlowParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
+import type { Snippet, SnippetKind, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
 import type { RemoteDesktopConnection, RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
 import type { ConnectionStatus, Metrics } from './event.js';
@@ -103,14 +103,60 @@ export function hostFromInputDto(input: HostInputDto): Host {
   };
 }
 
-export type AutomationKindDto = AutomationKind;
+export type SnippetKindDto = SnippetKind;
 
-export interface AutomationDto {
+export interface SnippetDto {
   id: string;
   name: string;
-  kind: AutomationKindDto;
+  kind: SnippetKindDto;
   command: string;
   timeoutSecs: number;
+}
+
+export function snippetToDto(snippet: Snippet): SnippetDto {
+  return snippet;
+}
+
+export function snippetFromDto(dto: SnippetDto): Snippet {
+  return dto;
+}
+
+export interface AutomationNodeDto {
+  id: string;
+  snippetId: string;
+  label: string;
+  continueOnError: boolean;
+  position?: { x: number; y: number };
+}
+
+export interface AutomationEdgeDto {
+  from: string;
+  to: string;
+}
+
+export type AutomationParamKindDto = AutomationParamKind;
+
+export interface AutomationParamDto {
+  name: string;
+  kind: AutomationParamKindDto;
+  label?: string;
+  default?: string;
+}
+
+export function automationParamToDto(param: AutomationParam): AutomationParamDto {
+  return param;
+}
+
+export function automationParamFromDto(dto: AutomationParamDto): AutomationParam {
+  return dto;
+}
+
+export interface AutomationDto {
+  name: string;
+  params: AutomationParamDto[];
+  nodes: AutomationNodeDto[];
+  edges: AutomationEdgeDto[];
+  startLinks?: string[];
 }
 
 export function automationToDto(automation: Automation): AutomationDto {
@@ -118,52 +164,6 @@ export function automationToDto(automation: Automation): AutomationDto {
 }
 
 export function automationFromDto(dto: AutomationDto): Automation {
-  return dto;
-}
-
-export interface FlowNodeDto {
-  id: string;
-  automationId: string;
-  label: string;
-  continueOnError: boolean;
-  position?: { x: number; y: number };
-}
-
-export interface FlowEdgeDto {
-  from: string;
-  to: string;
-}
-
-export type FlowParamKindDto = FlowParamKind;
-
-export interface FlowParamDto {
-  name: string;
-  kind: FlowParamKindDto;
-  label?: string;
-  default?: string;
-}
-
-export function flowParamToDto(param: FlowParam): FlowParamDto {
-  return param;
-}
-
-export function flowParamFromDto(dto: FlowParamDto): FlowParam {
-  return dto;
-}
-
-export interface FlowDto {
-  name: string;
-  params: FlowParamDto[];
-  nodes: FlowNodeDto[];
-  edges: FlowEdgeDto[];
-  startLinks?: string[];
-}
-
-export function flowToDto(flow: Flow): FlowDto {
-  return flow;
-}
-
-export function flowFromDto(dto: FlowDto): Flow {
   return dto;
 }
 
@@ -183,9 +183,9 @@ export function nodeResultToDto(result: NodeResult): NodeResultDto {
 }
 
 /** What `import_bundle` resolves with — `null` when the user canceled the file picker,
- *  otherwise which kind of thing landed in the library and under what name (a Flow's
+ *  otherwise which kind of thing landed in the library and under what name (an Automation's
  *  may differ from the file's own, if it collided with one already there — see
- *  `mergeFlowBundle`), so the renderer can say what happened rather than just refresh
+ *  `mergeAutomationBundle`), so the renderer can say what happened rather than just refresh
  *  silently. */
 export type ImportResultDto = ImportResult;
 

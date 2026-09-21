@@ -2,7 +2,7 @@
   // Remote Desktop selector screen: list + add/edit/delete RDP connection profiles
   // (round-tripping through remote-desktop.toml), and "Connect" launches the OS's
   // native RDP client as its own external window — no in-app session/tab, unlike
-  // Terminal/SFTP. Mirrors the Automations screen's list+CRUD shape. VNC is a later pass.
+  // Terminal/SFTP. Mirrors the Snippets screen's list+CRUD shape. VNC is a later pass.
   import { onMount } from 'svelte';
   import type { RemoteDesktopConnectionDto, RemoteDesktopConnectionInputDto } from '$lib/bindings';
   import { Surface, Chip, Icon, Button } from '$lib/theme';

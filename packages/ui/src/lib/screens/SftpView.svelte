@@ -12,15 +12,15 @@
   import SftpPane from './SftpPane.svelte';
   import FileEditor from './FileEditor.svelte';
   import SftpTerminalDrawer from './SftpTerminalDrawer.svelte';
-  import FlowRunDialog from './FlowRunDialog.svelte';
+  import AutomationRunDialog from './AutomationRunDialog.svelte';
   import { isEditableFile, languageForFile } from './fileEdit';
-  import type { FileEntryDto, FlowDto } from '$lib/bindings';
+  import type { FileEntryDto, AutomationDto } from '$lib/bindings';
   import { get } from 'svelte/store';
   import { sessions, type Session } from '$lib/stores/sessions';
   import { hosts } from '$lib/stores/hosts';
   import { sftp, markedEntries, formatBytes, type PaneSide } from '$lib/stores/sftp';
   import { lastError } from '$lib/stores/notifications';
-  import { runFlowNow } from '$lib/stores/automations';
+  import { runAutomationNow } from '$lib/stores/automations';
   import {
     sftpOpen,
     sftpList,
@@ -37,7 +37,7 @@
     previewLocalFile,
     readLocalFile,
     writeLocalFile,
-    listFlows
+    listAutomations
   } from '$lib/ipc/commands';
 
   let { session, active }: { session: Session; active: boolean } = $props();
@@ -72,13 +72,13 @@
     null
   );
 
-  // "Run flow with this file" (a file's context menu, both panes): once a flow is
-  // picked from the fresh-fetched, file-eligible list, this holds the flow plus the
-  // values to prefill FlowRunDialog with — the clicked file's path in the flow's first
+  // "Run automation with this file" (a file's context menu, both panes): once an automation is
+  // picked from the fresh-fetched, file-eligible list, this holds the automation plus the
+  // values to prefill AutomationRunDialog with — the clicked file's path in the automation's first
   // `'text'` param (there's no schema for "this param wants a file", so the first one
   // is the documented convention), and, for a remote-pane file, this session's host in
-  // the flow's `'host'` param, if it has one — the file already lives on that host.
-  let fileFlowRun = $state<{ flow: FlowDto; initialValues: Record<string, string> } | null>(null);
+  // the automation's `'host'` param, if it has one — the file already lives on that host.
+  let fileAutomationRun = $state<{ automation: AutomationDto; initialValues: Record<string, string> } | null>(null);
 
   // Delete is destructive and irreversible (no trash can over SFTP), so — unlike the
   // other mutations here — it asks first. Reads the live `remoteMarked` selection at
@@ -463,22 +463,22 @@
   // SftpPane's oncontextmenu) offers the batch actions rather than just the one entry.
   // The remote side already supports rename/delete via the core; the local side is
   // browse + upload only — there's no local filesystem mutation command (yet).
-  // Fetches the current Flow library fresh (this tab never keeps its own copy — the
-  // Automations screen may have changed it since) and opens a second-level menu, at the
+  // Fetches the current Automation library fresh (this tab never keeps its own copy — the
+  // Snippets screen may have changed it since) and opens a second-level menu, at the
   // same spot, listing the ones that can actually take a file: at least one `'text'`
-  // param to hold its path. Selecting one opens FlowRunDialog prefilled (see
-  // fileFlowRun's doc comment) rather than running immediately, so the user still
+  // param to hold its path. Selecting one opens AutomationRunDialog prefilled (see
+  // fileAutomationRun's doc comment) rather than running immediately, so the user still
   // confirms/adjusts the other values first.
-  async function openFileFlowPicker(
+  async function openFileAutomationPicker(
     side: PaneSide,
     entry: FileEntryDto,
     hostName: string | undefined,
     x: number,
     y: number
   ): Promise<void> {
-    let eligible: FlowDto[];
+    let eligible: AutomationDto[];
     try {
-      eligible = (await listFlows()).filter((f) => f.params.some((p) => p.kind === 'text'));
+      eligible = (await listAutomations()).filter((f) => f.params.some((p) => p.kind === 'text'));
     } catch (err) {
       lastError.set(errMsg(err));
       return;
@@ -489,19 +489,19 @@
       y,
       items:
         eligible.length === 0
-          ? [{ label: 'No flows accept a file input yet', onSelect: () => {}, disabled: true }]
-          : eligible.map((flow) => ({
-              label: flow.name,
+          ? [{ label: 'No automations accept a file input yet', onSelect: () => {}, disabled: true }]
+          : eligible.map((automation) => ({
+              label: automation.name,
               icon: 'play',
               onSelect: () => {
                 const initialValues: Record<string, string> = {};
-                const textParam = flow.params.find((p) => p.kind === 'text');
+                const textParam = automation.params.find((p) => p.kind === 'text');
                 if (textParam) initialValues[textParam.name] = entry.path;
                 if (hostName) {
-                  const hostParam = flow.params.find((p) => p.kind === 'host');
+                  const hostParam = automation.params.find((p) => p.kind === 'host');
                   if (hostParam) initialValues[hostParam.name] = hostName;
                 }
-                fileFlowRun = { flow, initialValues };
+                fileAutomationRun = { automation, initialValues };
               }
             }))
     };
@@ -516,9 +516,9 @@
       { label: 'Rename', icon: 'edit', onSelect: () => openPrompt('rename'), disabled: !singleRemoteMark },
       { label: count > 1 ? `Delete ${count} items` : 'Delete', icon: 'trash', danger: true, onSelect: () => (deleteConfirm = true), disabled: count === 0 },
       {
-        label: 'Run flow with this file…',
+        label: 'Run automation with this file…',
         icon: 'play',
-        onSelect: () => void openFileFlowPicker('remote', entry, session.hostName, event.clientX, event.clientY),
+        onSelect: () => void openFileAutomationPicker('remote', entry, session.hostName, event.clientX, event.clientY),
         disabled: entry.isDir
       },
       { label: 'New folder', icon: 'plus', onSelect: () => openPrompt('mkdir') },
@@ -540,11 +540,11 @@
       { label: 'Open', icon: entry.isDir ? 'folder' : 'file', onSelect: () => openEntry('local', entry), disabled: marked > 1 },
       { label: files > 1 ? `Upload ${files} files` : 'Upload', icon: 'upload', onSelect: upload, disabled: files === 0 },
       {
-        label: 'Run flow with this file…',
+        label: 'Run automation with this file…',
         icon: 'play',
         // No host to prefill — this file isn't necessarily on any host yet. A remote
-        // automation's host param is left for the FlowRunDialog's own picker.
-        onSelect: () => void openFileFlowPicker('local', entry, undefined, event.clientX, event.clientY),
+        // snippet's host param is left for the AutomationRunDialog's own picker.
+        onSelect: () => void openFileAutomationPicker('local', entry, undefined, event.clientX, event.clientY),
         disabled: entry.isDir
       },
       { label: 'Refresh', icon: 'refresh', onSelect: () => void refreshLocal(currentView.local.path) }
@@ -896,16 +896,16 @@
   />
 {/if}
 
-{#if active && fileFlowRun}
-  <FlowRunDialog
-    flow={fileFlowRun.flow}
-    initialValues={fileFlowRun.initialValues}
+{#if active && fileAutomationRun}
+  <AutomationRunDialog
+    automation={fileAutomationRun.automation}
+    initialValues={fileAutomationRun.initialValues}
     onRun={(values) => {
-      const name = fileFlowRun?.flow.name;
-      fileFlowRun = null;
-      if (name) void runFlowNow(name, values);
+      const name = fileAutomationRun?.automation.name;
+      fileAutomationRun = null;
+      if (name) void runAutomationNow(name, values);
     }}
-    onCancel={() => (fileFlowRun = null)}
+    onCancel={() => (fileAutomationRun = null)}
   />
 {/if}
 

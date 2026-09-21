@@ -2,37 +2,37 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import type { NodeResultDto } from '$lib/bindings';
 import {
-  beginFlowRun,
-  dismissFlowRun,
-  flowRun,
-  reduceFlowCompleted,
-  reduceFlowFailed,
+  beginAutomationRun,
+  dismissAutomationRun,
+  automationRun,
+  reduceAutomationCompleted,
+  reduceAutomationFailed,
   reduceNodeResult,
   reduceNodeStarted,
-  type FlowRun
+  type AutomationRun
 } from './automations';
 
 function result(nodeId: string, status: NodeResultDto['status'] = 'success', output = ''): NodeResultDto {
   return { nodeId, label: nodeId, status, output, durationMs: 5 };
 }
 
-describe('flow-run lifecycle', () => {
-  beforeEach(() => dismissFlowRun());
+describe('automation-run lifecycle', () => {
+  beforeEach(() => dismissAutomationRun());
 
-  it('beginFlowRun opens a running panel with no nodes yet', () => {
-    beginFlowRun('deploy');
-    expect(get(flowRun)).toEqual({ flowName: 'deploy', phase: { kind: 'running', nodes: new Map() } });
+  it('beginAutomationRun opens a running panel with no nodes yet', () => {
+    beginAutomationRun('deploy');
+    expect(get(automationRun)).toEqual({ automationName: 'deploy', phase: { kind: 'running', nodes: new Map() } });
   });
 
   it('dismiss clears the panel', () => {
-    beginFlowRun('deploy');
-    dismissFlowRun();
-    expect(get(flowRun)).toBeNull();
+    beginAutomationRun('deploy');
+    dismissAutomationRun();
+    expect(get(automationRun)).toBeNull();
   });
 });
 
 describe('reduceNodeStarted', () => {
-  const running: FlowRun = { flowName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
+  const running: AutomationRun = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
 
   it('adds the node as running', () => {
     const next = reduceNodeStarted(running, 'deploy', 'n1', 'build');
@@ -42,8 +42,8 @@ describe('reduceNodeStarted', () => {
     }
   });
 
-  it('ignores an event for a different flow (single active run)', () => {
-    expect(reduceNodeStarted(running, 'other-flow', 'n1', 'build')).toBe(running);
+  it('ignores an event for a different automation (single active run)', () => {
+    expect(reduceNodeStarted(running, 'other-automation', 'n1', 'build')).toBe(running);
   });
 
   it('ignores an event when no run is active', () => {
@@ -51,14 +51,14 @@ describe('reduceNodeStarted', () => {
   });
 
   it('ignores an event once the run has reached a terminal phase', () => {
-    const done: FlowRun = { flowName: 'deploy', phase: { kind: 'completed', results: [] } };
+    const done: AutomationRun = { automationName: 'deploy', phase: { kind: 'completed', results: [] } };
     expect(reduceNodeStarted(done, 'deploy', 'n1', 'build')).toBe(done);
   });
 });
 
 describe('reduceNodeResult', () => {
   it('marks a running node done with its result', () => {
-    const running: FlowRun = { flowName: 'deploy', phase: { kind: 'running', nodes: new Map([['n1', { status: 'running', label: 'build' }]]) } };
+    const running: AutomationRun = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map([['n1', { status: 'running', label: 'build' }]]) } };
     const next = reduceNodeResult(running, 'deploy', result('n1'));
     if (next?.phase.kind === 'running') {
       expect(next.phase.nodes.get('n1')).toEqual({ status: 'done', result: result('n1') });
@@ -68,7 +68,7 @@ describe('reduceNodeResult', () => {
   });
 
   it('adds a result directly even with no prior nodeStarted (a skipped node)', () => {
-    const running: FlowRun = { flowName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
+    const running: AutomationRun = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
     const next = reduceNodeResult(running, 'deploy', result('n2', 'skipped'));
     if (next?.phase.kind === 'running') {
       expect(next.phase.nodes.get('n2')).toEqual({ status: 'done', result: result('n2', 'skipped') });
@@ -78,7 +78,7 @@ describe('reduceNodeResult', () => {
   });
 
   it('preserves node arrival order (topo order, since nodeStarted fires in that order)', () => {
-    let run: FlowRun | null = { flowName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
+    let run: AutomationRun | null = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
     run = reduceNodeResult(run, 'deploy', result('first'));
     run = reduceNodeResult(run, 'deploy', result('second'));
     if (run?.phase.kind === 'running') {
@@ -88,22 +88,22 @@ describe('reduceNodeResult', () => {
     }
   });
 
-  it('ignores an event for a different flow', () => {
-    const running: FlowRun = { flowName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
-    expect(reduceNodeResult(running, 'other-flow', result('n1'))).toBe(running);
+  it('ignores an event for a different automation', () => {
+    const running: AutomationRun = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
+    expect(reduceNodeResult(running, 'other-automation', result('n1'))).toBe(running);
   });
 });
 
 describe('terminal reducers', () => {
-  it('reduceFlowCompleted carries every result', () => {
+  it('reduceAutomationCompleted carries every result', () => {
     const results = [result('n1'), result('n2', 'skipped')];
-    expect(reduceFlowCompleted('deploy', results)).toEqual({ flowName: 'deploy', phase: { kind: 'completed', results } });
+    expect(reduceAutomationCompleted('deploy', results)).toEqual({ automationName: 'deploy', phase: { kind: 'completed', results } });
   });
 
-  it('reduceFlowFailed carries the error', () => {
-    expect(reduceFlowFailed('deploy', 'flow no longer exists')).toEqual({
-      flowName: 'deploy',
-      phase: { kind: 'failed', error: 'flow no longer exists' }
+  it('reduceAutomationFailed carries the error', () => {
+    expect(reduceAutomationFailed('deploy', 'automation no longer exists')).toEqual({
+      automationName: 'deploy',
+      phase: { kind: 'failed', error: 'automation no longer exists' }
     });
   });
 });

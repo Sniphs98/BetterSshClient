@@ -1,12 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// Automations v2 (graph-based): a reusable Automation library + Flows that wire them
+// Automations (graph-based): a reusable Snippet library + Automations that wire them
 // together with dependency edges. e2e runs against the static SPA with the Electron
-// preload bridge absent, so we install a `window.omnyssh` stub. `run_flow` fakes just
+// preload bridge absent, so we install a `window.omnyssh` stub. `run_automation` fakes just
 // enough of the real engine (core/automation/engine.ts, covered for real by
 // engine.test.ts and engine.integration.test.ts) to exercise the UI: it walks
-// `flow.nodes` in array order (the test always adds them in dependency order),
-// resolves each node's canned outcome from its automation's command, and skips a node
+// `automation.nodes` in array order (the test always adds them in dependency order),
+// resolves each node's canned outcome from its snippet's command, and skips a node
 // once any of its listed dependencies didn't succeed and that dependency's own
 // continueOnError was left off — the same rule the real engine applies.
 type Rec = Record<string, unknown>;
@@ -19,7 +19,7 @@ async function boot(page: Page): Promise<void> {
   await page.addInitScript((hosts) => {
     const win = window as unknown as Record<string, unknown>;
     const listeners: Record<string, Array<(payload: unknown) => void>> = {};
-    const state: { automations: Rec[]; flows: Rec[] } = { automations: [], flows: [] };
+    const state: { snippets: Rec[]; automations: Rec[] } = { snippets: [], automations: [] };
     // Every export_* call, recorded for assertions — real Electron shows a native save
     // dialog here, which Playwright can't drive, so the test instead checks the right
     // channel/id or name reached the (stubbed) IPC boundary.
@@ -35,7 +35,7 @@ async function boot(page: Page): Promise<void> {
         // Real Electron sends every arg across the renderer/main IPC boundary via the
         // structured-clone algorithm, which throws "An object could not be cloned" on
         // anything that isn't plain data — a Svelte 5 $state proxy included (the exact
-        // bug this line exists to catch: FlowEditor once handed `save_flow` a node's
+        // bug this line exists to catch: AutomationEditor once handed `save_automation` a node's
         // still-proxied `position` object). Cloning here reproduces that check, since
         // this test runs in a real Chromium page with the same structuredClone.
         const args = rawArgs.map((a) => structuredClone(a));
@@ -44,83 +44,83 @@ async function boot(page: Page): Promise<void> {
             return Promise.resolve(hosts);
           case 'reload_hosts':
             return Promise.resolve(null);
+          case 'list_snippets':
+            return Promise.resolve([...state.snippets]);
+          case 'save_snippet': {
+            const a = args[0] as Rec & { id: string };
+            const i = state.snippets.findIndex((x) => x.id === a.id);
+            if (i >= 0) state.snippets[i] = a;
+            else state.snippets.push(a);
+            return Promise.resolve(null);
+          }
+          case 'delete_snippet': {
+            state.snippets = state.snippets.filter((x) => x.id !== args[0]);
+            return Promise.resolve(null);
+          }
           case 'list_automations':
             return Promise.resolve([...state.automations]);
           case 'save_automation': {
-            const a = args[0] as Rec & { id: string };
-            const i = state.automations.findIndex((x) => x.id === a.id);
-            if (i >= 0) state.automations[i] = a;
-            else state.automations.push(a);
+            const f = args[0] as Rec & { name: string };
+            const i = state.automations.findIndex((x) => x.name === f.name);
+            if (i >= 0) state.automations[i] = f;
+            else state.automations.push(f);
             return Promise.resolve(null);
           }
           case 'delete_automation': {
-            state.automations = state.automations.filter((x) => x.id !== args[0]);
+            state.automations = state.automations.filter((x) => x.name !== args[0]);
             return Promise.resolve(null);
           }
-          case 'list_flows':
-            return Promise.resolve([...state.flows]);
-          case 'save_flow': {
-            const f = args[0] as Rec & { name: string };
-            const i = state.flows.findIndex((x) => x.name === f.name);
-            if (i >= 0) state.flows[i] = f;
-            else state.flows.push(f);
-            return Promise.resolve(null);
-          }
-          case 'delete_flow': {
-            state.flows = state.flows.filter((x) => x.name !== args[0]);
-            return Promise.resolve(null);
-          }
+          case 'export_snippet':
           case 'export_automation':
-          case 'export_flow':
             exportCalls.push({ channel, args });
             return Promise.resolve(`/fake/path/${String(args[0])}.json`);
           case 'import_bundle': {
-            // Simulates the user picking a file that bundles one new Automation —
+            // Simulates the user picking a file that bundles one new Snippet —
             // the real merge/parse logic is covered by bundle.test.ts on the electron
             // side; this just exercises the renderer's "refresh after import" wiring.
-            const id = `imported-${state.automations.length + 1}`;
-            state.automations.push({ id, name: 'Imported', kind: 'local', command: 'echo imported', timeoutSecs: 300 });
-            return Promise.resolve({ kind: 'automation', name: 'Imported' });
+            const id = `imported-${state.snippets.length + 1}`;
+            state.snippets.push({ id, name: 'Imported', kind: 'local', command: 'echo imported', timeoutSecs: 300 });
+            return Promise.resolve({ kind: 'snippet', name: 'Imported' });
           }
-          case 'run_flow': {
-            const flowName = args[0] as string;
+          case 'run_automation': {
+            const automationName = args[0] as string;
             const paramValues = (args[1] as Record<string, string>) ?? {};
-            const flow = state.flows.find((f) => f.name === flowName) as
-              | { nodes: Array<{ id: string; automationId: string; label: string; continueOnError: boolean }>; edges: Array<{ from: string; to: string }> }
+            const automation = state.automations.find((f) => f.name === automationName) as
+              | { nodes: Array<{ id: string; snippetId: string; label: string; continueOnError: boolean }>; edges: Array<{ from: string; to: string }> }
               | undefined;
-            if (!flow) {
-              setTimeout(() => fire('automation-flow-failed', { flowName, error: 'flow not found' }), 0);
+            if (!automation) {
+              setTimeout(() => fire('automation-failed', { automationName, error: 'automation not found' }), 0);
               return Promise.resolve(null);
             }
-            const automationsById = new Map(state.automations.map((a) => [a.id as string, a]));
-            const needsHost = flow.nodes.some((n) => automationsById.get(n.automationId)?.kind === 'remote');
+            const snippetsById = new Map(state.snippets.map((a) => [a.id as string, a]));
+            const needsHost = automation.nodes.some((n) => snippetsById.get(n.snippetId)?.kind === 'remote');
             if (needsHost && !paramValues.host) {
-              setTimeout(() => fire('automation-flow-failed', { flowName, error: 'missing host parameter value' }), 0);
+              setTimeout(() => fire('automation-failed', { automationName, error: 'missing host parameter value' }), 0);
               return Promise.resolve(null);
             }
             setTimeout(() => {
-              fire('automation-flow-started', { flowName });
+              fire('automation-started', { automationName });
               const statusById = new Map<string, string>();
               const results: Rec[] = [];
-              for (const node of flow.nodes) {
-                const depIds = flow.edges.filter((e) => e.to === node.id).map((e) => e.from);
+              for (const node of automation.nodes) {
+                const depIds = automation.edges.filter((e) => e.to === node.id).map((e) => e.from);
                 const blocked = depIds.some((depId) => {
                   const depStatus = statusById.get(depId);
-                  const depNode = flow.nodes.find((n) => n.id === depId);
+                  const depNode = automation.nodes.find((n) => n.id === depId);
                   return depStatus !== undefined && depStatus !== 'success' && !depNode?.continueOnError;
                 });
                 if (blocked) {
                   const result = { nodeId: node.id, label: node.label, status: 'skipped', output: '', durationMs: 0 };
                   statusById.set(node.id, 'skipped');
                   results.push(result);
-                  fire('automation-node-result', { flowName, ...result });
+                  fire('automation-node-result', { automationName, ...result });
                   continue;
                 }
-                fire('automation-node-started', { flowName, nodeId: node.id, label: node.label });
-                const automation = automationsById.get(node.automationId);
-                const command = (automation?.command as string) ?? '';
+                fire('automation-node-started', { automationName, nodeId: node.id, label: node.label });
+                const snippet = snippetsById.get(node.snippetId);
+                const command = (snippet?.command as string) ?? '';
                 const ok = !command.includes('exit 1');
-                const isRemote = automation?.kind === 'remote';
+                const isRemote = snippet?.kind === 'remote';
                 const result = {
                   nodeId: node.id,
                   label: node.label,
@@ -131,9 +131,9 @@ async function boot(page: Page): Promise<void> {
                 };
                 statusById.set(node.id, result.status);
                 results.push(result);
-                fire('automation-node-result', { flowName, ...result });
+                fire('automation-node-result', { automationName, ...result });
               }
-              fire('automation-flow-completed', { flowName, results });
+              fire('automation-completed', { automationName, results });
             }, 0);
             return Promise.resolve(null);
           }
@@ -156,45 +156,64 @@ async function boot(page: Page): Promise<void> {
   await page.goto('/');
 }
 
-test('build automations, wire a flow, run it, and see success/failed/skipped per node', async ({ page }) => {
+test('the sidebar has separate Automations and Snippets entries into the same screen', async ({ page }) => {
+  await boot(page);
+
+  await page.getByRole('button', { name: 'Snippets', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Snippet library' })).toBeVisible();
+  // The highlight follows the open tab, not just the active screen.
+  await expect(page.getByRole('button', { name: 'Snippets', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('button', { name: 'Automations', exact: true })).not.toHaveAttribute('aria-current', 'page');
+
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Automations', exact: true })).toHaveAttribute('aria-current', 'page');
+
+  // The in-screen link and the sidebar entry are two paths to the same view, so the
+  // sidebar highlight has to follow a tab flip that happened inside the screen.
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  await expect(page.getByRole('button', { name: 'Snippets', exact: true })).toHaveAttribute('aria-current', 'page');
+});
+
+test('build snippets, wire an automation, run it, and see success/failed/skipped per node', async ({ page }) => {
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  // Flows is the default, primary view — the Automation library is reached via the
-  // secondary "Manage automations" link.
-  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
-  await page.getByRole('button', { name: 'Manage automations' }).click();
-  await expect(page.getByRole('heading', { name: 'Automation library' })).toBeVisible();
+  // Automations is the default, primary view — the Snippet library is reached via the
+  // secondary "Manage snippets" link.
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  await expect(page.getByRole('heading', { name: 'Snippet library' })).toBeVisible();
 
-  async function addAutomation(name: string, command: string): Promise<void> {
-    await page.getByRole('button', { name: 'New automation' }).first().click();
-    const editor = page.getByRole('dialog', { name: 'New automation' });
+  async function addSnippet(name: string, command: string): Promise<void> {
+    await page.getByRole('button', { name: 'New snippet' }).first().click();
+    const editor = page.getByRole('dialog', { name: 'New snippet' });
     await editor.getByLabel('Name').fill(name);
     await editor.getByLabel('Command').fill(command);
-    await editor.getByRole('button', { name: 'Add automation' }).click();
+    await editor.getByRole('button', { name: 'Add snippet' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   }
-  await addAutomation('Build', 'echo build-ok');
-  await addAutomation('Deploy', 'exit 1');
-  await addAutomation('Notify', 'echo notified');
+  await addSnippet('Build', 'echo build-ok');
+  await addSnippet('Deploy', 'exit 1');
+  await addSnippet('Notify', 'echo notified');
 
   await expect(page.getByText('Build', { exact: true })).toBeVisible();
   await expect(page.getByText('Deploy', { exact: true })).toBeVisible();
   await expect(page.getByText('Notify', { exact: true })).toBeVisible();
 
-  // Back to Flows: wire Build -> Deploy -> Notify, so Deploy's failure skips Notify.
-  await page.getByRole('button', { name: 'Back to Flows' }).click();
-  await page.getByRole('button', { name: 'New flow' }).first().click();
+  // Back to Automations: wire Build -> Deploy -> Notify, so Deploy's failure skips Notify.
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
 
-  // "New flow" replaces the whole content area with the canvas — not a dialog.
-  await expect(page.getByRole('heading', { name: 'Flows' })).toHaveCount(0);
-  await page.getByLabel('Flow name').fill('release');
+  // "New automation" replaces the whole content area with the canvas — not a dialog.
+  await expect(page.getByRole('heading', { name: 'Automations' })).toHaveCount(0);
+  await page.getByLabel('Automation name').fill('release');
 
-  async function addNode(automationName: string): Promise<void> {
-    await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
-    const picker = page.getByRole('dialog', { name: 'Pick an automation' });
+  async function addNode(snippetName: string): Promise<void> {
+    await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+    const picker = page.getByRole('dialog', { name: 'Pick a snippet' });
     await expect(picker).toBeVisible();
-    await picker.getByRole('button', { name: new RegExp(automationName) }).click();
+    await picker.getByRole('button', { name: new RegExp(snippetName) }).click();
   }
   await addNode('Build');
   await addNode('Deploy');
@@ -203,9 +222,9 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
 
   // Wire the canvas: click a node's source (right) dot, then the dependent node's
   // target (left) dot — svelte-flow's click-to-connect, an alternative to dragging.
-  async function connect(fromAutomationName: string, toAutomationName: string): Promise<void> {
-    const fromNode = page.locator('.svelte-flow__node', { hasText: fromAutomationName });
-    const toNode = page.locator('.svelte-flow__node', { hasText: toAutomationName });
+  async function connect(fromSnippetName: string, toSnippetName: string): Promise<void> {
+    const fromNode = page.locator('.svelte-flow__node', { hasText: fromSnippetName });
+    const toNode = page.locator('.svelte-flow__node', { hasText: toSnippetName });
     await fromNode.locator('.svelte-flow__handle.source').click();
     await toNode.locator('.svelte-flow__handle.target').click();
   }
@@ -213,15 +232,15 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
   await connect('Deploy', 'Notify');
   await expect(page.locator('.svelte-flow__edge')).toHaveCount(2);
 
-  await page.getByRole('button', { name: 'Create flow' }).click();
+  await page.getByRole('button', { name: 'Create automation' }).click();
 
-  // Saving returns to the Flows list (the "back" navigation, same as Cancel).
-  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
+  // Saving returns to the Automations list (the "back" navigation, same as Cancel).
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
   await expect(page.getByText('release', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Run release' }).click();
 
-  const progress = page.getByRole('dialog', { name: 'Flow run' });
+  const progress = page.getByRole('dialog', { name: 'Automation run' });
   await expect(progress).toBeVisible();
   await expect(progress.getByRole('button', { name: 'Done' })).toBeVisible();
 
@@ -233,49 +252,49 @@ test('build automations, wire a flow, run it, and see success/failed/skipped per
   await progress.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // A node's underlying Automation (its command, kind, timeout — not just this node's
-  // label/wiring) is editable from inside the flow itself: an edit button on the node,
-  // and double-clicking its automation-name row, both reuse the library's own form.
+  // A node's underlying Snippet (its command, kind, timeout — not just this node's
+  // label/wiring) is editable from inside the automation itself: an edit button on the node,
+  // and double-clicking its snippet-name row, both reuse the library's own form.
   await page.getByText('release', { exact: true }).click();
   const notifyNode = page.locator('.svelte-flow__node', { hasText: 'Notify · local' });
   await notifyNode.getByRole('button', { name: 'Edit Notify' }).click();
-  const editAutomation = page.getByRole('dialog', { name: 'Edit automation' });
-  await expect(editAutomation).toBeVisible();
-  await editAutomation.getByLabel('Name').fill('Notify v2');
-  await editAutomation.getByRole('button', { name: 'Save' }).click();
+  const editSnippet = page.getByRole('dialog', { name: 'Edit snippet' });
+  await expect(editSnippet).toBeVisible();
+  await editSnippet.getByLabel('Name').fill('Notify v2');
+  await editSnippet.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const renamedNode = page.locator('.svelte-flow__node', { hasText: 'Notify v2 · local' });
   await expect(renamedNode).toBeVisible();
 
   await renamedNode.getByTitle('Double-click to edit Notify v2').dblclick();
-  const reopened = page.getByRole('dialog', { name: 'Edit automation' });
+  const reopened = page.getByRole('dialog', { name: 'Edit snippet' });
   await expect(reopened).toBeVisible();
   await reopened.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('connecting the Start node to an automation node is a cosmetic link — dashed, not a dependency, and it survives a reopen', async ({
+test('connecting the Start node to a snippet node is a cosmetic link — dashed, not a dependency, and it survives a reopen', async ({
   page
 }) => {
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage automations' }).click();
-  await page.getByRole('button', { name: 'New automation' }).first().click();
-  const editor = page.getByRole('dialog', { name: 'New automation' });
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  await page.getByRole('button', { name: 'New snippet' }).first().click();
+  const editor = page.getByRole('dialog', { name: 'New snippet' });
   await editor.getByLabel('Name').fill('Build');
   await editor.getByLabel('Command').fill('echo build-ok');
-  await editor.getByRole('button', { name: 'Add automation' }).click();
+  await editor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Back to Flows' }).click();
-  await page.getByRole('button', { name: 'New flow' }).first().click();
-  await page.getByLabel('Flow name').fill('cosmetic-link');
-  await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
-  await page.getByRole('dialog', { name: 'Pick an automation' }).getByRole('button', { name: /Build/ }).click();
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('cosmetic-link');
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Build/ }).click();
 
   // The Start node has one source handle (no target) — connecting it to Build's target
-  // handle draws a "params flow in from here" line, purely visual.
+  // handle draws a "params automation in from here" line, purely visual.
   const startNode = page.locator('.svelte-flow__node', { hasText: 'Start' });
   const buildNode = page.locator('.svelte-flow__node', { hasText: 'Build · local' });
   await startNode.locator('.svelte-flow__handle.source').click();
@@ -283,45 +302,45 @@ test('connecting the Start node to an automation node is a cosmetic link — das
   await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
   await expect(page.locator('.svelte-flow__edge-path')).toHaveAttribute('style', /stroke-dasharray/);
 
-  await page.getByRole('button', { name: 'Create flow' }).click();
-  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
 
-  // Not a real dependency: saving didn't get rejected by validateFlow (which would
-  // reject any edge naming the Start node, since it isn't a FlowNode), and running the
-  // flow still succeeds — the link never reached the engine as a FlowEdge.
+  // Not a real dependency: saving didn't get rejected by validateAutomation (which would
+  // reject any edge naming the Start node, since it isn't an AutomationNode), and running the
+  // automation still succeeds — the link never reached the engine as an AutomationEdge.
   await page.getByRole('button', { name: 'Run cosmetic-link' }).click();
-  const progress = page.getByRole('dialog', { name: 'Flow run' });
+  const progress = page.getByRole('dialog', { name: 'Automation run' });
   await expect(progress).toBeVisible();
   await expect(progress.locator('li', { hasText: 'Build' })).toContainText('success');
   await progress.getByRole('button', { name: 'Done' }).click();
 
-  // Reopening the flow still shows the dashed line — it round-trips through
-  // FlowDto.startLinks rather than being lost on every save/reload.
+  // Reopening the automation still shows the dashed line — it round-trips through
+  // AutomationDto.startLinks rather than being lost on every save/reload.
   await page.getByText('cosmetic-link', { exact: true }).click();
   await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
   await expect(page.locator('.svelte-flow__edge-path')).toHaveAttribute('style', /stroke-dasharray/);
 });
 
-test('a remote automation has no host of its own — the flow asks for one at run time', async ({ page }) => {
+test('a remote snippet has no host of its own — the automation asks for one at run time', async ({ page }) => {
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage automations' }).click();
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
 
-  await page.getByRole('button', { name: 'New automation' }).first().click();
-  const automationEditor = page.getByRole('dialog', { name: 'New automation' });
-  await automationEditor.getByLabel('Name').fill('Deploy');
-  await automationEditor.getByLabel('Runs').selectOption('remote');
-  // No host field should appear on the automation itself.
-  await expect(automationEditor.getByText('Host', { exact: true })).toHaveCount(0);
-  await automationEditor.getByLabel('Command').fill('echo deployed');
-  await automationEditor.getByRole('button', { name: 'Add automation' }).click();
+  await page.getByRole('button', { name: 'New snippet' }).first().click();
+  const snippetEditor = page.getByRole('dialog', { name: 'New snippet' });
+  await snippetEditor.getByLabel('Name').fill('Deploy');
+  await snippetEditor.getByLabel('Runs').selectOption('remote');
+  // No host field should appear on the snippet itself.
+  await expect(snippetEditor.getByText('Host', { exact: true })).toHaveCount(0);
+  await snippetEditor.getByLabel('Command').fill('echo deployed');
+  await snippetEditor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // Wire a flow with a `host`-kind parameter and one node using the remote automation.
-  await page.getByRole('button', { name: 'Back to Flows' }).click();
-  await page.getByRole('button', { name: 'New flow' }).first().click();
-  await page.getByLabel('Flow name').fill('deploy-anywhere');
+  // Wire an automation with a `host`-kind parameter and one node using the remote snippet.
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('deploy-anywhere');
 
   // Parameters live on the graph's permanent "Start" node now, not a toolbar — the
   // dashed "Add parameter" button adds one immediately (a placeholder name, focused
@@ -339,15 +358,15 @@ test('a remote automation has no host of its own — the flow asks for one at ru
   await page.getByLabel('Parameter 1 name').fill('host');
   await expect(page.getByLabel('Parameter 1 name')).toHaveValue('host');
 
-  await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
-  await page.getByRole('dialog', { name: 'Pick an automation' }).getByRole('button', { name: /Deploy/ }).click();
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Deploy/ }).click();
 
-  await page.getByRole('button', { name: 'Create flow' }).click();
-  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
 
-  // Running the flow first asks which host to use.
+  // Running the automation first asks which host to use.
   await page.getByRole('button', { name: 'Run deploy-anywhere' }).click();
-  const runDialog = page.getByRole('dialog', { name: 'Run flow' });
+  const runDialog = page.getByRole('dialog', { name: 'Run automation' });
   await expect(runDialog).toBeVisible();
   await runDialog.getByRole('button', { name: 'Choose a host…' }).click();
 
@@ -357,67 +376,67 @@ test('a remote automation has no host of its own — the flow asks for one at ru
 
   await runDialog.getByRole('button', { name: 'Run', exact: true }).click();
 
-  const progress = page.getByRole('dialog', { name: 'Flow run' });
+  const progress = page.getByRole('dialog', { name: 'Automation run' });
   await expect(progress).toBeVisible();
   await expect(progress.getByRole('button', { name: 'Done' })).toBeVisible();
-  // Proof the picked host — not something baked into the automation — reached the run.
+  // Proof the picked host — not something baked into the snippet — reached the run.
   await expect(progress.locator('li', { hasText: 'Deploy' })).toContainText('ok on web-1');
 });
 
-test('the "+" menu can create a brand new automation inline and drops it straight onto the canvas', async ({
+test('the "+" menu can create a brand new snippet inline and drops it straight onto the canvas', async ({
   page
 }) => {
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  await page.getByRole('button', { name: 'New flow' }).first().click();
-  await page.getByLabel('Flow name').fill('inline-create');
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('inline-create');
 
-  // No automations exist yet — "New automation…" is offered anyway, pinned first, not
+  // No snippets exist yet — "New snippet…" is offered anyway, pinned first, not
   // just once the library is populated. This reuses the same centered picker overlay
   // as the SFTP/Terminal spawners' "pick a host" (⌘K's own component, in a third mode).
-  await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
-  const picker = page.getByRole('dialog', { name: 'Pick an automation' });
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  const picker = page.getByRole('dialog', { name: 'Pick a snippet' });
   await expect(picker).toBeVisible();
-  await expect(picker.locator('ul li').first()).toHaveText('New automation…');
-  await picker.getByRole('button', { name: 'New automation…' }).click();
+  await expect(picker.locator('ul li').first()).toHaveText('New snippet…');
+  await picker.getByRole('button', { name: 'New snippet…' }).click();
 
-  const automationEditor = page.getByRole('dialog', { name: 'New automation' });
-  await expect(automationEditor).toBeVisible();
-  await automationEditor.getByLabel('Name').fill('Provision');
-  await automationEditor.getByLabel('Command').fill('echo provisioned');
-  await automationEditor.getByRole('button', { name: 'Add automation' }).click();
+  const snippetEditor = page.getByRole('dialog', { name: 'New snippet' });
+  await expect(snippetEditor).toBeVisible();
+  await snippetEditor.getByLabel('Name').fill('Provision');
+  await snippetEditor.getByLabel('Command').fill('echo provisioned');
+  await snippetEditor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // The new Automation landed both in the library and as a node on this canvas —
+  // The new Snippet landed both in the library and as a node on this canvas —
   // no need to reopen the "+" menu and pick it a second time.
   await expect(page.locator('.svelte-flow__node', { hasText: 'Provision · local' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Create flow' }).click();
-  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
-  await page.getByRole('button', { name: 'Manage automations' }).click();
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
   await expect(page.getByText('Provision', { exact: true })).toBeVisible();
 });
 
-test('dragging a connection out to empty canvas space offers the automation picker and wires the new node', async ({
+test('dragging a connection out to empty canvas space offers the snippet picker and wires the new node', async ({
   page
 }) => {
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage automations' }).click();
-  await page.getByRole('button', { name: 'New automation' }).first().click();
-  const editor = page.getByRole('dialog', { name: 'New automation' });
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  await page.getByRole('button', { name: 'New snippet' }).first().click();
+  const editor = page.getByRole('dialog', { name: 'New snippet' });
   await editor.getByLabel('Name').fill('Build');
   await editor.getByLabel('Command').fill('echo build-ok');
-  await editor.getByRole('button', { name: 'Add automation' }).click();
+  await editor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Back to Flows' }).click();
-  await page.getByRole('button', { name: 'New flow' }).first().click();
-  await page.getByLabel('Flow name').fill('drag-to-empty');
-  await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
-  await page.getByRole('dialog', { name: 'Pick an automation' }).getByRole('button', { name: /Build/ }).click();
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('drag-to-empty');
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Build/ }).click();
   // `fitView` only fits whatever nodes existed when the canvas first mounted (just
   // Start) — the node just added via the menu sits well outside that viewport until
   // re-fit, which a raw mouse drag (unlike `.click()`) won't auto-scroll to reach.
@@ -439,32 +458,32 @@ test('dragging a connection out to empty canvas space offers the automation pick
   await page.mouse.move(dropX, dropY, { steps: 10 });
   await page.mouse.up();
 
-  const picker = page.getByRole('dialog', { name: 'Pick an automation' });
+  const picker = page.getByRole('dialog', { name: 'Pick a snippet' });
   await expect(picker).toBeVisible();
-  await expect(picker.locator('ul li').first()).toHaveText('New automation…');
+  await expect(picker.locator('ul li').first()).toHaveText('New snippet…');
   await picker.getByRole('button', { name: /Build/ }).click();
 
   // A second "Build" node, wired from the first one by a real dependency edge — this
-  // is the one case where a drag-to-empty connection IS a real FlowEdge (source is an
-  // automation node, not Start).
+  // is the one case where a drag-to-empty connection IS a real AutomationEdge (source is an
+  // snippet node, not Start).
   await expect(page.locator('.svelte-flow__node', { hasText: 'Build · local' })).toHaveCount(2);
   await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
   await expect(page.locator('.svelte-flow__edge-path')).not.toHaveAttribute('style', /stroke-dasharray/);
 });
 
-test('export and import — sharing an automation or flow as a file', async ({ page }) => {
+test('export and import — sharing a snippet or automation as a file', async ({ page }) => {
   await boot(page);
 
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage automations' }).click();
-  await page.getByRole('button', { name: 'New automation' }).first().click();
-  const editor = page.getByRole('dialog', { name: 'New automation' });
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  await page.getByRole('button', { name: 'New snippet' }).first().click();
+  const editor = page.getByRole('dialog', { name: 'New snippet' });
   await editor.getByLabel('Name').fill('Build');
   await editor.getByLabel('Command').fill('echo build-ok');
-  await editor.getByRole('button', { name: 'Add automation' }).click();
+  await editor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // Exporting an automation prompts a native save dialog (stubbed here) — the id it
+  // Exporting a snippet prompts a native save dialog (stubbed here) — the id it
   // was asked to export is what matters, not the file it would have written.
   await page.getByRole('button', { name: 'Export Build' }).click();
   await expect
@@ -473,27 +492,27 @@ test('export and import — sharing an automation or flow as a file', async ({ p
   const firstCall = await page.evaluate(
     () => (window as unknown as { __exportCalls: Array<{ channel: string; args: unknown[] }> }).__exportCalls[0]
   );
-  expect(firstCall.channel).toBe('export_automation');
+  expect(firstCall.channel).toBe('export_snippet');
 
-  // Wire a flow using it, then export the flow the same way.
-  await page.getByRole('button', { name: 'Back to Flows' }).click();
-  await page.getByRole('button', { name: 'New flow' }).first().click();
-  await page.getByLabel('Flow name').fill('release');
-  await page.getByRole('button', { name: 'Add an automation to this flow' }).click();
-  await page.getByRole('dialog', { name: 'Pick an automation' }).getByRole('button', { name: /Build/ }).click();
-  await page.getByRole('button', { name: 'Create flow' }).click();
-  await expect(page.getByRole('heading', { name: 'Flows' })).toBeVisible();
+  // Wire an automation using it, then export the automation the same way.
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('release');
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Build/ }).click();
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Export release' }).click();
   const calls = await page.evaluate(
     () => (window as unknown as { __exportCalls: Array<{ channel: string; args: unknown[] }> }).__exportCalls
   );
   expect(calls).toHaveLength(2);
-  expect(calls[1]).toEqual({ channel: 'export_flow', args: ['release'] });
+  expect(calls[1]).toEqual({ channel: 'export_automation', args: ['release'] });
 
   // Importing adds whatever the (stubbed) file picker returned straight to the
   // library — no second click needed to place it, unlike picking from a list.
-  await page.getByRole('button', { name: 'Manage automations' }).click();
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
   await expect(page.getByText('Imported', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Import…' }).click();
   await expect(page.getByText('Imported', { exact: true })).toBeVisible();

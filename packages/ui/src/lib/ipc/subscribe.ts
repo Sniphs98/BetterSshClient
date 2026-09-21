@@ -6,9 +6,9 @@ import { events } from '$lib/bindings';
 
 type UnlistenFn = () => void;
 import {
-  applyAutomationFlowCompleted,
-  applyAutomationFlowFailed,
-  applyAutomationFlowStarted,
+  applyAutomationCompleted,
+  applyAutomationFailed,
+  applyAutomationStarted,
   applyAutomationNodeResult,
   applyAutomationNodeStarted,
   applyError,
@@ -51,11 +51,11 @@ export async function startEventBridge(): Promise<() => void> {
     offs.push(await events.keySetupFailed.listen((e) => applyKeySetupFailed(e.payload)));
     offs.push(await events.keySetupRollback.listen((e) => applyKeySetupRollback(e.payload)));
     offs.push(await events.updateAvailable.listen((e) => applyUpdateAvailable(e.payload)));
-    offs.push(await events.automationFlowStarted.listen((e) => applyAutomationFlowStarted(e.payload)));
+    offs.push(await events.automationStarted.listen((e) => applyAutomationStarted(e.payload)));
     offs.push(await events.automationNodeStarted.listen((e) => applyAutomationNodeStarted(e.payload)));
     offs.push(await events.automationNodeResult.listen((e) => applyAutomationNodeResult(e.payload)));
-    offs.push(await events.automationFlowCompleted.listen((e) => applyAutomationFlowCompleted(e.payload)));
-    offs.push(await events.automationFlowFailed.listen((e) => applyAutomationFlowFailed(e.payload)));
+    offs.push(await events.automationCompleted.listen((e) => applyAutomationCompleted(e.payload)));
+    offs.push(await events.automationFailed.listen((e) => applyAutomationFailed(e.payload)));
     offs.push(await events.error.listen((e) => applyError(e.payload.message)));
   } catch (err) {
     offs.forEach((off) => off());

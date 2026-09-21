@@ -1,15 +1,15 @@
 <script lang="ts">
-  // The flow's parameters, drawn as the graph's permanent starting node instead of a
+  // The automation's parameters, drawn as the graph's permanent starting node instead of a
   // toolbar above the canvas — "parameters flow in from here." Reads/writes `params`
-  // through `FLOW_PARAMS_CONTEXT` rather than `Node.data`, so typing into any field
-  // here never has to rebuild FlowEditor's node array.
+  // through `AUTOMATION_PARAMS_CONTEXT` rather than `Node.data`, so typing into any field
+  // here never has to rebuild AutomationEditor's node array.
   //
   // One source `Handle` (right) lets the user drag a line from here to any node,
   // purely so the canvas *looks* connected — a param is visible to every node via
   // `{{params.<name>}}` regardless of edges, so this never becomes a real dependency
-  // edge. FlowEditor.svelte renders it dashed/muted and keeps it out of the saved
-  // `FlowDto.edges` entirely, routing it into `startLinks` instead (see
-  // flowCanvasTypes.ts's note on `START_NODE_ID`). No target handle: nothing ever
+  // edge. AutomationEditor.svelte renders it dashed/muted and keeps it out of the saved
+  // `AutomationDto.edges` entirely, routing it into `startLinks` instead (see
+  // automationCanvasTypes.ts's note on `START_NODE_ID`). No target handle: nothing ever
   // depends on Start, so nothing should be able to connect into it.
   //
   // Every row — new or already-saved — is the same plain, unboxed-at-rest field, and
@@ -26,15 +26,15 @@
   import { Handle, Position, type NodeProps } from '@xyflow/svelte';
   import { Icon } from '$lib/theme';
   import Select from '$lib/components/Select.svelte';
-  import type { FlowParamKindDto } from '$lib/bindings';
-  import { FLOW_PARAMS_CONTEXT, type FlowParamsContext, type StartFlowNode } from './flowCanvasTypes';
+  import type { AutomationParamKindDto } from '$lib/bindings';
+  import { AUTOMATION_PARAMS_CONTEXT, type AutomationParamsContext, type StartNode } from './automationCanvasTypes';
 
   // svelte-flow's `nodeTypes` requires every registered component to accept
-  // `NodeProps` — unused here since this node's state lives in `FLOW_PARAMS_CONTEXT`,
+  // `NodeProps` — unused here since this node's state lives in `AUTOMATION_PARAMS_CONTEXT`,
   // not `Node.data`.
-  let {}: NodeProps<StartFlowNode> = $props();
+  let {}: NodeProps<StartNode> = $props();
 
-  const ctx = getContext<FlowParamsContext>(FLOW_PARAMS_CONTEXT);
+  const ctx = getContext<AutomationParamsContext>(AUTOMATION_PARAMS_CONTEXT);
 
   let rowNameInputs: Array<HTMLInputElement | undefined> = [];
 
@@ -76,7 +76,7 @@
     Start
   </div>
   <p class="text-[11px] leading-snug text-muted">
-    Collected before this flow runs. A host parameter targets every remote automation
+    Collected before this automation runs. A host parameter targets every remote snippet
     below; reference either kind in a command as {'{{params.<name>}}'}.
   </p>
 
@@ -94,7 +94,7 @@
         <Select
           value={param.kind}
           onchange={(e: Event & { currentTarget: HTMLSelectElement }) =>
-            ctx.updateParam(param.name, { kind: e.currentTarget.value as FlowParamKindDto })}
+            ctx.updateParam(param.name, { kind: e.currentTarget.value as AutomationParamKindDto })}
           class={rowField}
           aria-label="Parameter {i + 1} kind"
         >

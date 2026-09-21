@@ -27,6 +27,7 @@ export type IconName =
   | 'telegram'
   | 'star'
   | 'automations'
+  | 'snippets'
   | 'arrow-left'
   | 'eye'
   | 'eye-off'

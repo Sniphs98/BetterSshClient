@@ -9,7 +9,7 @@
   import { hosts } from '$lib/stores/hosts';
   import { statuses } from '$lib/stores/statuses';
   import { sessions, sessionLabel, sessionStatusDot } from '$lib/stores/sessions';
-  import { automations } from '$lib/stores/automations';
+  import { snippets } from '$lib/stores/automations';
   import { activeEntity } from '$lib/stores/activeEntity';
   import { spawnSession } from '$lib/stores/navigation';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
@@ -20,7 +20,7 @@
   let query = $state('');
   let selected = $state(0);
 
-  const items = $derived(paletteItems($palette.mode, $hosts, $sessions, $automations, query));
+  const items = $derived(paletteItems($palette.mode, $hosts, $sessions, $snippets, query));
   // A value-stable key over the result set: unchanged by a background status flip (same
   // ids, new objects), so the reset effect below can ignore those (see the effect).
   const itemsSignature = $derived(paletteSignature(items));
@@ -30,8 +30,8 @@
   const placeholder = $derived(
     $palette.mode === 'pickHost'
       ? 'Pick a host…'
-      : $palette.mode === 'pickAutomation'
-        ? 'Pick or create an automation…'
+      : $palette.mode === 'pickSnippet'
+        ? 'Pick or create a snippet…'
         : 'Search hosts and sessions…'
   );
   const emptyMessage = $derived(
@@ -39,8 +39,8 @@
       ? query
         ? 'No matching hosts.'
         : 'No hosts configured.'
-      : $palette.mode === 'pickAutomation'
-        ? 'No matching automations.' // the pinned "new" row means this mode is never truly empty
+      : $palette.mode === 'pickSnippet'
+        ? 'No matching snippets.' // the pinned "new" row means this mode is never truly empty
         : query
           ? 'No matches.'
           : 'No hosts or sessions yet.'
@@ -99,11 +99,11 @@
           palette.close();
         }
         break;
-      case 'automation':
-        palette.chooseAutomation(item.automation);
+      case 'snippet':
+        palette.chooseSnippet(item.snippet);
         break;
-      case 'newAutomation':
-        palette.chooseAutomation('new');
+      case 'newSnippet':
+        palette.chooseSnippet('new');
         break;
     }
   }
@@ -166,8 +166,8 @@
     aria-modal="true"
     aria-label={$palette.mode === 'pickHost'
       ? 'Pick a host'
-      : $palette.mode === 'pickAutomation'
-        ? 'Pick an automation'
+      : $palette.mode === 'pickSnippet'
+        ? 'Pick a snippet'
         : 'Command palette'}
   >
     <button
@@ -227,13 +227,13 @@
                   <span class="shrink-0 truncate font-mono text-xs {selected === i ? '' : 'text-faint'}">
                     {item.host.user}@{displayHostname(item.host.hostname, $streamerMode)}
                   </span>
-                {:else if item.kind === 'automation'}
+                {:else if item.kind === 'snippet'}
                   <Icon name="automations" size={16} />
-                  <span class="min-w-0 flex-1 truncate font-medium">{item.automation.name}</span>
-                  <Chip>{item.automation.kind === 'remote' ? 'remote' : 'local'}</Chip>
+                  <span class="min-w-0 flex-1 truncate font-medium">{item.snippet.name}</span>
+                  <Chip>{item.snippet.kind === 'remote' ? 'remote' : 'local'}</Chip>
                 {:else}
                   <Icon name="plus" size={16} />
-                  <span class="min-w-0 flex-1 truncate font-medium">New automation…</span>
+                  <span class="min-w-0 flex-1 truncate font-medium">New snippet…</span>
                 {/if}
               </button>
             </li>

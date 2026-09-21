@@ -1,7 +1,7 @@
 <script lang="ts">
-  // Left region (tech-gui.md §2): header (logo + collapse), the four entry points
-  // (two selectors that hold a highlight, two spawners that open sessions), the
-  // sessions list, and the footer (palette + theme toggle, §5.1). The active
+  // Left region (tech-gui.md §2): header (logo + collapse), the SSH/Remote Desktop
+  // switch, that mode's entry points (selectors that hold a highlight, spawners that
+  // open sessions), the sessions list, and the footer (palette + theme toggle, §5.1). The active
   // highlight is the brand's accent inversion, so exactly one filled row — a
   // selector or a session — is visible at any moment (the §2 invariant, made legible).
   import { get } from 'svelte/store';
@@ -18,6 +18,7 @@
   } from '$lib/stores/sessions';
   import { sidebarCollapsed } from '$lib/stores/ui';
   import { sidebarMode, type SidebarMode } from '$lib/stores/sidebarMode';
+  import { automationsTab } from '$lib/stores/automations';
   import { spawnSession, closeSession } from '$lib/stores/navigation';
   import { palette } from '$lib/stores/palette';
   import { support } from '$lib/stores/support';
@@ -40,13 +41,34 @@
     if (host) spawnSession(kind, host.name);
   }
 
-  type Selector = { kind: 'dashboard' | 'automations' | 'remoteDesktop'; label: string; icon: IconName };
+  // Automations and Snippets are two entry points into the same screen — it already
+  // switches between the automation list and the snippet library via `automationsTab`,
+  // so the sidebar just picks which one opens, and the highlight follows that tab.
+  type Selector = { kind: 'dashboard' | 'automations' | 'snippets' | 'remoteDesktop'; label: string; icon: IconName };
   type Spawner = { kind: SessionKind; label: string; icon: IconName };
 
   const sshSelectors: Selector[] = [
     { kind: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { kind: 'automations', label: 'Automations', icon: 'automations' }
+    { kind: 'automations', label: 'Automations', icon: 'automations' },
+    { kind: 'snippets', label: 'Snippets', icon: 'snippets' }
   ];
+
+  function selectorActive(kind: Selector['kind']): boolean {
+    if (kind === 'automations' || kind === 'snippets') {
+      return $activeEntity.kind === 'automations' && $automationsTab === kind;
+    }
+    return $activeEntity.kind === kind;
+  }
+
+  function openSelector(kind: Selector['kind']): void {
+    if (kind === 'dashboard') activeEntity.selectDashboard();
+    else if (kind === 'remoteDesktop') activeEntity.selectRemoteDesktop();
+    else {
+      automationsTab.set(kind);
+      activeEntity.selectAutomations();
+    }
+  }
+
   const remoteDesktopSelectors: Selector[] = [{ kind: 'remoteDesktop', label: 'Remote Desktop', icon: 'monitor' }];
   const selectors = $derived($sidebarMode === 'ssh' ? sshSelectors : remoteDesktopSelectors);
   const spawners: Spawner[] = [
@@ -133,16 +155,12 @@
         <li>
           <button
             type="button"
-            class="{rowBase} {focusRing} {rowState($activeEntity.kind === sel.kind)} {$sidebarCollapsed
+            class="{rowBase} {focusRing} {rowState(selectorActive(sel.kind))} {$sidebarCollapsed
               ? 'justify-center'
               : ''}"
             title={sel.label}
-            aria-current={$activeEntity.kind === sel.kind ? 'page' : undefined}
-            onclick={() => {
-              if (sel.kind === 'dashboard') activeEntity.selectDashboard();
-              else if (sel.kind === 'automations') activeEntity.selectAutomations();
-              else activeEntity.selectRemoteDesktop();
-            }}
+            aria-current={selectorActive(sel.kind) ? 'page' : undefined}
+            onclick={() => openSelector(sel.kind)}
           >
             <Icon name={sel.icon} />
             {#if !$sidebarCollapsed}<span class="truncate">{sel.label}</span>{/if}
@@ -231,7 +249,7 @@
       <Icon name="telegram" />
     </Button>
     <!-- Settings is a selector-like screen; the gear holds the active highlight like
-         Dashboard/Automations do, and stays icon-only so it survives collapse (§5.1). -->
+         Dashboard/Snippets do, and stays icon-only so it survives collapse (§5.1). -->
     <button
       type="button"
       class="grid h-9 w-9 place-items-center rounded-full transition {focusRing} {$activeEntity.kind ===

@@ -3,9 +3,9 @@
 
 import { get } from 'svelte/store';
 import type {
-  AutomationFlowCompleted,
-  AutomationFlowFailed,
-  AutomationFlowStarted,
+  AutomationCompleted,
+  AutomationFailed,
+  AutomationStarted,
   AutomationNodeResult,
   AutomationNodeStarted,
   ConnectionStatusDto,
@@ -24,9 +24,9 @@ import type {
   TransferProgressDto
 } from '$lib/bindings';
 import {
-  flowRun,
-  reduceFlowCompleted,
-  reduceFlowFailed,
+  automationRun,
+  reduceAutomationCompleted,
+  reduceAutomationFailed,
   reduceNodeResult,
   reduceNodeStarted
 } from '$lib/stores/automations';
@@ -187,32 +187,32 @@ export function applyKeySetupRollback(payload: KeySetupRollback): void {
   keySetup.set(reduceRollback(payload.hostName, payload.result));
 }
 
-// Automations/Flow-run events. Mirrors key setup's shape: progress advances only the
-// active flow's run, a terminal outcome always lands (dismissed or not) so a reopen
-// (or the flows list's own "last run" state, if one is ever added) reflects it.
-export function applyAutomationFlowStarted(_payload: AutomationFlowStarted): void {
-  // No store change needed — beginFlowRun() (called by the UI the moment `run_flow`
+// Snippets/Automation-run events. Mirrors key setup's shape: progress advances only the
+// active automation's run, a terminal outcome always lands (dismissed or not) so a reopen
+// (or the automations list's own "last run" state, if one is ever added) reflects it.
+export function applyAutomationStarted(_payload: AutomationStarted): void {
+  // No store change needed — beginAutomationRun() (called by the UI the moment `run_automation`
   // fires) already opened the panel; this event is here for symmetry/future use
   // (e.g. a toast) rather than driving state today.
 }
 
 export function applyAutomationNodeStarted(payload: AutomationNodeStarted): void {
-  flowRun.update((run) => reduceNodeStarted(run, payload.flowName, payload.nodeId, payload.label));
+  automationRun.update((run) => reduceNodeStarted(run, payload.automationName, payload.nodeId, payload.label));
 }
 
 export function applyAutomationNodeResult(payload: AutomationNodeResult): void {
-  // Strip `flowName` — it's routing information (which run this belongs to), not
+  // Strip `automationName` — it's routing information (which run this belongs to), not
   // part of the NodeResultDto the store keeps.
-  const { flowName, ...result } = payload;
-  flowRun.update((run) => reduceNodeResult(run, flowName, result));
+  const { automationName, ...result } = payload;
+  automationRun.update((run) => reduceNodeResult(run, automationName, result));
 }
 
-export function applyAutomationFlowCompleted(payload: AutomationFlowCompleted): void {
-  flowRun.set(reduceFlowCompleted(payload.flowName, payload.results));
+export function applyAutomationCompleted(payload: AutomationCompleted): void {
+  automationRun.set(reduceAutomationCompleted(payload.automationName, payload.results));
 }
 
-export function applyAutomationFlowFailed(payload: AutomationFlowFailed): void {
-  flowRun.set(reduceFlowFailed(payload.flowName, payload.error));
+export function applyAutomationFailed(payload: AutomationFailed): void {
+  automationRun.set(reduceAutomationFailed(payload.automationName, payload.error));
 }
 
 // A newer release found by the startup check (tech-gui.md §4.3) → the update banner.

@@ -83,7 +83,7 @@ export class SshSession {
     return output;
   }
 
-  /** For an Automation "remote" node (core/automation/engine.ts): runs `cmd` and
+  /** For a Snippet "remote" node (core/automation/engine.ts): runs `cmd` and
    *  resolves rather than throwing either way, with a caller-supplied timeout
    *  instead of the fixed 30s `EXEC_TIMEOUT_MS` `runCommand`/`runCommandChecked` use.
    *  Captures stdout+stderr combined — unlike those two, which discard stderr to keep

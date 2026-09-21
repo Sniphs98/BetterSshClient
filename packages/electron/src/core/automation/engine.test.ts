@@ -2,31 +2,31 @@ import { describe, expect, it } from 'vitest';
 import {
   AutomationCycleError,
   missingParamValues,
-  runFlow,
+  runAutomation,
   substituteTemplate,
   topoOrder,
-  validateFlow,
-  type RunFlowDeps
+  validateAutomation,
+  type RunAutomationDeps
 } from './engine.js';
-import type { Automation, Flow, FlowNode, FlowParam, NodeResult } from './types.js';
+import type { Snippet, Automation, AutomationNode, AutomationParam, NodeResult } from './types.js';
 
-function automation(partial: Partial<Automation> & Pick<Automation, 'id' | 'name'>): Automation {
+function snippet(partial: Partial<Snippet> & Pick<Snippet, 'id' | 'name'>): Snippet {
   return { kind: 'local', command: 'echo hi', timeoutSecs: 30, ...partial };
 }
 
-function node(partial: Partial<FlowNode> & Pick<FlowNode, 'id' | 'automationId'>): FlowNode {
+function node(partial: Partial<AutomationNode> & Pick<AutomationNode, 'id' | 'snippetId'>): AutomationNode {
   return { label: partial.id, continueOnError: false, ...partial };
 }
 
-function flow(nodes: FlowNode[], edges: Array<[string, string]> = [], params: FlowParam[] = []): Flow {
-  return { name: 'test-flow', params, nodes, edges: edges.map(([from, to]) => ({ from, to })) };
+function automation(nodes: AutomationNode[], edges: Array<[string, string]> = [], params: AutomationParam[] = []): Automation {
+  return { name: 'test-automation', params, nodes, edges: edges.map(([from, to]) => ({ from, to })) };
 }
 
-const hostParam: FlowParam[] = [{ name: 'host', kind: 'host' }];
+const hostParam: AutomationParam[] = [{ name: 'host', kind: 'host' }];
 
 describe('topoOrder', () => {
   it('orders a linear chain', () => {
-    const f = flow([node({ id: 'a', automationId: 'x' }), node({ id: 'b', automationId: 'x' }), node({ id: 'c', automationId: 'x' })], [
+    const f = automation([node({ id: 'a', snippetId: 'x' }), node({ id: 'b', snippetId: 'x' }), node({ id: 'c', snippetId: 'x' })], [
       ['a', 'b'],
       ['b', 'c']
     ]);
@@ -34,8 +34,8 @@ describe('topoOrder', () => {
   });
 
   it('orders a diamond with both middle nodes before the join', () => {
-    const f = flow(
-      [node({ id: 'a', automationId: 'x' }), node({ id: 'b', automationId: 'x' }), node({ id: 'c', automationId: 'x' }), node({ id: 'd', automationId: 'x' })],
+    const f = automation(
+      [node({ id: 'a', snippetId: 'x' }), node({ id: 'b', snippetId: 'x' }), node({ id: 'c', snippetId: 'x' }), node({ id: 'd', snippetId: 'x' })],
       [
         ['a', 'b'],
         ['a', 'c'],
@@ -51,12 +51,12 @@ describe('topoOrder', () => {
   });
 
   it('handles disconnected components', () => {
-    const f = flow([node({ id: 'a', automationId: 'x' }), node({ id: 'b', automationId: 'x' })], []);
+    const f = automation([node({ id: 'a', snippetId: 'x' }), node({ id: 'b', snippetId: 'x' })], []);
     expect(topoOrder(f)).toEqual(['a', 'b']);
   });
 
   it('throws AutomationCycleError naming a node in the cycle', () => {
-    const f = flow([node({ id: 'a', automationId: 'x' }), node({ id: 'b', automationId: 'x' })], [
+    const f = automation([node({ id: 'a', snippetId: 'x' }), node({ id: 'b', snippetId: 'x' })], [
       ['a', 'b'],
       ['b', 'a']
     ]);
@@ -65,108 +65,108 @@ describe('topoOrder', () => {
   });
 
   it('ignores a dangling edge rather than crashing', () => {
-    const f = flow([node({ id: 'a', automationId: 'x' })], [['a', 'ghost']]);
+    const f = automation([node({ id: 'a', snippetId: 'x' })], [['a', 'ghost']]);
     expect(topoOrder(f)).toEqual(['a']);
   });
 });
 
-describe('validateFlow', () => {
-  const automationsById = new Map<string, Automation>([
-    ['local-x', automation({ id: 'local-x', name: 'Local X', kind: 'local' })],
-    ['remote-y', automation({ id: 'remote-y', name: 'Remote Y', kind: 'remote' })]
+describe('validateAutomation', () => {
+  const snippetsById = new Map<string, Snippet>([
+    ['local-x', snippet({ id: 'local-x', name: 'Local X', kind: 'local' })],
+    ['remote-y', snippet({ id: 'remote-y', name: 'Remote Y', kind: 'remote' })]
   ]);
 
-  it('is empty for a valid flow', () => {
-    const f = flow([node({ id: 'a', automationId: 'local-x' })]);
-    expect(validateFlow(f, automationsById)).toEqual([]);
+  it('is empty for a valid automation', () => {
+    const f = automation([node({ id: 'a', snippetId: 'local-x' })]);
+    expect(validateAutomation(f, snippetsById)).toEqual([]);
   });
 
-  it('is empty for a valid flow with a remote node and a host parameter', () => {
-    const f = flow([node({ id: 'a', automationId: 'remote-y' })], [], hostParam);
-    expect(validateFlow(f, automationsById)).toEqual([]);
+  it('is empty for a valid automation with a remote node and a host parameter', () => {
+    const f = automation([node({ id: 'a', snippetId: 'remote-y' })], [], hostParam);
+    expect(validateAutomation(f, snippetsById)).toEqual([]);
   });
 
-  it('flags an unknown automationId', () => {
-    const f = flow([node({ id: 'a', automationId: 'does-not-exist' })]);
-    expect(validateFlow(f, automationsById)[0]).toMatch(/unknown automation/);
+  it('flags an unknown snippetId', () => {
+    const f = automation([node({ id: 'a', snippetId: 'does-not-exist' })]);
+    expect(validateAutomation(f, snippetsById)[0]).toMatch(/unknown snippet/);
   });
 
-  it('flags a remote node when the flow has no host parameter', () => {
-    const f = flow([node({ id: 'a', automationId: 'remote-y' })]);
-    expect(validateFlow(f, automationsById).some((p) => p.includes('no host parameter'))).toBe(true);
+  it('flags a remote node when the automation has no host parameter', () => {
+    const f = automation([node({ id: 'a', snippetId: 'remote-y' })]);
+    expect(validateAutomation(f, snippetsById).some((p) => p.includes('no host parameter'))).toBe(true);
   });
 
   it('flags more than one host parameter', () => {
-    const f = flow(
-      [node({ id: 'a', automationId: 'local-x' })],
+    const f = automation(
+      [node({ id: 'a', snippetId: 'local-x' })],
       [],
       [
         { name: 'host', kind: 'host' },
         { name: 'other-host', kind: 'host' }
       ]
     );
-    expect(validateFlow(f, automationsById).some((p) => p.includes('at most one host parameter'))).toBe(true);
+    expect(validateAutomation(f, snippetsById).some((p) => p.includes('at most one host parameter'))).toBe(true);
   });
 
   it('flags a parameter name declared more than once', () => {
-    const f = flow(
-      [node({ id: 'a', automationId: 'local-x' })],
+    const f = automation(
+      [node({ id: 'a', snippetId: 'local-x' })],
       [],
       [
         { name: 'dup', kind: 'text' },
         { name: 'dup', kind: 'text' }
       ]
     );
-    expect(validateFlow(f, automationsById).some((p) => p.includes('more than once'))).toBe(true);
+    expect(validateAutomation(f, snippetsById).some((p) => p.includes('more than once'))).toBe(true);
   });
 
   it('flags a command referencing an unknown parameter', () => {
-    const referencing = automation({ id: 'ref', name: 'Ref', kind: 'local', command: '{{params.ghost}}' });
-    const byId = new Map(automationsById).set('ref', referencing);
-    const f = flow([node({ id: 'a', automationId: 'ref' })]);
-    expect(validateFlow(f, byId).some((p) => p.includes('unknown parameter'))).toBe(true);
+    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: '{{params.ghost}}' });
+    const byId = new Map(snippetsById).set('ref', referencing);
+    const f = automation([node({ id: 'a', snippetId: 'ref' })]);
+    expect(validateAutomation(f, byId).some((p) => p.includes('unknown parameter'))).toBe(true);
   });
 
-  it('accepts a command referencing a declared parameter, from any node (params are flow-wide)', () => {
-    const referencing = automation({ id: 'ref', name: 'Ref', kind: 'local', command: 'echo {{params.version}}' });
-    const byId = new Map(automationsById).set('ref', referencing);
-    const f = flow([node({ id: 'a', automationId: 'local-x' }), node({ id: 'b', automationId: 'ref' })], [], [{ name: 'version', kind: 'text' }]);
-    expect(validateFlow(f, byId)).toEqual([]);
+  it('accepts a command referencing a declared parameter, from any node (params are automation-wide)', () => {
+    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: 'echo {{params.version}}' });
+    const byId = new Map(snippetsById).set('ref', referencing);
+    const f = automation([node({ id: 'a', snippetId: 'local-x' }), node({ id: 'b', snippetId: 'ref' })], [], [{ name: 'version', kind: 'text' }]);
+    expect(validateAutomation(f, byId)).toEqual([]);
   });
 
   it('flags duplicate labels', () => {
-    const f = flow([node({ id: 'a', automationId: 'local-x', label: 'same' }), node({ id: 'b', automationId: 'local-x', label: 'same' })]);
-    expect(validateFlow(f, automationsById).some((p) => p.includes('more than one node'))).toBe(true);
+    const f = automation([node({ id: 'a', snippetId: 'local-x', label: 'same' }), node({ id: 'b', snippetId: 'local-x', label: 'same' })]);
+    expect(validateAutomation(f, snippetsById).some((p) => p.includes('more than one node'))).toBe(true);
   });
 
   it('flags a template reference to a label that is not a direct predecessor', () => {
-    const referencing = automation({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.a.output}}' });
-    const byId = new Map(automationsById).set('ref', referencing);
+    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.a.output}}' });
+    const byId = new Map(snippetsById).set('ref', referencing);
     // b references "a"'s output but there is no edge a -> b.
-    const f = flow([node({ id: 'a', automationId: 'local-x' }), node({ id: 'b', automationId: 'ref' })]);
-    expect(validateFlow(f, byId).some((p) => p.includes('not a direct dependency'))).toBe(true);
+    const f = automation([node({ id: 'a', snippetId: 'local-x' }), node({ id: 'b', snippetId: 'ref' })]);
+    expect(validateAutomation(f, byId).some((p) => p.includes('not a direct dependency'))).toBe(true);
   });
 
   it('accepts a template reference to a direct predecessor', () => {
-    const referencing = automation({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.a.output}}' });
-    const byId = new Map(automationsById).set('ref', referencing);
-    const f = flow([node({ id: 'a', automationId: 'local-x' }), node({ id: 'b', automationId: 'ref' })], [['a', 'b']]);
-    expect(validateFlow(f, byId)).toEqual([]);
+    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.a.output}}' });
+    const byId = new Map(snippetsById).set('ref', referencing);
+    const f = automation([node({ id: 'a', snippetId: 'local-x' }), node({ id: 'b', snippetId: 'ref' })], [['a', 'b']]);
+    expect(validateAutomation(f, byId)).toEqual([]);
   });
 
   it('flags a template reference to an unknown label', () => {
-    const referencing = automation({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.ghost.output}}' });
-    const byId = new Map(automationsById).set('ref', referencing);
-    const f = flow([node({ id: 'a', automationId: 'ref' })]);
-    expect(validateFlow(f, byId).some((p) => p.includes('unknown label'))).toBe(true);
+    const referencing = snippet({ id: 'ref', name: 'Ref', kind: 'local', command: '{{nodes.ghost.output}}' });
+    const byId = new Map(snippetsById).set('ref', referencing);
+    const f = automation([node({ id: 'a', snippetId: 'ref' })]);
+    expect(validateAutomation(f, byId).some((p) => p.includes('unknown label'))).toBe(true);
   });
 
   it('surfaces a cycle as a problem too', () => {
-    const f = flow([node({ id: 'a', automationId: 'local-x' }), node({ id: 'b', automationId: 'local-x' })], [
+    const f = automation([node({ id: 'a', snippetId: 'local-x' }), node({ id: 'b', snippetId: 'local-x' })], [
       ['a', 'b'],
       ['b', 'a']
     ]);
-    expect(validateFlow(f, automationsById).some((p) => p.includes('cycle'))).toBe(true);
+    expect(validateAutomation(f, snippetsById).some((p) => p.includes('cycle'))).toBe(true);
   });
 });
 
@@ -213,12 +213,12 @@ describe('substituteTemplate', () => {
 });
 
 describe('missingParamValues', () => {
-  function flowWithParams(params: FlowParam[]): Flow {
+  function automationWithParams(params: AutomationParam[]): Automation {
     return { name: 'f', params, nodes: [], edges: [] };
   }
 
   it('is empty when every declared parameter has a non-blank value', () => {
-    const f = flowWithParams([
+    const f = automationWithParams([
       { name: 'host', kind: 'host' },
       { name: 'version', kind: 'text' }
     ]);
@@ -226,18 +226,18 @@ describe('missingParamValues', () => {
   });
 
   it('flags a missing value, naming its label when set', () => {
-    const f = flowWithParams([{ name: 'host', kind: 'host', label: 'Target host' }]);
+    const f = automationWithParams([{ name: 'host', kind: 'host', label: 'Target host' }]);
     expect(missingParamValues(f, {})).toEqual(['Target host']);
   });
 
   it('flags a blank (whitespace-only) value the same as a missing one', () => {
-    const f = flowWithParams([{ name: 'version', kind: 'text' }]);
+    const f = automationWithParams([{ name: 'version', kind: 'text' }]);
     expect(missingParamValues(f, { version: '   ' })).toEqual(['version']);
   });
 });
 
-describe('runFlow', () => {
-  function deps(overrides: Partial<RunFlowDeps> = {}): RunFlowDeps {
+describe('runAutomation', () => {
+  function deps(overrides: Partial<RunAutomationDeps> = {}): RunAutomationDeps {
     return {
       runLocal: async (command) => ({ output: `ran: ${command}`, ok: true }),
       connectHost: async () => ({ runShell: async () => ({ output: '', ok: true }), disconnect: () => {} }),
@@ -246,12 +246,12 @@ describe('runFlow', () => {
   }
 
   it('runs nodes in topo order and reports success', async () => {
-    const a = automation({ id: 'a', name: 'A' });
-    const f = flow([node({ id: 'n1', automationId: 'a', label: 'first' }), node({ id: 'n2', automationId: 'a', label: 'second' })], [
+    const a = snippet({ id: 'a', name: 'A' });
+    const f = automation([node({ id: 'n1', snippetId: 'a', label: 'first' }), node({ id: 'n2', snippetId: 'a', label: 'second' })], [
       ['n1', 'n2']
     ]);
     const started: string[] = [];
-    const results = await runFlow(f, new Map([['a', a]]), {}, deps(), (e) => {
+    const results = await runAutomation(f, new Map([['a', a]]), {}, deps(), (e) => {
       if (e.kind === 'nodeStarted') started.push(e.label);
     });
     expect(started).toEqual(['first', 'second']);
@@ -259,13 +259,13 @@ describe('runFlow', () => {
   });
 
   it('skips a dependent when its predecessor fails without continueOnError', async () => {
-    const failing = automation({ id: 'fail', name: 'Fail' });
-    const dependent = automation({ id: 'dep', name: 'Dep' });
-    const f = flow(
-      [node({ id: 'n1', automationId: 'fail', label: 'a', continueOnError: false }), node({ id: 'n2', automationId: 'dep', label: 'b' })],
+    const failing = snippet({ id: 'fail', name: 'Fail' });
+    const dependent = snippet({ id: 'dep', name: 'Dep' });
+    const f = automation(
+      [node({ id: 'n1', snippetId: 'fail', label: 'a', continueOnError: false }), node({ id: 'n2', snippetId: 'dep', label: 'b' })],
       [['n1', 'n2']]
     );
-    const results = await runFlow(
+    const results = await runAutomation(
       f,
       new Map([
         ['fail', failing],
@@ -278,14 +278,14 @@ describe('runFlow', () => {
   });
 
   it('lets a dependent run when the failing predecessor has continueOnError: true', async () => {
-    const failing = automation({ id: 'fail', name: 'Fail' });
-    const dependent = automation({ id: 'dep', name: 'Dep' });
-    const f = flow(
-      [node({ id: 'n1', automationId: 'fail', label: 'a', continueOnError: true }), node({ id: 'n2', automationId: 'dep', label: 'b' })],
+    const failing = snippet({ id: 'fail', name: 'Fail' });
+    const dependent = snippet({ id: 'dep', name: 'Dep' });
+    const f = automation(
+      [node({ id: 'n1', snippetId: 'fail', label: 'a', continueOnError: true }), node({ id: 'n2', snippetId: 'dep', label: 'b' })],
       [['n1', 'n2']]
     );
     let runLocalCalls = 0;
-    const results = await runFlow(
+    const results = await runAutomation(
       f,
       new Map([
         ['fail', failing],
@@ -307,30 +307,30 @@ describe('runFlow', () => {
   });
 
   it('cascades a skip two levels deep', async () => {
-    const a = automation({ id: 'a', name: 'A' });
-    const f = flow(
+    const a = snippet({ id: 'a', name: 'A' });
+    const f = automation(
       [
-        node({ id: 'n1', automationId: 'a', label: 'x', continueOnError: false }),
-        node({ id: 'n2', automationId: 'a', label: 'y', continueOnError: false }),
-        node({ id: 'n3', automationId: 'a', label: 'z' })
+        node({ id: 'n1', snippetId: 'a', label: 'x', continueOnError: false }),
+        node({ id: 'n2', snippetId: 'a', label: 'y', continueOnError: false }),
+        node({ id: 'n3', snippetId: 'a', label: 'z' })
       ],
       [
         ['n1', 'n2'],
         ['n2', 'n3']
       ]
     );
-    const results = await runFlow(f, new Map([['a', a]]), {}, deps({ runLocal: async () => ({ output: '', ok: false, error: 'boom' }) }));
+    const results = await runAutomation(f, new Map([['a', a]]), {}, deps({ runLocal: async () => ({ output: '', ok: false, error: 'boom' }) }));
     expect(results.map((r) => r.status)).toEqual(['failed', 'skipped', 'skipped']);
   });
 
   it('a diamond: one failed non-continuable parent still skips the child (AND semantics)', async () => {
-    const a = automation({ id: 'a', name: 'A' });
-    const f = flow(
+    const a = snippet({ id: 'a', name: 'A' });
+    const f = automation(
       [
-        node({ id: 'n1', automationId: 'a', label: 'a' }),
-        node({ id: 'n2', automationId: 'a', label: 'b', continueOnError: false }),
-        node({ id: 'n3', automationId: 'a', label: 'c', continueOnError: false }),
-        node({ id: 'n4', automationId: 'a', label: 'd' })
+        node({ id: 'n1', snippetId: 'a', label: 'a' }),
+        node({ id: 'n2', snippetId: 'a', label: 'b', continueOnError: false }),
+        node({ id: 'n3', snippetId: 'a', label: 'c', continueOnError: false }),
+        node({ id: 'n4', snippetId: 'a', label: 'd' })
       ],
       [
         ['n1', 'n2'],
@@ -340,7 +340,7 @@ describe('runFlow', () => {
       ]
     );
     let calls = 0;
-    const results = await runFlow(
+    const results = await runAutomation(
       f,
       new Map([['a', a]]),
       {},
@@ -359,15 +359,15 @@ describe('runFlow', () => {
   });
 
   it('substitutes a predecessor output into a remote node command', async () => {
-    const local = automation({ id: 'local', name: 'Local', command: 'echo build-123' });
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote', command: 'deploy {{nodes.build.output}}' });
-    const f = flow(
-      [node({ id: 'n1', automationId: 'local', label: 'build' }), node({ id: 'n2', automationId: 'remote', label: 'deploy' })],
+    const local = snippet({ id: 'local', name: 'Local', command: 'echo build-123' });
+    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote', command: 'deploy {{nodes.build.output}}' });
+    const f = automation(
+      [node({ id: 'n1', snippetId: 'local', label: 'build' }), node({ id: 'n2', snippetId: 'remote', label: 'deploy' })],
       [['n1', 'n2']],
       hostParam
     );
     const seenCommands: string[] = [];
-    const results = await runFlow(
+    const results = await runAutomation(
       f,
       new Map([
         ['local', local],
@@ -390,11 +390,11 @@ describe('runFlow', () => {
   });
 
   it('substitutes a text parameter into a remote node command alongside the resolved host', async () => {
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote', command: 'deploy --version {{params.version}}' });
-    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' })], [], [...hostParam, { name: 'version', kind: 'text' }]);
+    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote', command: 'deploy --version {{params.version}}' });
+    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a' })], [], [...hostParam, { name: 'version', kind: 'text' }]);
     const seenCommands: string[] = [];
     const seenHosts: string[] = [];
-    await runFlow(
+    await runAutomation(
       f,
       new Map([['remote', remote]]),
       { host: 'web-1', version: '2.0.0' },
@@ -416,15 +416,15 @@ describe('runFlow', () => {
   });
 
   it('reuses one connection per host across multiple nodes targeting it', async () => {
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote' });
-    const f = flow(
-      [node({ id: 'n1', automationId: 'remote', label: 'a' }), node({ id: 'n2', automationId: 'remote', label: 'b' })],
+    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const f = automation(
+      [node({ id: 'n1', snippetId: 'remote', label: 'a' }), node({ id: 'n2', snippetId: 'remote', label: 'b' })],
       [],
       hostParam
     );
     let connectCount = 0;
     let disconnectCount = 0;
-    await runFlow(
+    await runAutomation(
       f,
       new Map([['remote', remote]]),
       { host: 'web-1' },
@@ -440,15 +440,15 @@ describe('runFlow', () => {
   });
 
   it('disconnects opened connections even if a later node throws unexpectedly', async () => {
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote' });
-    const local = automation({ id: 'local', name: 'Local' });
-    const f = flow(
-      [node({ id: 'n1', automationId: 'remote', label: 'a' }), node({ id: 'n2', automationId: 'local', label: 'b' })],
+    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const local = snippet({ id: 'local', name: 'Local' });
+    const f = automation(
+      [node({ id: 'n1', snippetId: 'remote', label: 'a' }), node({ id: 'n2', snippetId: 'local', label: 'b' })],
       [],
       hostParam
     );
     let disconnected = false;
-    await runFlow(
+    await runAutomation(
       f,
       new Map([
         ['remote', remote],
@@ -466,9 +466,9 @@ describe('runFlow', () => {
   });
 
   it('reports a failed connectHost as a failed node result rather than throwing', async () => {
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote' });
-    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' })], [], hostParam);
-    const results = await runFlow(
+    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a' })], [], hostParam);
+    const results = await runAutomation(
       f,
       new Map([['remote', remote]]),
       { host: 'web-1' },
@@ -482,10 +482,10 @@ describe('runFlow', () => {
     expect(results[0].error).toContain('connection refused');
   });
 
-  it('fails a remote node (rather than throwing) when the flow has a host parameter but no value was supplied', async () => {
-    const remote = automation({ id: 'remote', name: 'Remote', kind: 'remote' });
-    const f = flow([node({ id: 'n1', automationId: 'remote', label: 'a' })], [], hostParam);
-    const results = await runFlow(f, new Map([['remote', remote]]), {}, deps());
+  it('fails a remote node (rather than throwing) when the automation has a host parameter but no value was supplied', async () => {
+    const remote = snippet({ id: 'remote', name: 'Remote', kind: 'remote' });
+    const f = automation([node({ id: 'n1', snippetId: 'remote', label: 'a' })], [], hostParam);
+    const results = await runAutomation(f, new Map([['remote', remote]]), {}, deps());
     expect(results[0].status).toBe('failed');
     expect(results[0].error).toMatch(/no host parameter value/);
   });

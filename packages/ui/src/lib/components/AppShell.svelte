@@ -9,7 +9,7 @@
   import CommandPalette from './CommandPalette.svelte';
   import SupportModal from './SupportModal.svelte';
   import KeySetupProgress from '$lib/screens/KeySetupProgress.svelte';
-  import FlowRunProgress from '$lib/screens/FlowRunProgress.svelte';
+  import AutomationRunProgress from '$lib/screens/AutomationRunProgress.svelte';
   import UpdateBanner from './UpdateBanner.svelte';
   import { support } from '$lib/stores/support';
   import { sidebarCollapsed, isCollapseChord } from '$lib/stores/ui';
@@ -44,6 +44,6 @@
     <SupportModal />
   {/if}
   <KeySetupProgress />
-  <FlowRunProgress />
+  <AutomationRunProgress />
   <UpdateBanner />
 </div>

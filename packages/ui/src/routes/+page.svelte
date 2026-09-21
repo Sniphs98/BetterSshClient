@@ -11,8 +11,8 @@
   import { sessions } from '$lib/stores/sessions';
   import AppShell from '$lib/components/AppShell.svelte';
   import Dashboard from '$lib/screens/Dashboard.svelte';
-  import Automations from '$lib/screens/Automations.svelte';
-  import FlowEditor from '$lib/screens/FlowEditor.svelte';
+  import Snippets from '$lib/screens/Automations.svelte';
+  import AutomationEditor from '$lib/screens/AutomationEditor.svelte';
   import RemoteDesktop from '$lib/screens/RemoteDesktop.svelte';
   import Settings from '$lib/screens/Settings.svelte';
   import TerminalView from '$lib/screens/TerminalView.svelte';
@@ -27,14 +27,14 @@
   });
 
   const activeSessionId = $derived($activeEntity.kind === 'session' ? $activeEntity.id : null);
-  // A selector (Dashboard/Automations/...) owns the overlay; a session owns the persistent
+  // A selector (Dashboard/Snippets/...) owns the overlay; a session owns the persistent
   // layer. The two are mutually exclusive — the §2 exactly-one-active invariant.
   const selectorActive = $derived(
     $activeEntity.kind === 'dashboard' ||
       $activeEntity.kind === 'automations' ||
       $activeEntity.kind === 'remoteDesktop' ||
       $activeEntity.kind === 'settings' ||
-      $activeEntity.kind === 'flow'
+      $activeEntity.kind === 'automation'
   );
 </script>
 
@@ -56,15 +56,15 @@
           {#if $activeEntity.kind === 'dashboard'}
             <Dashboard />
           {:else if $activeEntity.kind === 'automations'}
-            <Automations />
+            <Snippets />
           {:else if $activeEntity.kind === 'remoteDesktop'}
             <RemoteDesktop />
-          {:else if $activeEntity.kind === 'flow'}
-            <!-- Keyed so switching between two different flows (or from an existing
-                 flow to a fresh "new flow" draft) fully remounts the editor rather
+          {:else if $activeEntity.kind === 'automation'}
+            <!-- Keyed so switching between two different automations (or from an existing
+                 automation to a fresh "new automation" draft) fully remounts the editor rather
                  than reusing its "seeded once from the prop" local state. -->
-            {#key $activeEntity.flowName}
-              <FlowEditor flowName={$activeEntity.flowName} />
+            {#key $activeEntity.automationName}
+              <AutomationEditor automationName={$activeEntity.automationName} />
             {/key}
           {:else if $activeEntity.kind === 'settings'}
             <Settings />

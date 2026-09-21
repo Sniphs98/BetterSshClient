@@ -111,6 +111,9 @@
     <circle cx="12" cy="18" r="2.5" />
     <path d="M8 7.5 11 15.5" />
     <path d="M16 7.5 13 15.5" />
+  {:else if name === 'snippets'}
+    <polyline points="8 8 4 12 8 16" />
+    <polyline points="16 8 20 12 16 16" />
   {:else if name === 'monitor'}
     <rect x="2" y="4" width="20" height="13" rx="2" />
     <line x1="8" y1="21" x2="16" y2="21" />

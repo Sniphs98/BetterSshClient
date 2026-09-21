@@ -1,7 +1,7 @@
 import { exec } from 'node:child_process';
 
 /**
- * Runs a shell command on the local machine for an Automation "local" node. Unlike
+ * Runs a shell command on the local machine for a Snippet "local" node. Unlike
  * `keySetup.ts`'s `execFileAsync` (a fixed argv, no shell involved), this needs real
  * shell semantics (pipes, `&&`, …) for a user-authored command string, so it goes
  * through `child_process.exec` rather than `execFile`.
@@ -15,7 +15,7 @@ import { exec } from 'node:child_process';
  * stderr), matching the combined-output shape `SshSession.runShell` uses for remote
  * nodes, so `{{nodes.<label>.output}}` means the same thing either way.
  *
- * Trust model: this runs a command the user typed into their own Automation editor, on
+ * Trust model: this runs a command the user typed into their own Snippet editor, on
  * their own machine — the same trust tier as the SSH remote-command strings this app
  * already executes with zero sandboxing. Not worth over-designing.
  */

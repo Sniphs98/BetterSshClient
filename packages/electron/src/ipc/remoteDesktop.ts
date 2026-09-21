@@ -7,7 +7,7 @@ import type { RemoteDesktopConnectionDto, RemoteDesktopConnectionInputDto } from
 
 /**
  * Remote-desktop connection-profile CRUD. Mirrors `ipc/automations.ts`'s shape, but
- * upserts by `id` (like Automations) rather than by name, since a connection's name is
+ * upserts by `id` (like Snippets) rather than by name, since a connection's name is
  * just a label, not its on-disk key.
  */
 

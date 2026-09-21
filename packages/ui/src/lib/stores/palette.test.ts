@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
-import type { AutomationDto, ConnectionStatusDto, HostDto } from '$lib/bindings';
+import type { SnippetDto, ConnectionStatusDto, HostDto } from '$lib/bindings';
 import type { Session } from './sessions';
 import { palette, paletteItems, paletteSignature, nextIndex, hostStatusDot } from './palette';
 
@@ -22,7 +22,7 @@ function session(id: number, hostName: string, kind: Session['kind'] = 'terminal
   return { id, kind, hostName, status: 'connecting' };
 }
 
-function automation(name: string, extra: Partial<AutomationDto> = {}): AutomationDto {
+function snippet(name: string, extra: Partial<SnippetDto> = {}): SnippetDto {
   return { id: name, name, kind: 'local', command: 'echo hi', timeoutSecs: 300, ...extra };
 }
 
@@ -65,17 +65,17 @@ describe('paletteItems — filter & sections', () => {
     expect(paletteItems('navigate', hosts, sessions, [], '   ')).toHaveLength(5);
   });
 
-  it('automation picker always leads with the pinned "new" row, then matching automations', () => {
-    const automations = [automation('Build'), automation('Deploy', { kind: 'remote' })];
-    const items = paletteItems('pickAutomation', [], [], automations, '');
-    expect(items.map((i) => i.kind)).toEqual(['newAutomation', 'automation', 'automation']);
+  it('snippet picker always leads with the pinned "new" row, then matching snippets', () => {
+    const snippets = [snippet('Build'), snippet('Deploy', { kind: 'remote' })];
+    const items = paletteItems('pickSnippet', [], [], snippets, '');
+    expect(items.map((i) => i.kind)).toEqual(['newSnippet', 'snippet', 'snippet']);
   });
 
-  it('automation picker filters by name and kind, but the "new" row always survives', () => {
-    const automations = [automation('Build'), automation('Deploy', { kind: 'remote' })];
-    const items = paletteItems('pickAutomation', [], [], automations, 'remote');
-    expect(items.map((i) => i.kind)).toEqual(['newAutomation', 'automation']);
-    expect(items[1]).toMatchObject({ kind: 'automation', automation: { name: 'Deploy' } });
+  it('snippet picker filters by name and kind, but the "new" row always survives', () => {
+    const snippets = [snippet('Build'), snippet('Deploy', { kind: 'remote' })];
+    const items = paletteItems('pickSnippet', [], [], snippets, 'remote');
+    expect(items.map((i) => i.kind)).toEqual(['newSnippet', 'snippet']);
+    expect(items[1]).toMatchObject({ kind: 'snippet', snippet: { name: 'Deploy' } });
   });
 });
 
@@ -167,34 +167,34 @@ describe('palette store — modes & picker resolution', () => {
     expect(get(palette)).toEqual({ open: true, mode: 'navigate' });
   });
 
-  it('pickAutomation() resolves with the chosen automation and closes', async () => {
-    const pending = palette.pickAutomation();
-    expect(get(palette)).toEqual({ open: true, mode: 'pickAutomation' });
-    const chosen = automation('Build');
-    palette.chooseAutomation(chosen);
+  it('pickSnippet() resolves with the chosen snippet and closes', async () => {
+    const pending = palette.pickSnippet();
+    expect(get(palette)).toEqual({ open: true, mode: 'pickSnippet' });
+    const chosen = snippet('Build');
+    palette.chooseSnippet(chosen);
     await expect(pending).resolves.toEqual(chosen);
     expect(get(palette)).toEqual({ open: false, mode: 'navigate' });
   });
 
-  it('pickAutomation() resolves "new" when the pinned row is chosen', async () => {
-    const pending = palette.pickAutomation();
-    palette.chooseAutomation('new');
+  it('pickSnippet() resolves "new" when the pinned row is chosen', async () => {
+    const pending = palette.pickSnippet();
+    palette.chooseSnippet('new');
     await expect(pending).resolves.toBe('new');
   });
 
-  it('closing a pending automation pick resolves null', async () => {
-    const pending = palette.pickAutomation();
+  it('closing a pending snippet pick resolves null', async () => {
+    const pending = palette.pickSnippet();
     palette.close();
     await expect(pending).resolves.toBeNull();
   });
 
-  it('starting a host pick cancels a pending automation pick, and vice versa', async () => {
-    const pendingAutomation = palette.pickAutomation();
+  it('starting a host pick cancels a pending snippet pick, and vice versa', async () => {
+    const pendingSnippet = palette.pickSnippet();
     const pendingHost = palette.pickHost();
-    await expect(pendingAutomation).resolves.toBeNull();
+    await expect(pendingSnippet).resolves.toBeNull();
     expect(get(palette)).toEqual({ open: true, mode: 'pickHost' });
 
-    palette.chooseAutomation(automation('Build'));
+    palette.chooseSnippet(snippet('Build'));
     await expect(pendingHost).resolves.toBeNull();
   });
 });

@@ -6,7 +6,7 @@ import { expect, test, type Page } from '@playwright/test';
 // `terminal-output-<id>` channel the real `Channel.attach()` subscribes to right after
 // `terminal_open` resolves (proving raw output renders); `terminal_write` echoes a canned
 // line on Enter (proving input round-trips). The host-first path (a Dashboard card's
-// `sh`, no picker) is the load-bearing flow the stage requires.
+// `sh`, no picker) is the load-bearing automation the stage requires.
 const HOSTS = [
   { name: 'web-1', hostname: 'web-1.example.com', user: 'deploy', port: 22, tags: ['prod'], source: 'manual', hasKey: true },
   { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false }

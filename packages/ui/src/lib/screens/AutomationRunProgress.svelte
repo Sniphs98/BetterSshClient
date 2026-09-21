@@ -1,12 +1,12 @@
 <script lang="ts">
-  // Live flow-run progress panel: renders the active run from the `flowRun` store —
+  // Live automation-run progress panel: renders the active run from the `automationRun` store —
   // a per-node status list while running, then the same list frozen at its terminal
   // per-node outcomes, or an engine-level failure message. Mirrors
   // `KeySetupProgress.svelte`'s running -> terminal-panel structure. Mounted globally
-  // (AppShell) so it survives navigating away from the Automations screen mid-run.
+  // (AppShell) so it survives navigating away from the Snippets screen mid-run.
   import { Button, Icon, StatusDot, type Status } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
-  import { flowRun, dismissFlowRun } from '$lib/stores/automations';
+  import { automationRun, dismissAutomationRun } from '$lib/stores/automations';
   import type { NodeResultDto } from '$lib/bindings';
 
   function dotStatus(status: NodeResultDto['status'] | 'running'): Status {
@@ -28,14 +28,14 @@
     'mt-1.5 max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-surface px-2 py-1.5 font-mono text-[11px] text-muted';
 </script>
 
-{#if $flowRun}
-  {@const run = $flowRun}
+{#if $automationRun}
+  {@const run = $automationRun}
   {@const phase = run.phase}
-  <Modal label="Flow run" onClose={dismissFlowRun}>
+  <Modal label="Automation run" onClose={dismissAutomationRun}>
     <div class="space-y-3 px-5 py-4">
       <div class="flex items-center gap-2.5">
         <Icon name="automations" size={16} />
-        <h2 class="min-w-0 truncate text-sm font-semibold">{run.flowName}</h2>
+        <h2 class="min-w-0 truncate text-sm font-semibold">{run.automationName}</h2>
       </div>
 
       {#if phase.kind === 'running'}
@@ -81,18 +81,18 @@
           {/each}
         </ul>
         <div class="flex justify-end pt-1">
-          <Button variant="primary" onclick={dismissFlowRun}>Done</Button>
+          <Button variant="primary" onclick={dismissAutomationRun}>Done</Button>
         </div>
       {:else}
         <div class="flex items-start gap-2.5">
           <span class="mt-0.5 shrink-0"><StatusDot status="crit" size={9} /></span>
           <div class="min-w-0 space-y-1">
-            <p class="text-sm font-medium">Flow run failed</p>
+            <p class="text-sm font-medium">Automation run failed</p>
             <p class="break-words text-xs text-muted">{phase.error}</p>
           </div>
         </div>
         <div class="flex justify-end pt-1">
-          <Button variant="ghost" onclick={dismissFlowRun}>Close</Button>
+          <Button variant="ghost" onclick={dismissAutomationRun}>Close</Button>
         </div>
       {/if}
     </div>

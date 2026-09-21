@@ -27,11 +27,11 @@ export class GuiState {
   private nextTransferId = 1;
   /** Single-slot guard: the host a key-setup run is in flight for, if any. */
   private keySetupHost: string | undefined;
-  /** Flow names currently running — keyed per flow (unlike key setup's single global
+  /** Automation names currently running — keyed per automation (unlike key setup's single global
    *  slot, which exists specifically to protect a `hosts.toml` write race). Two
-   *  different flows have no reason to serialize; only the same flow twice at once is
-   *  nonsensical (confusing interleaved progress events on one flow's run). */
-  private readonly runningFlows = new Set<string>();
+   *  different automations have no reason to serialize; only the same automation twice at once is
+   *  nonsensical (confusing interleaved progress events on one automation's run). */
+  private readonly runningAutomations = new Set<string>();
   private updateCheckClaimed = false;
   readonly pty: PtyManager;
 
@@ -81,18 +81,18 @@ export class GuiState {
     this.keySetupHost = undefined;
   }
 
-  /** Claims the run slot for `flowName`, or throws if that same flow is already
+  /** Claims the run slot for `automationName`, or throws if that same automation is already
    *  running. */
-  tryBeginFlowRun(flowName: string): void {
-    if (this.runningFlows.has(flowName)) {
-      throw new Error(`flow '${flowName}' is already running`);
+  tryBeginAutomationRun(automationName: string): void {
+    if (this.runningAutomations.has(automationName)) {
+      throw new Error(`automation '${automationName}' is already running`);
     }
-    this.runningFlows.add(flowName);
+    this.runningAutomations.add(automationName);
   }
 
-  /** Releases the run slot for `flowName`. Safe to call unconditionally. */
-  endFlowRun(flowName: string): void {
-    this.runningFlows.delete(flowName);
+  /** Releases the run slot for `automationName`. Safe to call unconditionally. */
+  endAutomationRun(automationName: string): void {
+    this.runningAutomations.delete(automationName);
   }
 
   /** One-shot latch: `true` only the first time it's called, so the startup

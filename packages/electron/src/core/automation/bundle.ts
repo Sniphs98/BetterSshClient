@@ -1,60 +1,60 @@
 import { randomUUID } from 'node:crypto';
-import type { Automation, AutomationKind, Flow, FlowEdge, FlowNode, FlowParam, FlowParamKind } from './types.js';
+import type { Snippet, SnippetKind, Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind } from './types.js';
 
 /**
- * Export/import file format for sharing a single Automation or Flow between people or
- * machines. A Flow bundle is self-contained — it carries every Automation its nodes
- * reference, not just the Flow's own graph shape, so the file works unchanged on a
- * machine that has never seen those Automations before. Plain JSON (not TOML, unlike
+ * Export/import file format for sharing a single Snippet or Automation between people or
+ * machines. An Automation bundle is self-contained — it carries every Snippet its nodes
+ * reference, not just the Automation's own graph shape, so the file works unchanged on a
+ * machine that has never seen those Snippets before. Plain JSON (not TOML, unlike
  * the on-disk config) since this is a one-off file meant to be emailed/committed/pasted
- * around, not maintained by hand like flows.toml is.
+ * around, not maintained by hand like automations.toml is.
  */
 
 export const BUNDLE_VERSION = 1;
+
+export interface SnippetBundle {
+  kind: 'omnyssh-snippet';
+  version: number;
+  snippet: Snippet;
+}
 
 export interface AutomationBundle {
   kind: 'omnyssh-automation';
   version: number;
   automation: Automation;
+  snippets: Snippet[];
 }
 
-export interface FlowBundle {
-  kind: 'omnyssh-flow';
-  version: number;
-  flow: Flow;
-  automations: Automation[];
+export type Bundle = SnippetBundle | AutomationBundle;
+
+export function buildSnippetBundle(snippet: Snippet): SnippetBundle {
+  return { kind: 'omnyssh-snippet', version: BUNDLE_VERSION, snippet };
 }
 
-export type Bundle = AutomationBundle | FlowBundle;
-
-export function buildAutomationBundle(automation: Automation): AutomationBundle {
-  return { kind: 'omnyssh-automation', version: BUNDLE_VERSION, automation };
-}
-
-/** Gathers exactly the Automations `flow` actually references, in node order and
- *  deduplicated — never the whole library. Throws if a node's `automationId` doesn't
- *  resolve; `save_flow` always validates this first so a flow reached through normal
- *  use can't be in that state, but a hand-edited flows.toml could be. */
-export function buildFlowBundle(flow: Flow, automationsById: Map<string, Automation>): FlowBundle {
+/** Gathers exactly the Snippets `automation` actually references, in node order and
+ *  deduplicated — never the whole library. Throws if a node's `snippetId` doesn't
+ *  resolve; `save_automation` always validates this first so an automation reached through normal
+ *  use can't be in that state, but a hand-edited automations.toml could be. */
+export function buildAutomationBundle(automation: Automation, snippetsById: Map<string, Snippet>): AutomationBundle {
   const seen = new Set<string>();
-  const automations: Automation[] = [];
-  for (const node of flow.nodes) {
-    if (seen.has(node.automationId)) continue;
-    const automation = automationsById.get(node.automationId);
-    if (automation === undefined) {
-      throw new Error(`flow "${flow.name}" references an unknown automation`);
+  const snippets: Snippet[] = [];
+  for (const node of automation.nodes) {
+    if (seen.has(node.snippetId)) continue;
+    const snippet = snippetsById.get(node.snippetId);
+    if (snippet === undefined) {
+      throw new Error(`automation "${automation.name}" references an unknown snippet`);
     }
-    seen.add(node.automationId);
-    automations.push(automation);
+    seen.add(node.snippetId);
+    snippets.push(snippet);
   }
-  return { kind: 'omnyssh-flow', version: BUNDLE_VERSION, flow, automations };
+  return { kind: 'omnyssh-automation', version: BUNDLE_VERSION, automation, snippets };
 }
 
 // ---------------------------------------------------------------------------
 // Parsing an imported file's already-`JSON.parse`d contents — the file might be
 // hand-edited, from a future app version, or not an OmnySSH bundle at all, so every
 // field is checked explicitly and a bad one throws a descriptive `Error`, the same
-// discipline core/config/flows.ts's *FromToml functions apply to a hand-edited TOML.
+// discipline core/config/automations.ts's *FromToml functions apply to a hand-edited TOML.
 // ---------------------------------------------------------------------------
 
 function str(v: unknown, ctx: string): string {
@@ -86,9 +86,9 @@ function arr(v: unknown, ctx: string): unknown[] {
   return v;
 }
 
-function parseAutomation(raw: unknown, ctx: string): Automation {
+function parseSnippet(raw: unknown, ctx: string): Snippet {
   const o = obj(raw, ctx);
-  const kind: AutomationKind | undefined = o.kind === 'local' ? 'local' : o.kind === 'remote' ? 'remote' : undefined;
+  const kind: SnippetKind | undefined = o.kind === 'local' ? 'local' : o.kind === 'remote' ? 'remote' : undefined;
   if (kind === undefined) throw new Error(`${ctx}.kind: must be "local" or "remote"`);
   return {
     id: str(o.id, `${ctx}.id`),
@@ -99,7 +99,7 @@ function parseAutomation(raw: unknown, ctx: string): Automation {
   };
 }
 
-function parseFlowNode(raw: unknown, ctx: string): FlowNode {
+function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
   const o = obj(raw, ctx);
   let position: { x: number; y: number } | undefined;
   if (o.position !== undefined && o.position !== null) {
@@ -108,21 +108,21 @@ function parseFlowNode(raw: unknown, ctx: string): FlowNode {
   }
   return {
     id: str(o.id, `${ctx}.id`),
-    automationId: str(o.automationId, `${ctx}.automationId`),
+    snippetId: str(o.snippetId, `${ctx}.snippetId`),
     label: str(o.label, `${ctx}.label`),
     continueOnError: bool(o.continueOnError, `${ctx}.continueOnError`),
     position
   };
 }
 
-function parseFlowEdge(raw: unknown, ctx: string): FlowEdge {
+function parseAutomationEdge(raw: unknown, ctx: string): AutomationEdge {
   const o = obj(raw, ctx);
   return { from: str(o.from, `${ctx}.from`), to: str(o.to, `${ctx}.to`) };
 }
 
-function parseFlowParam(raw: unknown, ctx: string): FlowParam {
+function parseAutomationParam(raw: unknown, ctx: string): AutomationParam {
   const o = obj(raw, ctx);
-  const kind: FlowParamKind | undefined = o.kind === 'text' ? 'text' : o.kind === 'host' ? 'host' : undefined;
+  const kind: AutomationParamKind | undefined = o.kind === 'text' ? 'text' : o.kind === 'host' ? 'host' : undefined;
   if (kind === undefined) throw new Error(`${ctx}.kind: must be "text" or "host"`);
   return {
     name: str(o.name, `${ctx}.name`),
@@ -132,13 +132,13 @@ function parseFlowParam(raw: unknown, ctx: string): FlowParam {
   };
 }
 
-function parseFlow(raw: unknown, ctx: string): Flow {
+function parseAutomation(raw: unknown, ctx: string): Automation {
   const o = obj(raw, ctx);
   return {
     name: str(o.name, `${ctx}.name`),
-    params: arr(o.params ?? [], `${ctx}.params`).map((p, i) => parseFlowParam(p, `${ctx}.params[${i}]`)),
-    nodes: arr(o.nodes ?? [], `${ctx}.nodes`).map((n, i) => parseFlowNode(n, `${ctx}.nodes[${i}]`)),
-    edges: arr(o.edges ?? [], `${ctx}.edges`).map((e, i) => parseFlowEdge(e, `${ctx}.edges[${i}]`)),
+    params: arr(o.params ?? [], `${ctx}.params`).map((p, i) => parseAutomationParam(p, `${ctx}.params[${i}]`)),
+    nodes: arr(o.nodes ?? [], `${ctx}.nodes`).map((n, i) => parseAutomationNode(n, `${ctx}.nodes[${i}]`)),
+    edges: arr(o.edges ?? [], `${ctx}.edges`).map((e, i) => parseAutomationEdge(e, `${ctx}.edges[${i}]`)),
     startLinks:
       o.startLinks === undefined
         ? undefined
@@ -150,32 +150,32 @@ function parseFlow(raw: unknown, ctx: string): Flow {
  *  a descriptive `Error`. */
 export function parseBundle(raw: unknown): Bundle {
   const o = obj(raw, 'file');
+  if (o.kind === 'omnyssh-snippet') {
+    return {
+      kind: 'omnyssh-snippet',
+      version: num(o.version, 'file.version'),
+      snippet: parseSnippet(o.snippet, 'file.snippet')
+    };
+  }
   if (o.kind === 'omnyssh-automation') {
     return {
       kind: 'omnyssh-automation',
       version: num(o.version, 'file.version'),
-      automation: parseAutomation(o.automation, 'file.automation')
+      automation: parseAutomation(o.automation, 'file.automation'),
+      snippets: arr(o.snippets, 'file.snippets').map((a, i) => parseSnippet(a, `file.snippets[${i}]`))
     };
   }
-  if (o.kind === 'omnyssh-flow') {
-    return {
-      kind: 'omnyssh-flow',
-      version: num(o.version, 'file.version'),
-      flow: parseFlow(o.flow, 'file.flow'),
-      automations: arr(o.automations, 'file.automations').map((a, i) => parseAutomation(a, `file.automations[${i}]`))
-    };
-  }
-  throw new Error('not an OmnySSH automation/flow file');
+  throw new Error('not an OmnySSH snippet/automation file');
 }
 
 export interface ImportResult {
-  kind: 'automation' | 'flow';
+  kind: 'snippet' | 'automation';
   name: string;
 }
 
 /** `base` if it's not already in `taken`, else `"base (2)"`, `"base (3)"`, … — used for
- *  a Flow's name (the on-disk primary key; see `upsertFlow`) so importing one never
- *  silently overwrites an existing flow of the same name. */
+ *  an Automation's name (the on-disk primary key; see `upsertAutomation`) so importing one never
+ *  silently overwrites an existing automation of the same name. */
 function uniqueName(base: string, taken: Set<string>): string {
   if (!taken.has(base)) return base;
   let i = 2;
@@ -183,43 +183,43 @@ function uniqueName(base: string, taken: Set<string>): string {
   return `${base} (${i})`;
 }
 
-/** Adds the bundled Automation to the library under a fresh id. `Automation.id` is a
+/** Adds the bundled Snippet to the library under a fresh id. `Snippet.id` is a
  *  local implementation detail, not a stable identity across machines (see
- *  `upsertAutomation`'s doc comment) — reusing the exporting machine's id risks
- *  colliding with an unrelated Automation the importer already has. Automation names
- *  don't have to be unique (also `upsertAutomation`), so unlike a Flow's name, nothing
+ *  `upsertSnippet`'s doc comment) — reusing the exporting machine's id risks
+ *  colliding with an unrelated Snippet the importer already has. Snippet names
+ *  don't have to be unique (also `upsertSnippet`), so unlike an Automation's name, nothing
  *  here needs renaming. */
-export function mergeAutomationBundle(
-  bundle: AutomationBundle,
-  automations: Automation[]
-): { automations: Automation[]; result: ImportResult } {
-  const imported: Automation = { ...bundle.automation, id: randomUUID() };
-  return { automations: [...automations, imported], result: { kind: 'automation', name: imported.name } };
+export function mergeSnippetBundle(
+  bundle: SnippetBundle,
+  snippets: Snippet[]
+): { snippets: Snippet[]; result: ImportResult } {
+  const imported: Snippet = { ...bundle.snippet, id: randomUUID() };
+  return { snippets: [...snippets, imported], result: { kind: 'snippet', name: imported.name } };
 }
 
-/** Adds every bundled Automation under a fresh id, remaps the Flow's node
- *  `automationId`s through that mapping, and renames the Flow if its name collides
+/** Adds every bundled Snippet under a fresh id, remaps the Automation's node
+ *  `snippetId`s through that mapping, and renames the Automation if its name collides
  *  with one the importer already has (see `uniqueName`). */
-export function mergeFlowBundle(
-  bundle: FlowBundle,
-  automations: Automation[],
-  flows: Flow[]
-): { automations: Automation[]; flows: Flow[]; result: ImportResult } {
+export function mergeAutomationBundle(
+  bundle: AutomationBundle,
+  snippets: Snippet[],
+  automations: Automation[]
+): { snippets: Snippet[]; automations: Automation[]; result: ImportResult } {
   const idMap = new Map<string, string>();
-  const importedAutomations = bundle.automations.map((a) => {
+  const importedSnippets = bundle.snippets.map((a) => {
     const id = randomUUID();
     idMap.set(a.id, id);
     return { ...a, id };
   });
-  const name = uniqueName(bundle.flow.name, new Set(flows.map((f) => f.name)));
-  const importedFlow: Flow = {
-    ...bundle.flow,
+  const name = uniqueName(bundle.automation.name, new Set(automations.map((f) => f.name)));
+  const importedAutomation: Automation = {
+    ...bundle.automation,
     name,
-    nodes: bundle.flow.nodes.map((n) => ({ ...n, automationId: idMap.get(n.automationId) ?? n.automationId }))
+    nodes: bundle.automation.nodes.map((n) => ({ ...n, snippetId: idMap.get(n.snippetId) ?? n.snippetId }))
   };
   return {
-    automations: [...automations, ...importedAutomations],
-    flows: [...flows, importedFlow],
-    result: { kind: 'flow', name }
+    snippets: [...snippets, ...importedSnippets],
+    automations: [...automations, importedAutomation],
+    result: { kind: 'automation', name }
   };
 }
