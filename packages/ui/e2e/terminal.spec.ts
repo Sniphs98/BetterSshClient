@@ -26,6 +26,8 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
       win.__terminalCommands = terminalCommands;
       const terminalWrites = { text: '' };
       win.__terminalWrites = terminalWrites;
+      const terminalResizes: Array<{ cols: number; rows: number }> = [];
+      win.__terminalResizes = terminalResizes;
 
       function fire(channel: string, payload: unknown): void {
         for (const cb of listeners[channel] ?? []) cb(payload);
@@ -34,6 +36,9 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
         // The real path delivers an ArrayBuffer; mirror that so xterm's Uint8Array wrap works.
         fire(`terminal-output-${sessionId}`, new TextEncoder().encode(text).buffer);
       }
+
+      // Lets a test push arbitrary output (escape sequences included) at the terminal.
+      win.__sendToTerminal = sendToTerminal;
 
       // Lets a test simulate the remote shell exiting for a given backend session id.
       win.__fireTerminalExited = (sessionId: number) => fire('terminal-exited', { sessionId });
@@ -66,7 +71,11 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
               }
               return Promise.resolve(null);
             }
-            case 'terminal_resize':
+            case 'terminal_resize': {
+              const [, cols, rows] = args as [number, number, number];
+              terminalResizes.push({ cols, rows });
+              return Promise.resolve(null);
+            }
             case 'terminal_close':
               return Promise.resolve(null);
             default:
@@ -213,4 +222,144 @@ test('right-click opens a Copy/Paste menu by default, and pastes directly once s
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __terminalWrites: { text: string } }).__terminalWrites.text))
     .toContain('second-paste');
+});
+
+// --- Everyday terminal behaviour -------------------------------------------------
+//
+// These guard the things a shell needs that the app could plausibly steal: the control
+// keys (an app-level menu accelerator or a global chord swallows them before the page
+// sees them — that is exactly what Electron's default menu used to do), the line-editing
+// keys, and resize. `__terminalWrites` is everything that reached the pty, so each test
+// asserts on the actual bytes rather than on echoed output the stub doesn't produce.
+
+/** Everything written to the pty so far. */
+function ptyWrites(page: Page): Promise<string> {
+  return page.evaluate(() => (window as unknown as { __terminalWrites: { text: string } }).__terminalWrites.text);
+}
+
+async function openTerminal(page: Page): Promise<void> {
+  await boot(page);
+  await page.getByTitle('sh on web-1').click();
+  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+  await page.locator('.xterm-helper-textarea').focus();
+  // Ignore the autocd/prompt traffic that precedes what each test presses.
+  await page.evaluate(() => {
+    (window as unknown as { __terminalWrites: { text: string } }).__terminalWrites.text = '';
+  });
+}
+
+test('the shell control keys reach the shell, not the app', async ({ page }) => {
+  await openTerminal(page);
+
+  // Ctrl+C interrupt, Ctrl+Z suspend, Ctrl+D end-of-file — the three that matter most,
+  // and the three Electron's default Edit menu used to eat.
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+d');
+
+  await expect.poll(() => ptyWrites(page)).toContain('\x03');
+  const writes = await ptyWrites(page);
+  expect(writes).toContain('\x1a');
+  expect(writes).toContain('\x04');
+});
+
+test('readline line-editing keys reach the shell', async ({ page }) => {
+  await openTerminal(page);
+
+  await page.keyboard.press('Control+a'); // start of line
+  await page.keyboard.press('Control+e'); // end of line
+  await page.keyboard.press('Control+u'); // kill line
+  await page.keyboard.press('Control+w'); // kill previous word
+
+  await expect.poll(() => ptyWrites(page)).toContain('\x01');
+  const writes = await ptyWrites(page);
+  expect(writes).toContain('\x05');
+  expect(writes).toContain('\x15');
+  expect(writes).toContain('\x17');
+});
+
+test('history, completion and backspace send their usual sequences', async ({ page }) => {
+  await openTerminal(page);
+
+  await page.keyboard.press('ArrowUp'); // previous command
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Tab'); // completion
+  await page.keyboard.type('ls');
+  await page.keyboard.press('Backspace');
+
+  await expect.poll(() => ptyWrites(page)).toContain('\x1b[A');
+  const writes = await ptyWrites(page);
+  expect(writes).toContain('\x1b[B');
+  expect(writes).toContain('\t');
+  expect(writes).toContain('ls');
+  expect(writes).toContain('\x7f'); // DEL, which is what a terminal sends for Backspace
+});
+
+test('the copy/paste chords are claimed, but plain Ctrl+V still reaches the shell', async ({
+  page,
+  context
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openTerminal(page);
+
+  // Ctrl+Shift+C/V are the app's, so nothing may leak through to the shell.
+  await page.keyboard.press('Control+Shift+c');
+  await page.keyboard.press('Control+Shift+v');
+  expect(await ptyWrites(page)).toBe('');
+
+  // Plain Ctrl+V is readline's quoted-insert and stays the shell's.
+  await page.keyboard.press('Control+v');
+  await expect.poll(() => ptyWrites(page)).toContain('\x16');
+});
+
+test('resizing the window tells the backend the new size', async ({ page }) => {
+  await openTerminal(page);
+  await page.evaluate(() => {
+    (window as unknown as { __terminalResizes: unknown[] }).__terminalResizes.length = 0;
+  });
+
+  await page.setViewportSize({ width: 1100, height: 700 });
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalResizes: unknown[] }).__terminalResizes.length))
+    .toBeGreaterThan(0);
+  const [resize] = await page.evaluate(
+    () => (window as unknown as { __terminalResizes: Array<{ cols: number; rows: number }> }).__terminalResizes
+  );
+  expect(resize.cols).toBeGreaterThan(0);
+  expect(resize.rows).toBeGreaterThan(0);
+});
+
+test('ANSI output renders as styled cells rather than escape codes', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('sh on web-1').click();
+  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+
+  await page.evaluate(() => {
+    (window as unknown as { __sendToTerminal: (id: number, text: string) => void }).__sendToTerminal(
+      1,
+      '\u001b[31mRED-TEXT\u001b[0m\r\n'
+    );
+  });
+
+  const rows = page.locator('.xterm-rows');
+  await expect(rows).toContainText('RED-TEXT');
+  // The escape bytes must be consumed by the emulator, not printed.
+  await expect(rows).not.toContainText('[31m');
+});
+
+test("the app's global chords don't hijack keys the shell needs", async ({ page }) => {
+  await openTerminal(page);
+
+  // Ctrl+K opens the command palette anywhere else in the app, but in a shell it is
+  // kill-to-end-of-line. xterm stops the event before the document-level listener sees
+  // it — a regression here (say, moving that listener to the capture phase) would make
+  // the palette pop open mid-command instead.
+  await page.keyboard.press('Control+k');
+  await expect.poll(() => ptyWrites(page)).toContain('\x0b');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // Same for Ctrl+B, which collapses the sidebar elsewhere and moves the cursor back here.
+  await page.keyboard.press('Control+b');
+  await expect.poll(() => ptyWrites(page)).toContain('\x02');
 });
