@@ -171,7 +171,7 @@
     const preventDefault = (e: DragEvent): void => e.preventDefault();
     const handleDrop = (e: DragEvent): void => {
       e.preventDefault();
-      const bridge = window.omnyssh;
+      const bridge = window.bsshClient;
       if (!bridge || !e.dataTransfer) return;
       const paths = Array.from(e.dataTransfer.files)
         .map((f) => {
@@ -196,7 +196,7 @@
     void (async () => {
       let home = '/';
       try {
-        home = (await window.omnyssh?.homeDir()) ?? '/';
+        home = (await window.bsshClient?.homeDir()) ?? '/';
       } catch {
         home = '/';
       }

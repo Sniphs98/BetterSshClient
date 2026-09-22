@@ -13,4 +13,4 @@ StrictModes no
 
 Subsystem sftp /usr/lib/ssh/sftp-server
 
-AllowUsers omnyssh
+AllowUsers better-ssh-client

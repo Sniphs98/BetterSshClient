@@ -113,7 +113,7 @@ describe('Include directive (integration)', () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), 'omnyssh-sshconfig-'));
+    tmp = await mkdtemp(join(tmpdir(), 'better-ssh-client-sshconfig-'));
   });
 
   afterEach(async () => {
@@ -142,7 +142,7 @@ describe('Include directive (integration)', () => {
 
   it('a relative Include ignores the process working directory', async () => {
     await writeFixture(tmp);
-    const decoy = await mkdtemp(join(tmpdir(), 'omnyssh-decoy-'));
+    const decoy = await mkdtemp(join(tmpdir(), 'better-ssh-client-decoy-'));
     await mkdir(join(decoy, 'conf.d'), { recursive: true });
     await writeFile(join(decoy, 'conf.d', '99-decoy.conf'), 'Host decoy\n    HostName 6.6.6.6\n');
 

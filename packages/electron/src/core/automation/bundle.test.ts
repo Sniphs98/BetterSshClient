@@ -25,7 +25,7 @@ function automation(partial: Partial<Automation> & Pick<Automation, 'nodes'>): A
 describe('buildSnippetBundle', () => {
   it('wraps the snippet with a kind/version envelope', () => {
     const a = snippet({ id: 'a1', name: 'Build' });
-    expect(buildSnippetBundle(a)).toEqual({ kind: 'omnyssh-snippet', version: 1, snippet: a });
+    expect(buildSnippetBundle(a)).toEqual({ kind: 'better-ssh-client-snippet', version: 1, snippet: a });
   });
 });
 
@@ -76,18 +76,18 @@ describe('parseBundle', () => {
   });
 
   it('rejects an unrecognized "kind"', () => {
-    expect(() => parseBundle({ kind: 'something-else' })).toThrow(/not an OmnySSH/);
+    expect(() => parseBundle({ kind: 'something-else' })).toThrow(/not a BetterSshClient/);
   });
 
   it('rejects a snippet bundle missing a required field', () => {
-    expect(() => parseBundle({ kind: 'omnyssh-snippet', version: 1, snippet: { id: 'a1', name: 'Build' } })).toThrow(
+    expect(() => parseBundle({ kind: 'better-ssh-client-snippet', version: 1, snippet: { id: 'a1', name: 'Build' } })).toThrow(
       /snippet\.command/
     );
   });
 
   it('rejects an automation bundle whose node is missing a required field', () => {
     const raw = {
-      kind: 'omnyssh-automation',
+      kind: 'better-ssh-client-automation',
       version: 1,
       automation: { name: 'f', params: [], edges: [], nodes: [{ id: 'n1', snippetId: 'a1', label: 'x', target: 'local' }] },
       snippets: []
@@ -97,7 +97,7 @@ describe('parseBundle', () => {
 
   it('defaults an automation bundle missing startLinks to undefined, not an empty array', () => {
     const raw = {
-      kind: 'omnyssh-automation',
+      kind: 'better-ssh-client-automation',
       version: 1,
       automation: { name: 'f', params: [], edges: [], nodes: [] },
       snippets: []
@@ -131,7 +131,7 @@ describe('mergeAutomationBundle', () => {
   it('mints fresh ids for bundled snippets and remaps the automation nodes to them', () => {
     const a = snippet({ id: 'exported-a1', name: 'Build' });
     const f = automation({ name: 'release', nodes: [node({ id: 'n1', snippetId: 'exported-a1' })] });
-    const bundle: AutomationBundle = { kind: 'omnyssh-automation', version: 1, automation: f, snippets: [a] };
+    const bundle: AutomationBundle = { kind: 'better-ssh-client-automation', version: 1, automation: f, snippets: [a] };
 
     const { snippets, automations, result } = mergeAutomationBundle(bundle, [], []);
     expect(snippets).toHaveLength(1);
@@ -144,7 +144,7 @@ describe('mergeAutomationBundle', () => {
   it('renames the automation on a name collision instead of overwriting the existing one', () => {
     const a = snippet({ id: 'a1', name: 'Build' });
     const f = automation({ name: 'release', nodes: [node({ id: 'n1', snippetId: 'a1' })] });
-    const bundle: AutomationBundle = { kind: 'omnyssh-automation', version: 1, automation: f, snippets: [a] };
+    const bundle: AutomationBundle = { kind: 'better-ssh-client-automation', version: 1, automation: f, snippets: [a] };
     const existingAutomation = automation({ name: 'release', nodes: [] });
 
     const { automations, result } = mergeAutomationBundle(bundle, [], [existingAutomation]);
@@ -157,10 +157,28 @@ describe('mergeAutomationBundle', () => {
   it('keeps counting past an existing "(2)" to find a free name', () => {
     const a = snippet({ id: 'a1', name: 'Build' });
     const f = automation({ name: 'release', nodes: [] });
-    const bundle: AutomationBundle = { kind: 'omnyssh-automation', version: 1, automation: f, snippets: [a] };
+    const bundle: AutomationBundle = { kind: 'better-ssh-client-automation', version: 1, automation: f, snippets: [a] };
     const existing = [automation({ name: 'release', nodes: [] }), automation({ name: 'release (2)', nodes: [] })];
 
     const { result } = mergeAutomationBundle(bundle, [], existing);
     expect(result.name).toBe('release (3)');
+  });
+});
+
+describe('bundles exported before the rename', () => {
+  it('still import — the old kind is accepted and comes back under the current name', () => {
+    const legacy = { kind: 'omnyssh-snippet', version: 1, snippet: snippet({ id: 'a1', name: 'Build' }) };
+    const parsed = parseBundle(legacy);
+    expect(parsed.kind).toBe('better-ssh-client-snippet');
+  });
+
+  it('accepts a legacy automation bundle too', () => {
+    const legacy = {
+      kind: 'omnyssh-automation',
+      version: 1,
+      automation: automation({ nodes: [] }),
+      snippets: []
+    };
+    expect(parseBundle(legacy).kind).toBe('better-ssh-client-automation');
   });
 });

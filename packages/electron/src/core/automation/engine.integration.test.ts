@@ -59,7 +59,7 @@ describe('snippet engine against the test target', () => {
   });
 
   it('a failing local node (no continueOnError) skips the dependent remote node entirely', async () => {
-    const marker = `/home/omnyssh/it-marker-${Date.now()}`;
+    const marker = `/home/better-ssh-client/it-marker-${Date.now()}`;
     const failing: Snippet = { id: 'fail', name: 'Fail', kind: 'local', command: 'exit 1', timeoutSecs: 30 };
     const remote: Snippet = {
       id: 'remote',

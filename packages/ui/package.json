@@ -1,5 +1,5 @@
 {
-  "name": "omnyssh-desktop-ui",
+  "name": "better-ssh-client-ui",
   "private": true,
   "type": "module",
   "scripts": {

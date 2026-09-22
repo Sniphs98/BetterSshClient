@@ -61,9 +61,9 @@ describe('reduceProgress', () => {
 
 describe('terminal reducers', () => {
   it('reduceComplete carries the key path', () => {
-    expect(reduceComplete('web-1', '/home/me/.ssh/omnyssh_web-1_ed25519')).toEqual({
+    expect(reduceComplete('web-1', '/home/me/.ssh/bssh_web-1_ed25519')).toEqual({
       hostName: 'web-1',
-      phase: { kind: 'complete', keyPath: '/home/me/.ssh/omnyssh_web-1_ed25519' }
+      phase: { kind: 'complete', keyPath: '/home/me/.ssh/bssh_web-1_ed25519' }
     });
   });
 

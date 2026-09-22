@@ -9,8 +9,8 @@ export interface SettingsStore {
 }
 
 export async function loadSettingsStore(): Promise<SettingsStore> {
-  const bridge = window.omnyssh;
-  if (!bridge) throw new Error('the Electron bridge (window.omnyssh) is unavailable in this environment');
+  const bridge = window.bsshClient;
+  if (!bridge) throw new Error('the Electron bridge (window.bsshClient) is unavailable in this environment');
   return {
     get: <T>(key: string) => bridge.settings.get(key) as Promise<T | undefined>,
     set: (key: string, value: unknown) => bridge.settings.set(key, value)

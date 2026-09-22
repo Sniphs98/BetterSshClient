@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Terminal streaming vertical (tech-gui.md §3.1). e2e runs against the static SPA with
-// the Electron preload bridge absent, so we install a `window.omnyssh` stub at the
+// the Electron preload bridge absent, so we install a `window.bsshClient` stub at the
 // boundary (electron.d.ts). `terminal_open` streams a prompt through the per-session
 // `terminal-output-<id>` channel the real `Channel.attach()` subscribes to right after
 // `terminal_open` resolves (proving raw output renders); `terminal_write` echoes a canned
@@ -43,7 +43,7 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
       // Lets a test simulate the remote shell exiting for a given backend session id.
       win.__fireTerminalExited = (sessionId: number) => fire('terminal-exited', { sessionId });
 
-      win.omnyssh = {
+      win.bsshClient = {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':
@@ -53,7 +53,7 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
             case 'terminal_open': {
               const sid = ++nextSession;
               // A shell prompt proves the streamed output renders + flips status to connected.
-              setTimeout(() => sendToTerminal(sid, 'omnyssh-ready> '), 0);
+              setTimeout(() => sendToTerminal(sid, 'better-ssh-client-ready> '), 0);
               return Promise.resolve(sid);
             }
             case 'terminal_write': {
@@ -113,7 +113,7 @@ test('host-first: spawn a terminal from a card, run a command, see output, then 
   // The tab row appears and the terminal renders the streamed prompt.
   await expect(page.getByRole('button', { name: 'web-1 · terminal', exact: true })).toBeVisible();
   await expect(page.locator('.xterm')).toBeVisible();
-  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
 
   // Run a command: focus the terminal input, type, press Enter -> canned output streams back.
   await page.locator('.xterm-helper-textarea').focus();
@@ -130,7 +130,7 @@ test('host-first: spawn a terminal from a card, run a command, see output, then 
 test("a host's default path is cd'd into automatically when its terminal opens", async ({ page }) => {
   await boot(page, { webOneDefaultPath: '/var/www' });
   await page.getByTitle('sh on web-1').click();
-  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
 
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands))
@@ -147,13 +147,13 @@ test('action-first: the Terminal spawner opens the host picker, then a live term
   await page.getByRole('dialog').getByText('web-1', { exact: true }).click();
 
   await expect(page.getByRole('button', { name: 'web-1 · terminal', exact: true })).toBeVisible();
-  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
 });
 
 test('toggling the theme re-themes a live terminal (§5.1)', async ({ page }) => {
   await boot(page);
   await page.getByTitle('sh on web-1').click();
-  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
 
   // xterm paints its scrollable viewport inline with theme.background; find that
   // element's computed colour rather than assume a class (robust across versions).
@@ -197,7 +197,7 @@ test('right-click opens a Copy/Paste menu by default, and pastes directly once s
   await page.evaluate(() => navigator.clipboard.writeText('echo from-clipboard'));
 
   await page.getByTitle('sh on web-1').click();
-  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
 
   // Default: a menu, so the actions are discoverable without knowing the chord.
   await page.locator('.xterm-screen').click({ button: 'right' });
@@ -240,7 +240,7 @@ function ptyWrites(page: Page): Promise<string> {
 async function openTerminal(page: Page): Promise<void> {
   await boot(page);
   await page.getByTitle('sh on web-1').click();
-  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
   await page.locator('.xterm-helper-textarea').focus();
   // Ignore the autocd/prompt traffic that precedes what each test presses.
   await page.evaluate(() => {
@@ -333,7 +333,7 @@ test('resizing the window tells the backend the new size', async ({ page }) => {
 test('ANSI output renders as styled cells rather than escape codes', async ({ page }) => {
   await boot(page);
   await page.getByTitle('sh on web-1').click();
-  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
 
   await page.evaluate(() => {
     (window as unknown as { __sendToTerminal: (id: number, text: string) => void }).__sendToTerminal(

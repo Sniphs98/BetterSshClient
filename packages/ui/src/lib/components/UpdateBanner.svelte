@@ -50,7 +50,7 @@
       <span class="shrink-0 text-muted"><Icon name="download" size={18} /></span>
       <div class="min-w-0">
         <p class="text-sm font-medium">Update available — v{info.version}</p>
-        <p class="truncate text-xs text-muted">A newer OmnySSH release is ready.</p>
+        <p class="truncate text-xs text-muted">A newer BetterSshClient release is ready.</p>
       </div>
       <div class="ml-auto flex shrink-0 items-center gap-1.5">
         <button

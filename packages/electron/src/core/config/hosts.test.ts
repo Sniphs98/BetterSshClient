@@ -88,7 +88,7 @@ describe('hosts.toml I/O', () => {
   let prevHome: string | undefined;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), 'omnyssh-hosts-'));
+    tmp = await mkdtemp(join(tmpdir(), 'better-ssh-client-hosts-'));
     prevAppData = process.env.APPDATA;
     prevXdgConfig = process.env.XDG_CONFIG_HOME;
     prevHome = process.env.HOME;
@@ -126,7 +126,7 @@ describe('hosts.toml I/O', () => {
 
   it('writes atomically (no leftover .tmp file) and sets 0600 perms on non-Windows', async () => {
     await saveHosts([host('a', 'manual')]);
-    const path = join(tmp, 'omnyssh', 'hosts.toml');
+    const path = join(tmp, 'better-ssh-client', 'hosts.toml');
     expect(existsSync(path)).toBe(true);
     expect(existsSync(`${path}.tmp`)).toBe(false);
 
@@ -139,7 +139,7 @@ describe('hosts.toml I/O', () => {
 
   it('an empty file parses to an empty host list', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises');
-    const dir = join(tmp, 'omnyssh');
+    const dir = join(tmp, 'better-ssh-client');
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, 'hosts.toml'), '');
     expect(await loadHosts()).toEqual([]);
@@ -151,7 +151,7 @@ describe('hosts.toml I/O', () => {
 
   it('omits optional fields on write, matching the Rust struct', async () => {
     await saveHosts([host('a', 'manual')]);
-    const content = await readFile(join(tmp, 'omnyssh', 'hosts.toml'), 'utf-8');
+    const content = await readFile(join(tmp, 'better-ssh-client', 'hosts.toml'), 'utf-8');
     expect(content).not.toContain('identity_file');
     expect(content).not.toContain('password');
   });
@@ -167,7 +167,7 @@ describe('hosts.toml I/O', () => {
     setSecretCipher(fakeCipher());
     await saveHosts([{ ...defaultHost(), name: 'a', password: 'secret' }]);
 
-    const raw = await readFile(join(tmp, 'omnyssh', 'hosts.toml'), 'utf-8');
+    const raw = await readFile(join(tmp, 'better-ssh-client', 'hosts.toml'), 'utf-8');
     expect(raw).not.toContain('secret');
     expect(raw).toContain('enc:v1:');
 
@@ -180,7 +180,7 @@ describe('hosts.toml I/O', () => {
     // unavailable — either way, a bare `password = "secret"` with no "enc:v1:"
     // prefix is already plaintext and must not be run through the cipher.
     const { mkdir, writeFile } = await import('node:fs/promises');
-    const dir = join(tmp, 'omnyssh');
+    const dir = join(tmp, 'better-ssh-client');
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, 'hosts.toml'), '[[hosts]]\nname = "a"\npassword = "secret"\n');
 
@@ -192,7 +192,7 @@ describe('hosts.toml I/O', () => {
   it('falls back to plaintext on save when the cipher reports itself unavailable', async () => {
     setSecretCipher(fakeCipher(false));
     await saveHosts([{ ...defaultHost(), name: 'a', password: 'secret' }]);
-    const raw = await readFile(join(tmp, 'omnyssh', 'hosts.toml'), 'utf-8');
+    const raw = await readFile(join(tmp, 'better-ssh-client', 'hosts.toml'), 'utf-8');
     expect(raw).toContain('password = "secret"');
   });
 

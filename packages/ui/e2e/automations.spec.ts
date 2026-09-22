@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 // Automations (graph-based): a reusable Snippet library + Automations that wire them
 // together with dependency edges. e2e runs against the static SPA with the Electron
-// preload bridge absent, so we install a `window.omnyssh` stub. `run_automation` fakes just
+// preload bridge absent, so we install a `window.bsshClient` stub. `run_automation` fakes just
 // enough of the real engine (core/automation/engine.ts, covered for real by
 // engine.test.ts and engine.integration.test.ts) to exercise the UI: it walks
 // `automation.nodes` in array order (the test always adds them in dependency order),
@@ -30,7 +30,7 @@ async function boot(page: Page): Promise<void> {
       for (const cb of listeners[channel] ?? []) cb(payload);
     }
 
-    win.omnyssh = {
+    win.bsshClient = {
       invoke: (channel: string, ...rawArgs: unknown[]) => {
         // Real Electron sends every arg across the renderer/main IPC boundary via the
         // structured-clone algorithm, which throws "An object could not be cloned" on

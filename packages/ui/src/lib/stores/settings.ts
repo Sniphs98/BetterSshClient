@@ -6,7 +6,7 @@ import { writable } from 'svelte/store';
 // command"). The frontend drives an immediate `refresh_metrics` on this cadence; the
 // backend keeps its own baseline poll, so this is a floor on how *fresh* the dashboard
 // stays, not a throttle.
-const LOCAL_KEY = 'omnyssh-refresh-interval';
+const LOCAL_KEY = 'better-ssh-client-refresh-interval';
 const STORE_KEY = 'refreshInterval';
 
 /** The intervals the settings screen offers, in seconds. */

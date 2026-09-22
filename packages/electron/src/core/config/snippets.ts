@@ -43,7 +43,7 @@ function parseSnippetsFile(content: string): SnippetsFile {
   return { snippets: raw.snippets.map((a) => snippetFromToml(a as Record<string, unknown>)) };
 }
 
-/** Loads the Snippet library from `~/.config/omnyssh/snippets.toml` (or
+/** Loads the Snippet library from `~/.config/better-ssh-client/snippets.toml` (or
  *  `overridePath`, for tests). Returns `[]` if the file does not exist yet. */
 export async function loadSnippets(overridePath?: string): Promise<Snippet[]> {
   const path = overridePath ?? snippetsConfigPath();
@@ -52,7 +52,7 @@ export async function loadSnippets(overridePath?: string): Promise<Snippet[]> {
   return parseSnippetsFile(content).snippets;
 }
 
-/** Persists the Snippet library to `~/.config/omnyssh/snippets.toml` (or
+/** Persists the Snippet library to `~/.config/better-ssh-client/snippets.toml` (or
  *  `overridePath`, for tests), atomically (tmp file + rename), `chmod 600` on
  *  non-Windows. */
 export async function saveSnippets(snippets: Snippet[], overridePath?: string): Promise<void> {

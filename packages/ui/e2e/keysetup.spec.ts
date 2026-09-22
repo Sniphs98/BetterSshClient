@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Auto SSH-key setup (tech-gui.md §4.2). e2e runs against the static SPA with the
-// Electron preload bridge absent, so we install a `window.omnyssh` stub at the boundary
+// Electron preload bridge absent, so we install a `window.bsshClient` stub at the boundary
 // (electron.d.ts). `start_key_setup` is faked: it streams `key-setup-progress` events and
 // then `key-setup-complete`, flipping the host's hasKey — and, only when the caller asked
 // for it, passwordAuthDisabled — so the follow-up `reload_hosts` replays a keyed host,
@@ -21,7 +21,7 @@ async function boot(page: Page): Promise<void> {
         for (const cb of listeners[channel] ?? []) cb(payload);
       }
 
-      win.omnyssh = {
+      win.bsshClient = {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':
@@ -46,7 +46,7 @@ async function boot(page: Page): Promise<void> {
                   h.hasKey = true;
                   if (disablePasswordAuth) h.passwordAuthDisabled = true;
                 }
-                fire('key-setup-complete', { hostName: name, keyPath: `/home/me/.ssh/omnyssh_${name}_ed25519` });
+                fire('key-setup-complete', { hostName: name, keyPath: `/home/me/.ssh/bssh_${name}_ed25519` });
               }, 400);
               return Promise.resolve(null);
             }
@@ -93,7 +93,7 @@ test('prompts key setup, streams progress, then reflects key auth on the card', 
 
   // Completion shows the generated key path.
   await expect(dialog.getByText('Key authentication configured')).toBeVisible();
-  await expect(dialog.getByText(/omnyssh_pw-host_ed25519/)).toBeVisible();
+  await expect(dialog.getByText(/bssh_pw-host_ed25519/)).toBeVisible();
 
   await dialog.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);

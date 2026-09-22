@@ -1,4 +1,4 @@
-import type { OmnysshBridge } from './electron';
+import type { BsshClientBridge } from './electron';
 
 // Hand-written replacement for the tauri-specta-generated bindings.ts. Keeps
 // the exact same exported shape (command signatures, `Result<T, E>` wrapper,
@@ -238,7 +238,7 @@ export const events = makeEvents<EventMap>(EVENT_CHANNELS);
 
 /** user-defined types **/
 /** A reusable, named shell-command building block for Snippets — local (on the
- *  OmnySSH host machine) or against one specific remote host. */
+ *  BetterSshClient host machine) or against one specific remote host. */
 export type SnippetDto = {
   id: string;
   name: string;
@@ -466,14 +466,14 @@ export class Channel<T> {
   }
 }
 
-/** Errors when `window.omnyssh` isn't present (Vitest, `vite preview` outside
+/** Errors when `window.bsshClient` isn't present (Vitest, `vite preview` outside
  *  Electron) — every command then rejects with a real `Error`, exactly like
  *  the old bindings did off a Tauri runtime. */
-function bridge(): OmnysshBridge {
-  if (typeof window === 'undefined' || !window.omnyssh) {
-    throw new Error('the Electron bridge (window.omnyssh) is unavailable in this environment');
+function bridge(): BsshClientBridge {
+  if (typeof window === 'undefined' || !window.bsshClient) {
+    throw new Error('the Electron bridge (window.bsshClient) is unavailable in this environment');
   }
-  return window.omnyssh;
+  return window.bsshClient;
 }
 
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {

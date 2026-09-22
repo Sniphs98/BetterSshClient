@@ -1,12 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 /**
- * The renderer's only door into the main process. Exposed as `window.omnyssh`;
+ * The renderer's only door into the main process. Exposed as `window.bsshClient`;
  * `packages/ui/src/lib/bindings.ts` is the sole consumer — no other renderer
  * code talks to `ipcRenderer` directly (mirrors the old `TAURI_INVOKE`/
  * `TAURI_API_EVENT` boundary in the generated Tauri bindings).
  */
-const omnyssh = {
+const bsshClient = {
   invoke: (channel: string, ...args: unknown[]): Promise<unknown> => ipcRenderer.invoke(channel, ...args),
 
   on: (channel: string, callback: (payload: unknown) => void): (() => void) => {
@@ -29,6 +29,6 @@ const omnyssh = {
   getPathForFile: (file: File): string => webUtils.getPathForFile(file)
 };
 
-export type OmnysshBridge = typeof omnyssh;
+export type BsshClientBridge = typeof bsshClient;
 
-contextBridge.exposeInMainWorld('omnyssh', omnyssh);
+contextBridge.exposeInMainWorld('bsshClient', bsshClient);

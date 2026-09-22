@@ -16,7 +16,7 @@ describe('ProbeOutput.parse', () => {
   });
 
   it('a single section', () => {
-    const output = '===OMNYSSH:OS===\nUbuntu 22.04 LTS\n===OMNYSSH:SERVICES===\nsshd.service\n';
+    const output = '===BSSH:OS===\nUbuntu 22.04 LTS\n===BSSH:SERVICES===\nsshd.service\n';
     const result = ProbeOutput.parse(output);
     expect(result.hasSection('OS')).toBe(true);
     expect(result.hasSection('SERVICES')).toBe(true);
@@ -26,13 +26,13 @@ describe('ProbeOutput.parse', () => {
 
   it('multiple sections', () => {
     const output = [
-      '===OMNYSSH:OS===',
+      '===BSSH:OS===',
       'NAME="Ubuntu"',
       'VERSION="22.04 LTS"',
-      '===OMNYSSH:DOCKER===',
+      '===BSSH:DOCKER===',
       'abc123\tnginx-proxy\tUp 2 hours\tnginx:latest',
       'def456\tdb-master\tUp 5 days\tpostgres:15',
-      '===OMNYSSH:LISTEN===',
+      '===BSSH:LISTEN===',
       '0.0.0.0:22\tLISTEN',
       '0.0.0.0:80\tLISTEN',
       ''
@@ -48,7 +48,7 @@ describe('ProbeOutput.parse', () => {
   });
 
   it('an empty section reads as absent via hasSection', () => {
-    const output = '===OMNYSSH:OS===\nUbuntu\n===OMNYSSH:DOCKER===\n===OMNYSSH:SERVICES===\nsshd.service\n';
+    const output = '===BSSH:OS===\nUbuntu\n===BSSH:DOCKER===\n===BSSH:SERVICES===\nsshd.service\n';
     const result = ProbeOutput.parse(output);
     expect(result.hasSection('OS')).toBe(true);
     expect(result.hasSection('DOCKER')).toBe(false);
@@ -59,11 +59,11 @@ describe('ProbeOutput.parse', () => {
 describe('generateQuickScanScript', () => {
   it('contains every section marker and command', () => {
     const script = generateQuickScanScript();
-    expect(script).toContain('===OMNYSSH:OS===');
-    expect(script).toContain('===OMNYSSH:SERVICES===');
-    expect(script).toContain('===OMNYSSH:DOCKER===');
-    expect(script).toContain('===OMNYSSH:LISTEN===');
-    expect(script).toContain('===OMNYSSH:PROCESS===');
+    expect(script).toContain('===BSSH:OS===');
+    expect(script).toContain('===BSSH:SERVICES===');
+    expect(script).toContain('===BSSH:DOCKER===');
+    expect(script).toContain('===BSSH:LISTEN===');
+    expect(script).toContain('===BSSH:PROCESS===');
     expect(script).toContain('/etc/os-release');
     expect(script).toContain('systemctl list-units');
     expect(script).toContain('docker ps');
@@ -72,27 +72,27 @@ describe('generateQuickScanScript', () => {
 
 describe('ProbeOutput.parseOsInfo', () => {
   it('prefers PRETTY_NAME', () => {
-    const output = '===OMNYSSH:OS===\nNAME="Ubuntu"\nVERSION="22.04.3 LTS (Jammy Jellyfish)"\nPRETTY_NAME="Ubuntu 22.04.3 LTS"\n';
+    const output = '===BSSH:OS===\nNAME="Ubuntu"\nVERSION="22.04.3 LTS (Jammy Jellyfish)"\nPRETTY_NAME="Ubuntu 22.04.3 LTS"\n';
     expect(ProbeOutput.parse(output).parseOsInfo()).toBe('Ubuntu 22.04.3 LTS');
   });
 
   it('falls back to NAME + VERSION', () => {
-    const output = '===OMNYSSH:OS===\nNAME="Debian GNU/Linux"\nVERSION="11 (bullseye)"\n';
+    const output = '===BSSH:OS===\nNAME="Debian GNU/Linux"\nVERSION="11 (bullseye)"\n';
     expect(ProbeOutput.parse(output).parseOsInfo()).toBe('Debian GNU/Linux 11 (bullseye)');
   });
 
   it('falls back to NAME alone', () => {
-    const output = '===OMNYSSH:OS===\nNAME="Alpine Linux"\n';
+    const output = '===BSSH:OS===\nNAME="Alpine Linux"\n';
     expect(ProbeOutput.parse(output).parseOsInfo()).toBe('Alpine Linux');
   });
 
   it('handles single-quoted values', () => {
-    const output = "===OMNYSSH:OS===\nPRETTY_NAME='Fedora Linux 39'\n";
+    const output = "===BSSH:OS===\nPRETTY_NAME='Fedora Linux 39'\n";
     expect(ProbeOutput.parse(output).parseOsInfo()).toBe('Fedora Linux 39');
   });
 
   it('handles unquoted values', () => {
-    const output = '===OMNYSSH:OS===\nPRETTY_NAME=Arch Linux\n';
+    const output = '===BSSH:OS===\nPRETTY_NAME=Arch Linux\n';
     expect(ProbeOutput.parse(output).parseOsInfo()).toBe('Arch Linux');
   });
 

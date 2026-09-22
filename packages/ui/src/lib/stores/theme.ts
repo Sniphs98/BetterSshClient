@@ -6,7 +6,7 @@ import { writable } from 'svelte/store';
 // for the no-FOUC boot) and points the native window decorations at it.
 export type Theme = 'light' | 'dark';
 
-const LOCAL_KEY = 'omnyssh-theme';
+const LOCAL_KEY = 'better-ssh-client-theme';
 const STORE_KEY = 'theme';
 
 /** The theme the app.html no-FOUC script already painted, so the store agrees

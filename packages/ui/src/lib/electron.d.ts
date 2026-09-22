@@ -1,8 +1,8 @@
 // Ambient type for the bridge `packages/electron/src/preload.ts` exposes via
-// `contextBridge.exposeInMainWorld('omnyssh', ...)`. Kept independent of the
+// `contextBridge.exposeInMainWorld('bsshClient', ...)`. Kept independent of the
 // electron package (a renderer build has no business depending on it) —
 // change one, mirror the other.
-export interface OmnysshBridge {
+export interface BsshClientBridge {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
   on(channel: string, callback: (payload: unknown) => void): () => void;
   settings: {
@@ -16,6 +16,6 @@ export interface OmnysshBridge {
 
 declare global {
   interface Window {
-    omnyssh?: OmnysshBridge;
+    bsshClient?: BsshClientBridge;
   }
 }

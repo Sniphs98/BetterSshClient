@@ -66,7 +66,7 @@ describe('streamer mode persistence', () => {
     expect(get(streamerMode)).toBe(false);
     streamerMode.toggle();
     expect(get(streamerMode)).toBe(true);
-    expect(localStorage.getItem('omnyssh-streamer-mode')).toBe('true');
+    expect(localStorage.getItem('better-ssh-client-streamer-mode')).toBe('true');
   });
 
   it('writes the canonical settings store on a user flip', async () => {

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Settings + self-update (tech-gui.md §4.3). e2e runs against the static SPA with the
-// Electron preload bridge absent, so we install a `window.omnyssh` stub at the boundary
+// Electron preload bridge absent, so we install a `window.bsshClient` stub at the boundary
 // (electron.d.ts). The stub backs the update config in memory and returns an update from
 // `check_update`; `update-available` is fired after `reload_hosts` (which the layout calls
 // once its listeners are attached), mirroring the startup check.
@@ -11,7 +11,7 @@ const HOSTS = [
 
 const UPDATE = {
   version: '2.0.0',
-  url: 'https://github.com/timhartmann7/omnyssh/releases/tag/v2.0.0',
+  url: 'https://github.com/timhartmann7/better-ssh-client/releases/tag/v2.0.0',
   tag: 'v2.0.0',
   canSelfUpdate: true
 };
@@ -30,7 +30,7 @@ async function boot(page: Page, opts: { fireUpdateOnBoot: boolean }): Promise<vo
         for (const cb of listeners[channel] ?? []) cb(payload);
       }
 
-      win.omnyssh = {
+      win.bsshClient = {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':

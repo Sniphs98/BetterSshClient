@@ -24,18 +24,18 @@ describe('registry', () => {
 
 describe('dockerProvider', () => {
   it('detects from a non-empty DOCKER section', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:DOCKER===\nabc123\tnginx\tUp 2 hours\tnginx:latest\n');
+    const probe = ProbeOutput.parse('===BSSH:DOCKER===\nabc123\tnginx\tUp 2 hours\tnginx:latest\n');
     expect(dockerProvider.detect(probe)).toBe(true);
   });
 
   it('is not detected when the section is absent', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:OS===\nUbuntu\n');
+    const probe = ProbeOutput.parse('===BSSH:OS===\nUbuntu\n');
     expect(dockerProvider.detect(probe)).toBe(false);
   });
 
   it('quickMetrics counts total and running containers', () => {
     const probe = ProbeOutput.parse(
-      '===OMNYSSH:DOCKER===\nabc\tweb\tUp 2 hours\tnginx:latest\ndef\tdb\tExited (0) 3 days ago\tpostgres:15\n'
+      '===BSSH:DOCKER===\nabc\tweb\tUp 2 hours\tnginx:latest\ndef\tdb\tExited (0) 3 days ago\tpostgres:15\n'
     );
     const metrics = dockerProvider.quickMetrics(probe);
     expect(metrics).toContainEqual({ name: 'containers_total', value: 2 });
@@ -45,48 +45,48 @@ describe('dockerProvider', () => {
 
 describe('nginxProvider', () => {
   it('detects from a process line', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:PROCESS===\nroot 1234 nginx: master process\n');
+    const probe = ProbeOutput.parse('===BSSH:PROCESS===\nroot 1234 nginx: master process\n');
     expect(nginxProvider.detect(probe)).toBe(true);
   });
 });
 
 describe('nodejsProvider', () => {
   it('detects a node process', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:PROCESS===\nuser 1234 /usr/bin/node server.js\n');
+    const probe = ProbeOutput.parse('===BSSH:PROCESS===\nuser 1234 /usr/bin/node server.js\n');
     expect(nodejsProvider.detect(probe)).toBe(true);
   });
 
   it('is not detected without a node process', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:SERVICES===\nsshd.service\n');
+    const probe = ProbeOutput.parse('===BSSH:SERVICES===\nsshd.service\n');
     expect(nodejsProvider.detect(probe)).toBe(false);
   });
 });
 
 describe('postgresqlProvider', () => {
   it('detects from systemd', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:SERVICES===\npostgresql.service\nsshd.service\n');
+    const probe = ProbeOutput.parse('===BSSH:SERVICES===\npostgresql.service\nsshd.service\n');
     expect(postgresqlProvider.detect(probe)).toBe(true);
   });
 
   it('detects from the listening port', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:LISTEN===\n0.0.0.0:5432\tLISTEN\n');
+    const probe = ProbeOutput.parse('===BSSH:LISTEN===\n0.0.0.0:5432\tLISTEN\n');
     expect(postgresqlProvider.detect(probe)).toBe(true);
   });
 });
 
 describe('redisProvider', () => {
   it('detects from the listening port', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:LISTEN===\n0.0.0.0:6379\tLISTEN\n');
+    const probe = ProbeOutput.parse('===BSSH:LISTEN===\n0.0.0.0:6379\tLISTEN\n');
     expect(redisProvider.detect(probe)).toBe(true);
   });
 
   it('detects from the process list', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:PROCESS===\nredis 1234 redis-server\n');
+    const probe = ProbeOutput.parse('===BSSH:PROCESS===\nredis 1234 redis-server\n');
     expect(redisProvider.detect(probe)).toBe(true);
   });
 
   it('is not detected without a match', () => {
-    const probe = ProbeOutput.parse('===OMNYSSH:SERVICES===\nsshd.service\n');
+    const probe = ProbeOutput.parse('===BSSH:SERVICES===\nsshd.service\n');
     expect(redisProvider.detect(probe)).toBe(false);
   });
 });

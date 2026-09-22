@@ -1,5 +1,5 @@
 #!/bin/sh
-# Minimal `service <name> <action>` shim for this systemd-less container. OmnySSH's
+# Minimal `service <name> <action>` shim for this systemd-less container. BetterSshClient's
 # auto key-setup flow (packages/electron/src/core/ssh/session.ts, buildReloadSshdCommand
 # / buildRollbackCommand) only ever runs `service sshd reload` / `service ssh reload` —
 # that's the only case handled; anything else fails loudly rather than silently doing

@@ -68,7 +68,7 @@ describe('local filesystem helpers', () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), 'omnyssh-sftp-local-'));
+    tmp = await mkdtemp(join(tmpdir(), 'better-ssh-client-sftp-local-'));
   });
 
   afterEach(async () => {

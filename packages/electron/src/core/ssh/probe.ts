@@ -4,25 +4,25 @@
  *
  * The Quick Scan probe is a single bash script that collects maximum
  * information in one SSH invocation. Output is delimited by section markers
- * (`===OMNYSSH:SECTION===`) for easy parsing.
+ * (`===BSSH:SECTION===`) for easy parsing.
  */
 
 /** Generates the Quick Scan probe bash script. Runs multiple commands and
  *  delimits their output with section markers; every command redirects
  *  stderr to /dev/null for graceful failure. */
 export function generateQuickScanScript(): string {
-  return `cat << 'OMNYSSH_PROBE_EOF' | bash
-echo "===OMNYSSH:OS==="
+  return `cat << 'BSSH_PROBE_EOF' | bash
+echo "===BSSH:OS==="
 cat /etc/os-release 2>/dev/null | head -5
-echo "===OMNYSSH:SERVICES==="
+echo "===BSSH:SERVICES==="
 systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | awk '{print $1}' | head -50
-echo "===OMNYSSH:DOCKER==="
+echo "===BSSH:DOCKER==="
 docker ps --format '{{.ID}}\\t{{.Names}}\\t{{.Status}}\\t{{.Image}}' 2>/dev/null | head -30
-echo "===OMNYSSH:LISTEN==="
+echo "===BSSH:LISTEN==="
 ss -tlnp 2>/dev/null | tail -n +2 | head -30
-echo "===OMNYSSH:PROCESS==="
+echo "===BSSH:PROCESS==="
 ps aux --sort=-%mem 2>/dev/null | head -15
-OMNYSSH_PROBE_EOF
+BSSH_PROBE_EOF
 `;
 }
 
@@ -35,7 +35,7 @@ export class ProbeOutput {
   }
 
   /** Parses the probe script output into sections, delimited by
-   *  `===OMNYSSH:NAME===` markers. Never throws — unknown or malformed
+   *  `===BSSH:NAME===` markers. Never throws — unknown or malformed
    *  output is silently ignored (graceful degradation). */
   static parse(output: string): ProbeOutput {
     const sections = new Map<string, string>();
@@ -45,12 +45,12 @@ export class ProbeOutput {
     for (const line of output.split('\n')) {
       const trimmed = line.trim();
 
-      if (trimmed.startsWith('===OMNYSSH:') && trimmed.endsWith('===')) {
+      if (trimmed.startsWith('===BSSH:') && trimmed.endsWith('===')) {
         if (currentSection !== undefined) {
           sections.set(currentSection, currentContent.trim());
           currentContent = '';
         }
-        currentSection = trimmed.slice('===OMNYSSH:'.length, -'==='.length);
+        currentSection = trimmed.slice('===BSSH:'.length, -'==='.length);
       } else if (currentSection !== undefined) {
         currentContent += line + '\n';
       }

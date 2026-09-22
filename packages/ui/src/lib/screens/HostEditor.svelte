@@ -84,7 +84,7 @@
       {#if imported}
         <p class="rounded-lg bg-surface-inset px-3 py-2 text-xs text-muted">
           Imported from <span class="font-mono">~/.ssh/config</span>. Saving keeps your own copy in
-          <span class="font-mono">hosts.toml</span> and OmnySSH uses it from then on — your SSH config
+          <span class="font-mono">hosts.toml</span> and BetterSshClient uses it from then on — your SSH config
           file is never written, and later edits to it stop showing up for this host.
         </p>
       {/if}

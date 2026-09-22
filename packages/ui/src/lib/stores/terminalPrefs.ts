@@ -10,9 +10,9 @@ import { writable } from 'svelte/store';
 /** What a right-click inside a terminal does. */
 export type TerminalRightClick = 'menu' | 'paste';
 
-const RIGHT_CLICK_LOCAL_KEY = 'omnyssh-terminal-right-click';
+const RIGHT_CLICK_LOCAL_KEY = 'better-ssh-client-terminal-right-click';
 const RIGHT_CLICK_STORE_KEY = 'terminalRightClick';
-const COPY_ON_SELECT_LOCAL_KEY = 'omnyssh-terminal-copy-on-select';
+const COPY_ON_SELECT_LOCAL_KEY = 'better-ssh-client-terminal-copy-on-select';
 const COPY_ON_SELECT_STORE_KEY = 'terminalCopyOnSelect';
 
 async function settingsStore() {

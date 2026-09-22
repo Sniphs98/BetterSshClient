@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // The ⌘K palette and the host-picker (tech-gui.md §2, Stage 1.3). e2e runs against the
-// static SPA with the Electron preload bridge absent, so we install a `window.omnyssh`
+// static SPA with the Electron preload bridge absent, so we install a `window.bsshClient`
 // stub to feed `list_hosts` fixtures into the store — the same seam electron.d.ts reserves
 // for mocking IPC at the boundary.
 const HOSTS = [
@@ -27,7 +27,7 @@ const HOSTS = [
 
 async function bootWithHosts(page: Page): Promise<void> {
   await page.addInitScript((hosts) => {
-    (window as unknown as { omnyssh: unknown }).omnyssh = {
+    (window as unknown as { bsshClient: unknown }).bsshClient = {
       invoke: (channel: string) => (channel === 'list_hosts' ? Promise.resolve(hosts) : Promise.resolve(null)),
       on: () => () => {},
       settings: { get: () => Promise.resolve(undefined), set: () => Promise.resolve() },

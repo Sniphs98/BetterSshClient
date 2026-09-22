@@ -139,7 +139,7 @@ export interface KeyPairPaths {
  *  (non-Windows). */
 export async function generateKeyPair(hostName: string): Promise<KeyPairPaths> {
   const sanitized = sanitizeHostname(hostName);
-  const keyFilename = `omnyssh_${sanitized}_ed25519`;
+  const keyFilename = `bssh_${sanitized}_ed25519`;
   const sshDir = join(homedir(), '.ssh');
 
   await mkdir(sshDir, { recursive: true });
@@ -153,7 +153,7 @@ export async function generateKeyPair(hostName: string): Promise<KeyPairPaths> {
   }
 
   try {
-    await execFileAsync('ssh-keygen', ['-t', 'ed25519', '-f', privateKeyPath, '-N', '', '-C', `omnyssh-${hostName}`], { windowsHide: true });
+    await execFileAsync('ssh-keygen', ['-t', 'ed25519', '-f', privateKeyPath, '-N', '', '-C', `better-ssh-client-${hostName}`], { windowsHide: true });
   } catch (e) {
     const stderr = (e as { stderr?: string }).stderr ?? (e as Error).message;
     throw new Error(`ssh-keygen failed to generate key: ${stderr}`);
@@ -217,11 +217,11 @@ export function buildDisablePasswordCommand(): string {
   const pam = forceSshdDirective('UsePAM', 'no');
 
   return (
-    `sudo -n true 2>/dev/null || { echo "OMNYSSH_NO_SUDO"; exit 1; }; ` +
-    `sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.omnyssh_backup.${timestamp} && ` +
+    `sudo -n true 2>/dev/null || { echo "BSSH_NO_SUDO"; exit 1; }; ` +
+    `sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bssh_backup.${timestamp} && ` +
     `sudo sed -i.bak 's|^Include /etc/ssh/sshd_config.d/|#Include /etc/ssh/sshd_config.d/|' /etc/ssh/sshd_config && ` +
     `${password} && ${challenge} && ${kbd} && ${pam} && sudo sshd -t || ` +
-    `{ echo "OMNYSSH_CONFIG_ERROR"; sudo cp /etc/ssh/sshd_config.omnyssh_backup.${timestamp} /etc/ssh/sshd_config; exit 1; }`
+    `{ echo "BSSH_CONFIG_ERROR"; sudo cp /etc/ssh/sshd_config.bssh_backup.${timestamp} /etc/ssh/sshd_config; exit 1; }`
   );
 }
 
@@ -230,17 +230,17 @@ export function buildReloadSshdCommand(): string {
   return (
     'if command -v systemctl &>/dev/null; then sudo systemctl reload sshd 2>/dev/null || sudo systemctl reload ssh 2>/dev/null; ' +
     'elif command -v service &>/dev/null; then sudo service sshd reload 2>/dev/null || sudo service ssh reload 2>/dev/null; ' +
-    'else echo "OMNYSSH_NO_INIT_SYSTEM"; exit 1; fi'
+    'else echo "BSSH_NO_INIT_SYSTEM"; exit 1; fi'
   );
 }
 
-/** Restores the most recent OmnySSH backup of `sshd_config` and reloads the daemon. */
+/** Restores the most recent BetterSshClient backup of `sshd_config` and reloads the daemon. */
 export function buildRollbackCommand(): string {
   return (
-    "BACKUP=$(find /etc/ssh -maxdepth 1 -name 'sshd_config.omnyssh_backup.*' 2>/dev/null | sort | tail -1); " +
+    "BACKUP=$(find /etc/ssh -maxdepth 1 -name 'sshd_config.bssh_backup.*' 2>/dev/null | sort | tail -1); " +
     'if [ -n "$BACKUP" ]; then sudo cp "$BACKUP" /etc/ssh/sshd_config && ' +
     '(sudo systemctl reload sshd 2>/dev/null || sudo systemctl reload ssh 2>/dev/null || sudo service sshd reload 2>/dev/null || sudo service ssh reload); ' +
-    'else echo "OMNYSSH_NO_BACKUP"; exit 1; fi'
+    'else echo "BSSH_NO_BACKUP"; exit 1; fi'
   );
 }
 
@@ -404,12 +404,12 @@ async function setupKeyInternal(
     const reason = e instanceof KeySetupTimeout ? 'timeout' : (e as Error).message;
     throw new Error(`Failed to disable password authentication: ${reason}`);
   }
-  if (disableOutput.includes('OMNYSSH_NO_SUDO')) {
+  if (disableOutput.includes('BSSH_NO_SUDO')) {
     machine.setHasSudo(false);
     machine.stepResult('verifyKeyAuth', undefined);
     return privateKeyPath;
   }
-  if (disableOutput.includes('OMNYSSH_CONFIG_ERROR')) {
+  if (disableOutput.includes('BSSH_CONFIG_ERROR')) {
     machine.stepResult('disablePassword', new Error('Config error'));
     throw new Error('sshd config validation failed. Backup restored.');
   }
@@ -450,7 +450,7 @@ async function emergencyRollback(session: SshSession): Promise<void> {
     const reason = e instanceof KeySetupTimeout ? 'timeout' : (e as Error).message;
     throw new Error(`Rollback failed: ${reason}`);
   }
-  if (output.includes('OMNYSSH_NO_BACKUP')) {
+  if (output.includes('BSSH_NO_BACKUP')) {
     throw new Error('No backup file found for rollback');
   }
 }

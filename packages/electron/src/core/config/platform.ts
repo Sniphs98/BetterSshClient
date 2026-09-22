@@ -10,20 +10,20 @@ export function sshConfigPath(): string {
 
 /**
  * The application config directory.
- * - Linux:   `~/.config/omnyssh/`
- * - macOS:   `~/Library/Application Support/omnyssh/`
- * - Windows: `%APPDATA%\omnyssh\`
+ * - Linux:   `~/.config/better-ssh-client/`
+ * - macOS:   `~/Library/Application Support/better-ssh-client/`
+ * - Windows: `%APPDATA%\better-ssh-client\`
  */
 export function appConfigDir(): string {
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
-    return join(appData, 'omnyssh');
+    return join(appData, 'better-ssh-client');
   }
   if (process.platform === 'darwin') {
-    return join(homedir(), 'Library', 'Application Support', 'omnyssh');
+    return join(homedir(), 'Library', 'Application Support', 'better-ssh-client');
   }
   const xdgConfig = process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config');
-  return join(xdgConfig, 'omnyssh');
+  return join(xdgConfig, 'better-ssh-client');
 }
 
 export function appConfigPath(): string {

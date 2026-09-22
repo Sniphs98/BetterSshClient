@@ -3,4 +3,4 @@ def greet(name: str) -> str:
 
 
 if __name__ == "__main__":
-    print(greet("omnyssh"))
+    print(greet("better-ssh-client"))

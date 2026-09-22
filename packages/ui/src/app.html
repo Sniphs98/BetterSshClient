@@ -2,14 +2,14 @@
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" type="image/svg+xml" href="%sveltekit.assets%/logo.svg" />
+    <link rel="icon" type="image/png" href="%sveltekit.assets%/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script>
       // No-FOUC: paint the persisted theme before first frame. Mirrors the
       // localStorage copy the theme store keeps; defaults to dark (tech-gui.md §5.1).
       (function () {
         try {
-          var t = localStorage.getItem('omnyssh-theme');
+          var t = localStorage.getItem('better-ssh-client-theme');
           document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'dark');

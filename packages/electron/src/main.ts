@@ -19,7 +19,7 @@ import { GuiState } from './state/guiState.js';
 import { loadWindowGeometry, trackWindowGeometry } from './windowState.js';
 
 /**
- * OmnySSH Desktop entry point. Ports the startup contract from
+ * BetterSshClient Desktop entry point. Ports the startup contract from
  * crates/omnyssh-gui/src/main.rs: a hidden window revealed only once the
  * renderer has actually painted, so launch never flashes a blank/wrong-color
  * frame, with a fallback reveal for a renderer that never loads (the app has
@@ -43,7 +43,7 @@ function createWindow(): BrowserWindow {
   const geometry = loadWindowGeometry();
 
   const win = new BrowserWindow({
-    title: 'OmnySSH',
+    title: 'BetterSshClient',
     width: geometry.width,
     height: geometry.height,
     x: geometry.x,
@@ -78,8 +78,8 @@ function createWindow(): BrowserWindow {
   // process running — there is no tray icon to recover it from.
   setTimeout(reveal, REVEAL_FALLBACK_MS);
 
-  if (process.env.OMNYSSH_DEV_SERVER_URL) {
-    void win.loadURL(process.env.OMNYSSH_DEV_SERVER_URL);
+  if (process.env.BSSH_DEV_SERVER_URL) {
+    void win.loadURL(process.env.BSSH_DEV_SERVER_URL);
   } else {
     void win.loadURL(`${APP_ORIGIN}/`);
   }

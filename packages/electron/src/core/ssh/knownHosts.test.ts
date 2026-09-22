@@ -22,7 +22,7 @@ describe('known_hosts TOFU', () => {
   let prevHome: string | undefined;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), 'omnyssh-knownhosts-'));
+    tmp = await mkdtemp(join(tmpdir(), 'better-ssh-client-knownhosts-'));
     prevHome = process.env.HOME;
     process.env.HOME = tmp;
     process.env.USERPROFILE = tmp;

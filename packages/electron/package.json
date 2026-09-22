@@ -1,9 +1,9 @@
 {
-  "name": "omnyssh-electron",
+  "name": "better-ssh-client-electron",
   "private": true,
   "version": "1.1.2",
-  "description": "OmnySSH Desktop — SSH dashboard, terminal, and SFTP file manager.",
-  "author": "OmnySSH contributors",
+  "description": "BetterSshClient Desktop — SSH dashboard, terminal, and SFTP file manager.",
+  "author": "BetterSshClient contributors",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",

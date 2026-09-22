@@ -25,11 +25,11 @@ describe('sidebar collapse persistence', () => {
     const sidebarCollapsed = await fresh();
     sidebarCollapsed.toggle();
     expect(get(sidebarCollapsed)).toBe(true);
-    expect(localStorage.getItem('omnyssh-sidebar-collapsed')).toBe('true');
+    expect(localStorage.getItem('better-ssh-client-sidebar-collapsed')).toBe('true');
   });
 
   it('initialises from the localStorage mirror', async () => {
-    localStorage.setItem('omnyssh-sidebar-collapsed', 'true');
+    localStorage.setItem('better-ssh-client-sidebar-collapsed', 'true');
     const sidebarCollapsed = await fresh();
     expect(get(sidebarCollapsed)).toBe(true);
   });
@@ -48,7 +48,7 @@ describe('sidebar collapse persistence', () => {
     await sidebarCollapsed.hydrate();
     expect(get(sidebarCollapsed)).toBe(true);
     // Mirror must be rewritten or the next boot script paints the stale width.
-    expect(localStorage.getItem('omnyssh-sidebar-collapsed')).toBe('true');
+    expect(localStorage.getItem('better-ssh-client-sidebar-collapsed')).toBe('true');
   });
 
   it('hydrate does not clobber a fresh user toggle', async () => {

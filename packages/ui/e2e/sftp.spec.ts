@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // SFTP dual-pane vertical (tech-gui.md §3.2). e2e runs against the static SPA with the
-// Electron preload bridge absent, so we install a `window.omnyssh` stub at the boundary
+// Electron preload bridge absent, so we install a `window.bsshClient` stub at the boundary
 // (electron.d.ts). The stub owns an in-memory local + remote filesystem: `list_local_dir`
 // returns directly, `sftp_*` commands fire the stamped `sftp-*` events the per-session
 // forwarder would emit, and a transfer holds at a progress tick until
@@ -74,7 +74,7 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
       // Fire the oldest still-pending transfer's op-done (deterministic completion).
       win.__completeTransfer = () => completions.shift()?.();
 
-      win.omnyssh = {
+      win.bsshClient = {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':

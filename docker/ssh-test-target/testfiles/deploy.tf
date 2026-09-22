@@ -1,5 +1,5 @@
 resource "null_resource" "fixture" {
   triggers = {
-    purpose = "omnyssh sftp/editor test fixture"
+    purpose = "better-ssh-client sftp/editor test fixture"
   }
 }

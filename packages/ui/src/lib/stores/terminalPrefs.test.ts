@@ -27,12 +27,12 @@ describe('terminalRightClick', () => {
     terminalRightClick.set('paste');
 
     expect(get(terminalRightClick)).toBe('paste');
-    expect(localStorage.getItem('omnyssh-terminal-right-click')).toBe('paste');
+    expect(localStorage.getItem('better-ssh-client-terminal-right-click')).toBe('paste');
     await vi.waitFor(() => expect(backend.set).toHaveBeenCalledWith('terminalRightClick', 'paste'));
   });
 
   it('initialises from the localStorage mirror', async () => {
-    localStorage.setItem('omnyssh-terminal-right-click', 'paste');
+    localStorage.setItem('better-ssh-client-terminal-right-click', 'paste');
     const { terminalRightClick } = await fresh();
     expect(get(terminalRightClick)).toBe('paste');
   });
@@ -68,7 +68,7 @@ describe('terminalCopyOnSelect', () => {
   it('round-trips through the localStorage mirror, which stores strings', async () => {
     const { terminalCopyOnSelect } = await fresh();
     terminalCopyOnSelect.set(false);
-    expect(localStorage.getItem('omnyssh-terminal-copy-on-select')).toBe('false');
+    expect(localStorage.getItem('better-ssh-client-terminal-copy-on-select')).toBe('false');
 
     const reloaded = await fresh();
     expect(get(reloaded.terminalCopyOnSelect)).toBe(false);

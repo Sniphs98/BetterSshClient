@@ -1,7 +1,7 @@
 <script lang="ts">
   // A brief, unobtrusive support dialog opened from the sidebar footer's paper-plane
-  // button. It says OmnySSH is free and open source with no plan to monetize it, then
-  // offers the two ways to help: a GitHub star and the Telegram channel. Brandbook
+  // button. It says BetterSshClient is free and open source with no plan to monetize it, then
+  // offers a GitHub star, and credits the upstream project it was forked from. Brandbook
   // language (§04) — a calm light-weight headline with a single bold emphasis, flat
   // hairline action rows, and a pill arrow that leans on hover. It is an overlay, never
   // the active entity, so it leaves the exactly-one-active invariant untouched (§2).
@@ -14,18 +14,21 @@
 
   type Link = { icon: IconName; title: string; locator: string; url: string };
 
+  // The second row credits the project this one is built on rather than pointing at
+  // its author's personal channels, which is what stood here before the rename and
+  // would now send BetterSshClient's users somewhere they didn't mean to go.
   const links: Link[] = [
     {
       icon: 'star',
       title: 'Star it on GitHub',
-      locator: 'github.com/timhartmann7/omnyssh',
-      url: 'https://github.com/timhartmann7/omnyssh'
+      locator: 'github.com/Sniphs98/better-ssh-client',
+      url: 'https://github.com/Sniphs98/better-ssh-client'
     },
     {
-      icon: 'telegram',
-      title: 'Follow on Telegram',
-      locator: '@timhartmanndev',
-      url: 'https://t.me/timhartmanndev'
+      icon: 'shield',
+      title: 'Built on OmnySSH by Tim Hartmann',
+      locator: 'github.com/timhartmann7/omnyssh',
+      url: 'https://github.com/timhartmann7/omnyssh'
     }
   ];
 
@@ -38,7 +41,7 @@
   }
 </script>
 
-<Modal label="Support OmnySSH" onClose={support.close}>
+<Modal label="Support BetterSshClient" onClose={support.close}>
   <div class="relative p-6">
     <button
       type="button"
@@ -52,14 +55,14 @@
 
     <div class="mb-5 flex items-center gap-2.5">
       <Logo size={20} />
-      <span class="text-sm font-bold tracking-wide">OmnySSH</span>
+      <span class="text-sm font-bold tracking-wide">BetterSshClient</span>
     </div>
 
     <h2 class="text-xl font-light leading-snug">
       Free and <span class="font-bold">open source</span>, forever.
     </h2>
     <p class="mt-3 text-sm leading-relaxed text-muted">
-      No paid tiers, no ads, no upsells. I build OmnySSH in the open and I do not plan to
+      No paid tiers, no ads, no upsells. I build BetterSshClient in the open and I do not plan to
       monetize it.
     </p>
 

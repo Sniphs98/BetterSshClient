@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 // Remote Desktop (RDP only this round — see the feature plan): a new sidebar area,
 // reached via the top SSH/Remote Desktop switch, that manages RDP connection profiles
 // and launches them via the OS's native client. e2e runs against the static SPA with
-// the Electron preload bridge absent, so we install a `window.omnyssh` stub;
+// the Electron preload bridge absent, so we install a `window.bsshClient` stub;
 // `rdp_launch` just records the call (the real OS-process spawn is covered by
 // core/rdp/launch.test.ts on the electron side).
 type Rec = Record<string, unknown>;
@@ -16,7 +16,7 @@ async function boot(page: Page): Promise<void> {
     const rdpLaunchCalls: string[] = [];
     win.__rdpLaunchCalls = rdpLaunchCalls;
 
-    win.omnyssh = {
+    win.bsshClient = {
       invoke: (channel: string, ...rawArgs: unknown[]) => {
         const args = rawArgs.map((a) => structuredClone(a));
         switch (channel) {

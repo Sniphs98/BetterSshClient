@@ -1,5 +1,5 @@
 {
-  "name": "omnyssh",
+  "name": "better-ssh-client",
   "private": true,
   "type": "module",
   "workspaces": [

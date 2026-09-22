@@ -10,7 +10,7 @@ let dir: string;
 let path: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'omnyssh-automations-'));
+  dir = await mkdtemp(join(tmpdir(), 'better-ssh-client-automations-'));
   path = join(dir, 'automations.toml');
 });
 

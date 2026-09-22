@@ -30,7 +30,7 @@ describe('remote-desktop.toml I/O', () => {
   let prevHome: string | undefined;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), 'omnyssh-rd-'));
+    tmp = await mkdtemp(join(tmpdir(), 'better-ssh-client-rd-'));
     prevAppData = process.env.APPDATA;
     prevXdgConfig = process.env.XDG_CONFIG_HOME;
     prevHome = process.env.HOME;
@@ -63,7 +63,7 @@ describe('remote-desktop.toml I/O', () => {
 
   it('omits optional fields on write', async () => {
     await saveRemoteDesktopConnections([connection()]);
-    const content = await readFile(join(tmp, 'omnyssh', 'remote-desktop.toml'), 'utf-8');
+    const content = await readFile(join(tmp, 'better-ssh-client', 'remote-desktop.toml'), 'utf-8');
     expect(content).not.toContain('username');
     expect(content).not.toContain('password');
     expect(content).not.toContain('domain');
@@ -80,7 +80,7 @@ describe('remote-desktop.toml I/O', () => {
     setSecretCipher(fakeCipher());
     await saveRemoteDesktopConnections([connection({ password: 'secret' })]);
 
-    const raw = await readFile(join(tmp, 'omnyssh', 'remote-desktop.toml'), 'utf-8');
+    const raw = await readFile(join(tmp, 'better-ssh-client', 'remote-desktop.toml'), 'utf-8');
     expect(raw).not.toContain('secret');
     expect(raw).toContain('enc:v1:');
 
@@ -90,7 +90,7 @@ describe('remote-desktop.toml I/O', () => {
 
   it('rejects an unknown protocol', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises');
-    const dir = join(tmp, 'omnyssh');
+    const dir = join(tmp, 'better-ssh-client');
     await mkdir(dir, { recursive: true });
     await writeFile(
       join(dir, 'remote-desktop.toml'),

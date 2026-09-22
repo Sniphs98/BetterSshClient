@@ -13,7 +13,7 @@ import { runLocalCommand } from './localExec.js';
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'omnyssh-localexec-'));
+  dir = await mkdtemp(join(tmpdir(), 'better-ssh-client-localexec-'));
 });
 
 afterEach(async () => {

@@ -1,3 +1,3 @@
 # Sample fixture — NOT wired into actual SSH auth (that's ~/.ssh/authorized_keys,
 # a different path). This fake key is obviously not usable for anything.
-ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEKEYFAKEKEYFAKEKEYFAKEKEYFAKEKEYFAKE fixture@omnyssh
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEKEYFAKEKEYFAKEKEYFAKEKEYFAKEKEYFAKE fixture@better-ssh-client

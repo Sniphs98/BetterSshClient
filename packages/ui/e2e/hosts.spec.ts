@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Host management CRUD (tech-gui.md §4.1). e2e runs against the static SPA; the
-// Electron preload bridge is absent, so we install a `window.omnyssh` stub matching
-// the `OmnysshBridge` shape (electron.d.ts) at the boundary. The stub is stateful:
+// Electron preload bridge is absent, so we install a `window.bsshClient` stub matching
+// the `BsshClientBridge` shape (electron.d.ts) at the boundary. The stub is stateful:
 // save/delete mutate an in-memory list, and `reload_hosts` replays it as a
 // `hosts-loaded` event through the same listener the app registers — so a save/delete
 // round-trips into the dashboard grid exactly as the real backend would drive it.
@@ -21,7 +21,7 @@ async function boot(page: Page): Promise<void> {
         for (const cb of listeners[channel] ?? []) cb(payload);
       }
 
-      (window as unknown as { omnyssh: unknown }).omnyssh = {
+      (window as unknown as { bsshClient: unknown }).bsshClient = {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':

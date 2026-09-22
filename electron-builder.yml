@@ -7,14 +7,14 @@
 # `extraResources` at the same relative depth the dev-time app:// protocol
 # handler already expects (`dist/../../ui/build`) — two levels above
 # `app.asar` is exactly `resources/`, where `extraResources` lands it.
-appId: com.sniphs.omnyssh
-productName: OmnySSH
-copyright: Copyright © OmnySSH contributors
+appId: com.sniphs.bettersshclient
+productName: BetterSshClient
+copyright: Copyright © BetterSshClient contributors
 
 publish:
   provider: github
   owner: Sniphs98
-  repo: omnyssh
+  repo: better-ssh-client
 
 directories:
   app: packages/electron

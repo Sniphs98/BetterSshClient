@@ -37,7 +37,7 @@ function parseHostsFile(content: string): HostsFile {
   return { hosts: raw.hosts.map((h) => decryptFromDisk(hostFromToml(h as Record<string, unknown>))) };
 }
 
-/** Loads manually-added hosts from `~/.config/omnyssh/hosts.toml`.
+/** Loads manually-added hosts from `~/.config/better-ssh-client/hosts.toml`.
  *  Returns `[]` if the file does not exist yet. Throws if it exists but is
  *  unreadable or malformed. */
 export async function loadHosts(): Promise<Host[]> {
