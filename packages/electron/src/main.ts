@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
 import { join } from 'node:path';
 
 import { APP_ORIGIN, registerAppProtocolHandler, registerAppScheme } from './appProtocol.js';
+import { installApplicationMenu } from './applicationMenu.js';
 import { registerAutomationsIpc } from './ipc/automations.js';
 import { registerHostsIpc } from './ipc/hosts.js';
 import { registerKeySetupIpc } from './ipc/keysetup.js';
@@ -98,6 +99,10 @@ app.whenReady().then(async () => {
     encrypt: (plainText) => safeStorage.encryptString(plainText),
     decrypt: (ciphertext) => safeStorage.decryptString(ciphertext)
   });
+
+  // Replaces Electron's default menu, whose Edit roles would otherwise swallow the
+  // terminal's Ctrl+C/Z/A before the shell ever sees them.
+  installApplicationMenu();
 
   registerAppProtocolHandler(join(__dirname, '..', '..', 'ui', 'build'));
 

@@ -24,6 +24,8 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
       let terminalWriteBuffer = '';
       const terminalCommands: string[] = [];
       win.__terminalCommands = terminalCommands;
+      const terminalWrites = { text: '' };
+      win.__terminalWrites = terminalWrites;
 
       function fire(channel: string, payload: unknown): void {
         for (const cb of listeners[channel] ?? []) cb(payload);
@@ -53,6 +55,7 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
               const [sessionId, data] = args as [number, number[]];
               // Track whole lines written (splitting on \n) so a test can assert an
               // autocd command was sent, same idea as the Enter-triggered echo below.
+              terminalWrites.text += String.fromCharCode(...data);
               terminalWriteBuffer += String.fromCharCode(...data);
               const lines = terminalWriteBuffer.split('\n');
               terminalWriteBuffer = lines.pop() ?? '';
@@ -174,4 +177,40 @@ test('a remote exit (terminal-exited) tears the tab down', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: 'web-1 · terminal', exact: true })).toHaveCount(0);
   await expect(page.locator('.xterm')).toHaveCount(0);
+});
+
+test('right-click opens a Copy/Paste menu by default, and pastes directly once switched', async ({
+  page,
+  context
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await boot(page);
+  await page.evaluate(() => navigator.clipboard.writeText('echo from-clipboard'));
+
+  await page.getByTitle('sh on web-1').click();
+  await expect(page.locator('.xterm-rows')).toContainText('omnyssh-ready');
+
+  // Default: a menu, so the actions are discoverable without knowing the chord.
+  await page.locator('.xterm-screen').click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await expect(menu.getByRole('menuitem', { name: 'Paste' })).toBeVisible();
+  // Copy is offered but inert with nothing selected.
+  await expect(menu.getByRole('menuitem', { name: 'Copy' })).toBeDisabled();
+  await menu.getByRole('menuitem', { name: 'Paste' }).click();
+  // The stub doesn't echo, so assert on what actually reached the pty.
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalWrites: { text: string } }).__terminalWrites.text))
+    .toContain('echo from-clipboard');
+
+  // Switching the setting to "Paste" makes a right-click paste with no menu at all.
+  await page.getByLabel('Settings').click();
+  await page.getByRole('button', { name: 'Paste', exact: true }).click();
+  await page.getByRole('button', { name: 'web-1 · terminal', exact: true }).click();
+
+  await page.evaluate(() => navigator.clipboard.writeText('second-paste'));
+  await page.locator('.xterm-screen').click({ button: 'right' });
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalWrites: { text: string } }).__terminalWrites.text))
+    .toContain('second-paste');
 });

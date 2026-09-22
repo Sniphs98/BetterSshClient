@@ -9,6 +9,7 @@
   import { theme } from '$lib/stores/theme';
   import { streamerMode } from '$lib/stores/streamer';
   import { refreshInterval, REFRESH_OPTIONS } from '$lib/stores/settings';
+  import { terminalCopyOnSelect, terminalRightClick } from '$lib/stores/terminalPrefs';
   import { offerUpdate } from '$lib/stores/update';
   import { lastError } from '$lib/stores/notifications';
   import { checkUpdate, loadUpdateConfig, saveUpdateConfig } from '$lib/ipc/commands';
@@ -104,6 +105,63 @@
             <span class="flex items-center gap-1.5"><Icon name="moon" size={14} /> Dark</span>
           </button>
         </div>
+      </div>
+    </Surface>
+
+    <!-- Terminal -->
+    <Surface class="p-5">
+      <h2 class="mb-3 text-sm font-semibold">Terminal</h2>
+
+      <div class="flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm">Right-click</p>
+          <p class="text-xs text-muted">
+            Paste immediately, the way PuTTY does, or open a menu with Copy and Paste.
+          </p>
+        </div>
+        <div class="flex shrink-0 gap-1 rounded-xl bg-surface-inset p-1">
+          <button
+            type="button"
+            class="{seg} {segState($terminalRightClick === 'menu')}"
+            aria-pressed={$terminalRightClick === 'menu'}
+            onclick={() => terminalRightClick.set('menu')}
+          >
+            Menu
+          </button>
+          <button
+            type="button"
+            class="{seg} {segState($terminalRightClick === 'paste')}"
+            aria-pressed={$terminalRightClick === 'paste'}
+            onclick={() => terminalRightClick.set('paste')}
+          >
+            Paste
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm">Copy on selection</p>
+          <p class="text-xs text-muted">
+            Selecting text copies it straight away. Ctrl+Shift+C and Ctrl+Shift+V always work either way.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={$terminalCopyOnSelect}
+          aria-label="Copy on selection"
+          onclick={() => terminalCopyOnSelect.set(!$terminalCopyOnSelect)}
+          class="relative h-6 w-11 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus {$terminalCopyOnSelect
+            ? 'bg-accent'
+            : 'bg-surface-inset'}"
+        >
+          <span
+            class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow-soft transition-[left] {$terminalCopyOnSelect
+              ? 'left-[1.375rem]'
+              : 'left-0.5'}"
+          ></span>
+        </button>
       </div>
     </Surface>
 

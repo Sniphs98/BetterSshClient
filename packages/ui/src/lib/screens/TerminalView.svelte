@@ -20,6 +20,9 @@
   import { shouldFadeTop } from './terminalFade';
   import { chunkBytes } from './terminalInput';
   import { shellQuote } from './shellQuote';
+  import { copySelection, isCopyChord, isMacPlatform, isPasteChord, pasteFromClipboard } from './terminalClipboard';
+  import { terminalCopyOnSelect, terminalRightClick } from '$lib/stores/terminalPrefs';
+  import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import { Channel, type TerminalBytes } from '$lib/bindings';
 
   let { session, active }: { session: Session; active: boolean } = $props();
@@ -43,6 +46,68 @@
   // A large paste arrives as one onData; sending it as a single number[] would freeze
   // the UI thread (§9). Split into bounded chunks and await each so paint yields between
   // them; a serialization chain keeps all input strictly in order across events.
+  // Copy/paste: the chord depends on the platform, and copy has to read xterm's own
+  // selection (see terminalClipboard.ts). Returning false from the custom handler keeps
+  // the keystroke away from the shell; anything we don't claim falls through untouched,
+  // so Ctrl+C still interrupts and Ctrl+V still reaches readline.
+  const mac = isMacPlatform();
+  function handleClipboardKey(event: KeyboardEvent): boolean {
+    if (event.type !== 'keydown' || term === undefined) return true;
+    if (isCopyChord(event, mac)) {
+      if (!term.hasSelection()) return true;
+      void copySelection(term).catch(() => {});
+      return false;
+    }
+    if (isPasteChord(event, mac)) {
+      void pasteFromClipboard(term).catch((err) => lastError.set(err instanceof Error ? err.message : String(err)));
+      return false;
+    }
+    return true;
+  }
+
+  // Marking text copies it straight away, the way PuTTY and most X11 terminals behave
+  // — off via Settings for anyone who'd rather keep their clipboard.
+  function handleSelectionChange(): void {
+    if (!$terminalCopyOnSelect || term === undefined || !term.hasSelection()) return;
+    void copySelection(term).catch(() => {});
+  }
+
+  // Right-click either pastes outright (PuTTY) or opens a small menu — a setting,
+  // since which one feels right is a matter of which terminal you grew up with.
+  let terminalMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
+
+  function pasteIntoTerm(): void {
+    if (term === undefined) return;
+    void pasteFromClipboard(term).catch((err) =>
+      lastError.set(err instanceof Error ? err.message : String(err))
+    );
+  }
+
+  function handleContextMenu(event: MouseEvent): void {
+    if (term === undefined) return;
+    event.preventDefault();
+    if ($terminalRightClick === 'paste') {
+      pasteIntoTerm();
+      return;
+    }
+    const hasSelection = term.hasSelection();
+    terminalMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        {
+          label: 'Copy',
+          icon: 'file',
+          disabled: !hasSelection,
+          onSelect: () => {
+            if (term) void copySelection(term).catch(() => {});
+          }
+        },
+        { label: 'Paste', icon: 'upload', onSelect: pasteIntoTerm }
+      ]
+    };
+  }
+
   let writeChain: Promise<void> = Promise.resolve();
   function sendInput(bytes: Uint8Array): void {
     if (termId == null || bytes.length === 0) return;
@@ -163,6 +228,8 @@
 
       // Text keystrokes/paste are UTF-8; onBinary carries raw 8-bit sequences
       // (e.g. legacy mouse reporting) that must go byte-for-byte, not re-encoded.
+      term.attachCustomKeyEventHandler(handleClipboardKey);
+      term.onSelectionChange(handleSelectionChange);
       term.onData((data) => sendInput(ENCODER.encode(data)));
       term.onBinary((data) => sendInput(Uint8Array.from(data, (ch) => ch.charCodeAt(0) & 0xff)));
 
@@ -210,10 +277,24 @@
   <!-- Inset via this wrapper, not the xterm host: padding on the element xterm mounts
        into makes FitAddon over-size, sliding the last row under the status bar. The top
        inset clears the macOS traffic-light strip; the bottom gap clears the footer. -->
-  <div class="h-full w-full" style="padding: max(var(--titlebar-h), 0.75rem) 0.5rem 1rem;">
+  <!-- svelte-ignore a11y_no_static_element_interactions -- the terminal's own keyboard
+       handling lives in xterm; this only replaces the browser's context menu. -->
+  <div
+    class="h-full w-full"
+    style="padding: max(var(--titlebar-h), 0.75rem) 0.5rem 1rem;"
+    oncontextmenu={handleContextMenu}
+  >
     <div bind:this={container} class="h-full w-full" class:term-fade={scrolled}></div>
   </div>
 </div>
+{#if terminalMenu}
+  <ContextMenu
+    x={terminalMenu.x}
+    y={terminalMenu.y}
+    items={terminalMenu.items}
+    onClose={() => (terminalMenu = null)}
+  />
+{/if}
 
 <style>
   /* Scrolled output dissolves into the top edge instead of hard-clipping (on only while
