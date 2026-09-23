@@ -609,3 +609,33 @@ test('a snippet without the file placeholder still runs, in the current director
   );
   expect(commands.some((c) => c.startsWith('cd '))).toBe(true);
 });
+
+test('each entry gets its file-type icon, and an unknown type falls back', async ({ page }) => {
+  const failedIconRequests: string[] = [];
+  page.on('response', (r) => {
+    if (r.url().includes('/file-icons/') && !r.ok()) failedIconRequests.push(`${r.status()} ${r.url()}`);
+  });
+
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('config.yml')).toBeVisible();
+
+  const iconFor = (name: string) =>
+    remotePane.locator('li', { hasText: name }).locator('img[src*="/file-icons/"]').first();
+
+  await expect(iconFor('config.yml')).toHaveAttribute('src', /file_type_(light_)?yaml\.svg$/);
+  await expect(iconFor('app.log')).toHaveAttribute('src', /file_type_log\.svg$/);
+  await expect(iconFor('photo.png')).toHaveAttribute('src', /file_type_image\.svg$/);
+  // A directory never takes a file icon, even when its name looks like one.
+  await expect(iconFor('var')).toHaveAttribute('src', /folder/);
+
+  // The icons are real files that actually load — a broken path would still render an
+  // <img> with the right src, so assert the responses too.
+  expect(failedIconRequests).toEqual([]);
+  await expect
+    .poll(() =>
+      iconFor('config.yml').evaluate((el) => (el as HTMLImageElement).naturalWidth)
+    )
+    .toBeGreaterThan(0);
+});

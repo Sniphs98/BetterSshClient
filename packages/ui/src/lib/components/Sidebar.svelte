@@ -21,7 +21,6 @@
   import { automationsTab } from '$lib/stores/automations';
   import { spawnSession, closeSession } from '$lib/stores/navigation';
   import { palette } from '$lib/stores/palette';
-  import { support } from '$lib/stores/support';
 
   // Flipping the top switch swaps which selector/spawner rows show below it; an open
   // session (terminal/sftp) is never affected — only a currently-active selector
@@ -242,12 +241,6 @@
       <Icon name="command" />
     </Button>
     <ThemeToggle />
-    <!-- Support/about overlay: free + open-source note and the two ways to help.
-         Opens a modal, not a screen, so it holds no highlight and never becomes the
-         active entity (§2). Sits left of the gear, icon-only so it survives collapse. -->
-    <Button variant="icon" title="Support BetterSshClient" onclick={() => support.open()}>
-      <Icon name="telegram" />
-    </Button>
     <!-- Settings is a selector-like screen; the gear holds the active highlight like
          Dashboard/Snippets do, and stays icon-only so it survives collapse (§5.1). -->
     <button

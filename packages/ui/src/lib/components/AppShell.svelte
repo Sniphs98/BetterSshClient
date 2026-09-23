@@ -7,11 +7,9 @@
   import Sidebar from './Sidebar.svelte';
   import StatusBar from './StatusBar.svelte';
   import CommandPalette from './CommandPalette.svelte';
-  import SupportModal from './SupportModal.svelte';
   import KeySetupProgress from '$lib/screens/KeySetupProgress.svelte';
   import AutomationRunProgress from '$lib/screens/AutomationRunProgress.svelte';
   import UpdateBanner from './UpdateBanner.svelte';
-  import { support } from '$lib/stores/support';
   import { sidebarCollapsed, isCollapseChord } from '$lib/stores/ui';
 
   let { children }: { children: Snippet } = $props();
@@ -40,9 +38,6 @@
   </main>
   <StatusBar />
   <CommandPalette />
-  {#if $support}
-    <SupportModal />
-  {/if}
   <KeySetupProgress />
   <AutomationRunProgress />
   <UpdateBanner />

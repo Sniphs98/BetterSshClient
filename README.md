@@ -117,6 +117,10 @@ What this fork changed:
 
 Both projects are licensed under Apache 2.0.
 
+The file-type icons in the SFTP browser are from
+[vscode-icons](https://github.com/vscode-icons/vscode-icons) (MIT, © Roberto Huertas);
+the licence travels with them in `packages/ui/static/file-icons/LICENSE.txt`.
+
 ---
 
 ## Contributing

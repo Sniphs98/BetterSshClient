@@ -24,8 +24,6 @@ export type IconName =
   | 'key'
   | 'shield'
   | 'settings'
-  | 'telegram'
-  | 'star'
   | 'automations'
   | 'snippets'
   | 'arrow-left'

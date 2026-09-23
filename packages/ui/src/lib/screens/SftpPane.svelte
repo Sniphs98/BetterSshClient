@@ -14,6 +14,8 @@
   // it. Semantic tokens only (§5.1).
   import type { Snippet } from 'svelte';
   import { Icon } from '$lib/theme';
+  import { theme } from '$lib/stores/theme';
+  import { fileIconUrl } from './fileIcons';
   import type { FileEntryDto } from '$lib/bindings';
   import { formatBytes, type Pane } from '$lib/stores/sftp';
 
@@ -177,7 +179,20 @@
               ondblclick={() => open(entry)}
               onkeydown={(event) => keydown(entry, event)}
             >
-              <Icon name={entry.isDir ? 'folder' : 'file'} size={15} />
+              {#if isParent}
+                <Icon name="arrow-left" size={15} />
+              {:else}
+                <!-- File-type icons come from the vscode-icons set as plain images, so
+                     they keep their own colours instead of inheriting a theme token
+                     like the app's line icons do. -->
+                <img
+                  src={fileIconUrl(entry.name, entry.isDir, $theme)}
+                  alt=""
+                  aria-hidden="true"
+                  class="h-[15px] w-[15px] shrink-0"
+                  draggable="false"
+                />
+              {/if}
               <span class="min-w-0 flex-1 truncate {entry.isDir ? 'font-medium text-fg' : ''}">
                 {entry.name}
               </span>
