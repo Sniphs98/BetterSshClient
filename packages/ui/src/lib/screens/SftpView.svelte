@@ -14,6 +14,8 @@
   import SftpTerminalDrawer from './SftpTerminalDrawer.svelte';
   import AutomationRunDialog from './AutomationRunDialog.svelte';
   import { isEditableFile, languageForFile } from './fileEdit';
+  import { formFromHost, formToInput } from './hostForm';
+  import { pastedPath } from './pathClipboard';
   import type { FileEntryDto, AutomationDto, SnippetDto } from '$lib/bindings';
   import { get } from 'svelte/store';
   import { sessions, type Session } from '$lib/stores/sessions';
@@ -39,7 +41,9 @@
     readLocalFile,
     writeLocalFile,
     listAutomations,
-    listSnippets
+    listSnippets,
+    reloadHosts,
+    saveHost
   } from '$lib/ipc/commands';
   import { fillFilePlaceholder, usesFilePlaceholder } from './snippetPlaceholders';
 
@@ -641,6 +645,72 @@
     contextMenu = { side, x: event.clientX, y: event.clientY, items };
   }
 
+  // Right-click on a pane's current path: copy it, jump to a path from the clipboard, and
+  // (remote side) make it the host's default path — where its terminals and this browser
+  // open from now on.
+  function pathMenuItems(side: PaneSide, currentView: NonNullable<typeof view>): ContextMenuItem[] {
+    const path = currentView[side].path;
+    const items: ContextMenuItem[] = [
+      { label: 'Copy path', icon: 'file', onSelect: () => void copyPath(path), disabled: !path },
+      { label: 'Paste path', icon: 'upload', onSelect: () => void pastePath(side) }
+    ];
+    if (side === 'remote') {
+      const isDefault = get(hosts).find((h) => h.name === session.hostName)?.defaultPath === path;
+      items.push({
+        label: isDefault ? 'Already the default path' : 'Set as default path',
+        icon: 'check',
+        onSelect: () => void setDefaultPath(path),
+        disabled: !path || isDefault
+      });
+    }
+    return items;
+  }
+
+  function openPathContextMenu(side: PaneSide, event: MouseEvent): void {
+    if (!view) return;
+    contextMenu = { side, x: event.clientX, y: event.clientY, items: pathMenuItems(side, view) };
+  }
+
+  async function copyPath(path: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(path);
+    } catch (err) {
+      lastError.set(errMsg(err));
+    }
+  }
+
+  async function pastePath(side: PaneSide): Promise<void> {
+    let path: string | undefined;
+    try {
+      path = pastedPath(await navigator.clipboard.readText());
+    } catch (err) {
+      lastError.set(errMsg(err));
+      return;
+    }
+    if (path === undefined) return;
+    // A path that doesn't exist shows as the pane's listing error, like any other.
+    if (side === 'local') void refreshLocal(path);
+    else refreshRemote(path);
+  }
+
+  // The same save the host form does, with only the default path changed — every other
+  // setting (and a stored password or key, which the form leaves blank) is preserved.
+  async function setDefaultPath(path: string): Promise<void> {
+    const host = get(hosts).find((h) => h.name === session.hostName);
+    if (!host) return;
+    const result = formToInput({ ...formFromHost(host), defaultPath: path });
+    if (!result.ok) {
+      lastError.set(result.error);
+      return;
+    }
+    try {
+      await saveHost(result.input);
+      await reloadHosts();
+    } catch (err) {
+      lastError.set(errMsg(err));
+    }
+  }
+
   function openEmptyContextMenu(side: PaneSide, event: MouseEvent): void {
     if (!view) return;
     const items = side === 'remote' ? remoteEmptyMenuItems(view) : localEmptyMenuItems(view);
@@ -720,6 +790,7 @@
           onDrop={() => dropOn('local')}
           onEntryContextMenu={(e, event) => openEntryContextMenu('local', e, event)}
           onEmptyContextMenu={(event) => openEmptyContextMenu('local', event)}
+          onPathContextMenu={(event) => openPathContextMenu('local', event)}
         >
           {#snippet toolbar()}
             <button
@@ -758,6 +829,7 @@
         onDrop={() => dropOn('remote')}
         onEntryContextMenu={(e, event) => openEntryContextMenu('remote', e, event)}
         onEmptyContextMenu={(event) => openEmptyContextMenu('remote', event)}
+        onPathContextMenu={(event) => openPathContextMenu('remote', event)}
       >
         {#snippet toolbar()}
           <button
