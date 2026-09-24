@@ -18,6 +18,7 @@
   import { fileIconUrl } from './fileIcons';
   import type { FileEntryDto } from '$lib/bindings';
   import { formatBytes, type Pane } from '$lib/stores/sftp';
+  import { listWindow, WINDOW_ABOVE } from './listWindow';
 
   let {
     title,
@@ -72,6 +73,33 @@
     }
   }
 
+  // A long listing renders only the rows in view (see listWindow.ts); the rest of the
+  // scroll height is padding. Row pitch is measured off the rendered rows rather than
+  // assumed, so it stays right under any font size or zoom.
+  let list = $state<HTMLUListElement | undefined>();
+  let scrollTop = $state(0);
+  let viewport = $state(0);
+  let listTop = $state(0);
+  let rowStride = $state(34);
+  const windowed = $derived(pane.entries.length > WINDOW_ABOVE);
+  const range = $derived(
+    windowed
+      ? listWindow(pane.entries.length, rowStride, scrollTop - listTop, viewport)
+      : { start: 0, end: pane.entries.length }
+  );
+  const rows = $derived(windowed ? pane.entries.slice(range.start, range.end) : pane.entries);
+
+  $effect(() => {
+    if (!windowed || !list) return;
+    void range;
+    listTop = list.offsetTop;
+    const [a, b] = list.children;
+    if (a instanceof HTMLElement && b instanceof HTMLElement) {
+      const stride = b.offsetTop - a.offsetTop;
+      if (stride > 0 && Math.abs(stride - rowStride) > 0.5) rowStride = stride;
+    }
+  });
+
   const rowBase =
     'flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
@@ -104,7 +132,9 @@
   <div
     role="region"
     aria-label="{title} file list"
-    class="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5 {dragActive ? 'bg-accent/10' : ''}"
+    class="relative min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5 {dragActive ? 'bg-accent/10' : ''}"
+    bind:clientHeight={viewport}
+    onscroll={(event) => (scrollTop = event.currentTarget.scrollTop)}
     ondragover={(event) => {
       event.preventDefault();
       dragActive = true;
@@ -134,8 +164,16 @@
     {:else if pane.entries.length === 0}
       <p class="px-2 py-6 text-center text-sm text-faint">Empty directory</p>
     {:else}
-      <ul class="space-y-0.5">
-        {#each pane.entries as entry, i (i)}
+      <!-- The row gap (space-y-0.5) is part of the measured stride, so the padding that
+           stands in for unrendered rows is exact: n rows = n strides. -->
+      <ul
+        bind:this={list}
+        class="space-y-0.5"
+        style={windowed
+          ? `padding-top: ${range.start * rowStride}px; padding-bottom: ${(pane.entries.length - range.end) * rowStride}px`
+          : undefined}
+      >
+        {#each rows as entry, i (range.start + i)}
           {@const isParent = entry.name === '..'}
           {@const marked = pane.marked.has(entry.path)}
           <li

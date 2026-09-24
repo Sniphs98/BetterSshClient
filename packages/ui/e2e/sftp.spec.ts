@@ -13,9 +13,12 @@ const HOSTS = [
   { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false }
 ];
 
-async function boot(page: Page, opts: { webOneDefaultPath?: string; gpu?: boolean } = {}): Promise<void> {
+async function boot(
+  page: Page,
+  opts: { webOneDefaultPath?: string; gpu?: boolean; varFiles?: number } = {}
+): Promise<void> {
   await page.addInitScript(
-    ({ hosts, webOneDefaultPath, gpu }) => {
+    ({ hosts, webOneDefaultPath, gpu, varFiles }) => {
       const win = window as unknown as Record<string, unknown>;
       // These tests read terminal text back from xterm's DOM renderer; with GPU
       // rendering on, it is drawn into a canvas instead.
@@ -51,6 +54,13 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string; gpu?: boolea
         '/var/www': [{ name: 'index.html', path: '/var/www/index.html', size: 10, isDir: false }]
       };
       const remoteContents: Record<string, string> = { '/config.yml': 'key: value\n' };
+      // An opt-in huge directory, for the windowed-listing test.
+      if (varFiles > 0) {
+        remote['/var'] = Array.from({ length: varFiles }, (_, i) => {
+          const name = `file-${String(i).padStart(5, '0')}.txt`;
+          return { name, path: `/var/${name}`, size: i, isDir: false };
+        });
+      }
 
       function parentOf(p: string): string {
         const i = p.lastIndexOf('/');
@@ -213,7 +223,7 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string; gpu?: boolea
         getPathForFile: () => ''
       };
     },
-    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath, gpu: opts.gpu ?? false }
+    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath, gpu: opts.gpu ?? false, varFiles: opts.varFiles ?? 0 }
   );
 
   await page.goto('/');
@@ -641,4 +651,25 @@ test('each entry gets its file-type icon, and an unknown type falls back', async
       iconFor('config.yml').evaluate((el) => (el as HTMLImageElement).naturalWidth)
     )
     .toBeGreaterThan(0);
+});
+
+test('a huge directory renders only the rows in view, and scrolls through all of them', async ({ page }) => {
+  await boot(page, { varFiles: 5000 });
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await remotePane.getByTitle('var').click();
+  await expect(remotePane.getByText('file-00000.txt')).toBeVisible();
+
+  // Windowed: a screenful plus overscan is mounted, not all 5000 rows.
+  const listFiles = page.getByRole('region', { name: 'web-1 file list' });
+  expect(await listFiles.locator('li').count()).toBeLessThan(120);
+
+  // The scroll height still spans the whole listing, so the last file is reachable.
+  await listFiles.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect(remotePane.getByText('file-04999.txt')).toBeVisible();
+  await expect(remotePane.getByText('file-00000.txt')).toHaveCount(0);
+
+  // A row far down behaves like any other: clicking selects it.
+  await remotePane.getByTitle('file-04999.txt').click();
+  await expect(remotePane.getByRole('checkbox', { name: 'Mark file-04999.txt' })).toHaveAttribute('aria-checked', 'true');
 });
