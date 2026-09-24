@@ -328,66 +328,106 @@ async function runSshPoller(
 // Metric collection
 // ---------------------------------------------------------------------------
 
-/** Runs all metric commands and returns a `Metrics` snapshot. Throws when
- *  every command fails simultaneously — that indicates a dead session and
- *  should prompt the caller to reconnect. */
-async function collectMetrics(session: SshSession): Promise<Metrics> {
-  const results = await Promise.allSettled([
-    session.runCommand(CPU_CMD),
-    session.runCommand(MEM_CMD),
-    session.runCommand(DISK_CMD),
-    session.runCommand(UPTIME_CMD),
-    session.runCommand('cat /proc/loadavg 2>/dev/null')
-  ]);
+const PS_GNU_ARGS = '-eo pid=,ppid=,pcpu=,pmem=,comm= --sort=-pcpu';
+const PS_BSD_ARGS = '-Aceo pid=,ppid=,pcpu=,pmem=,comm= -r';
 
-  if (results.every((r) => r.status === 'rejected')) {
-    const first = results[0] as PromiseRejectedResult;
-    throw new Error(`all metric commands failed (session may be dead): ${String(first.reason)}`);
+/** The sections of `METRICS_SCRIPT`, in output order. */
+const METRIC_SECTIONS = {
+  cpu: CPU_CMD,
+  procStat: 'head -1 /proc/stat 2>/dev/null',
+  mem: MEM_CMD,
+  memsize: 'sysctl hw.memsize 2>/dev/null',
+  disk: DISK_CMD,
+  uptime: UPTIME_CMD,
+  loadavg: 'cat /proc/loadavg 2>/dev/null',
+  ps: topProcessesCommand(PS_GNU_ARGS)
+} as const;
+
+type MetricSection = keyof typeof METRIC_SECTIONS;
+
+/** Prefix of the line that opens each section — no metric command prints it. */
+const SECTION_MARKER = '@@bssh-metric:';
+
+/**
+ * Every metric command as one remote script, each section's output opened by
+ * a marker line. One `exec` channel per cycle instead of one per command:
+ * each channel open is a network round trip, and on the server a session
+ * setup (PAM, login records) of its own.
+ *
+ * The script is POSIX sh, so it is handed to `sh` rather than to the login
+ * shell: fish would otherwise reject the whole script over one line, where
+ * separate commands only ever lost that one metric. `exec` keeps the login
+ * shell's PID, so `topProcessesCommand`'s `$$`/`$PPID` filter still sees
+ * the same process chain it did as a command of its own.
+ */
+export const METRICS_SCRIPT = `exec sh -c '${Object.entries(METRIC_SECTIONS)
+  .map(([name, cmd]) => `echo '${SECTION_MARKER}${name}'; ${cmd}`)
+  .join('; ')
+  .replaceAll("'", "'\\''")}'`;
+
+/** Splits `METRICS_SCRIPT` output into its sections. A section whose marker
+ *  never appeared (the script died part-way) reads as empty output. */
+export function splitMetricSections(output: string): Record<MetricSection, string> {
+  const sections = Object.fromEntries(Object.keys(METRIC_SECTIONS).map((name) => [name, ''])) as Record<MetricSection, string>;
+  let current: MetricSection | undefined;
+  for (const line of output.split('\n')) {
+    if (line.startsWith(SECTION_MARKER)) {
+      const name = line.slice(SECTION_MARKER.length).trim();
+      current = name in sections ? (name as MetricSection) : undefined;
+    } else if (current !== undefined) {
+      sections[current] += `${line}\n`;
+    }
   }
+  return sections;
+}
 
-  const value = (r: PromiseSettledResult<string>): string => (r.status === 'fulfilled' ? r.value : '');
-  const [cpuStr, memStr, diskStr, uptimeStr, loadavgStr] = results.map(value);
+/** Runs the metric script and returns a `Metrics` snapshot. Throws when the
+ *  script itself fails — that indicates a dead session and should prompt the
+ *  caller to reconnect. */
+async function collectMetrics(session: SshSession): Promise<Metrics> {
+  let output: string;
+  try {
+    output = await session.runCommand(METRICS_SCRIPT);
+  } catch (e) {
+    throw new Error(`metric collection failed (session may be dead): ${String(e)}`);
+  }
+  const s = splitMetricSections(output);
 
-  const cpuPercent = await parseCpuCombined(cpuStr, session);
-  const ramPercent = await parseRamCombined(memStr, session);
-  const diskPercent = parseDiskDf(diskStr);
-  const uptime = parseUptime(uptimeStr);
-  const loadAvg = parseLoadavg(loadavgStr);
-  const topProcesses = await collectTopProcesses(session);
+  // The script covers Linux (and BusyBox) in full; only a host it doesn't
+  // (macOS/BSD) needs a follow-up, and those follow-ups run side by side.
+  const [cpuPercent, topProcesses] = await Promise.all([
+    parseCpuCombined(s.cpu, s.procStat, session),
+    collectTopProcesses(s.ps, session)
+  ]);
+  const ramPercent = parseRamCombined(s.mem, s.memsize);
+  const diskPercent = parseDiskDf(s.disk);
+  const uptime = parseUptime(s.uptime);
+  const loadAvg = parseLoadavg(s.loadavg);
 
   return { cpuPercent, ramPercent, diskPercent, uptime, loadAvg, topProcesses, lastUpdated: Date.now() };
 }
 
-/** Collects the top 3 processes by CPU usage. Tries GNU `ps` (Linux) with a
- *  server-side sort first, then falls back to BSD `ps` (macOS). */
-async function collectTopProcesses(session: SshSession): Promise<ProcessInfo[] | undefined> {
-  const linuxOut = await session.runCommand(topProcessesCommand('-eo pid=,ppid=,pcpu=,pmem=,comm= --sort=-pcpu')).catch(() => '');
-  const linux = parseTopProcesses(linuxOut);
+/** Collects the top 3 processes by CPU usage from the GNU `ps` (Linux)
+ *  section, falling back to BSD `ps` (macOS) when that yielded nothing. */
+async function collectTopProcesses(gnuOut: string, session: SshSession): Promise<ProcessInfo[] | undefined> {
+  const linux = parseTopProcesses(gnuOut);
   if (linux !== undefined) return linux;
 
-  const macosOut = await session.runCommand(topProcessesCommand('-Aceo pid=,ppid=,pcpu=,pmem=,comm= -r')).catch(() => '');
+  const macosOut = await session.runCommand(topProcessesCommand(PS_BSD_ARGS)).catch(() => '');
   return parseTopProcesses(macosOut);
 }
 
-async function parseCpuCombined(topOut: string, session: SshSession): Promise<number | undefined> {
-  const linux = parseCpuTop(topOut);
+async function parseCpuCombined(topOut: string, procStatOut: string, session: SshSession): Promise<number | undefined> {
+  const linux = parseCpuTop(topOut) ?? parseCpuProcStat(procStatOut);
   if (linux !== undefined) return linux;
 
   const macosOut = await session.runCommand(CPU_MACOS_CMD).catch(() => '');
-  const macos = parseCpuTopMacos(macosOut);
-  if (macos !== undefined) return macos;
-
-  const statOut = await session.runCommand('head -1 /proc/stat 2>/dev/null').catch(() => '');
-  return parseCpuProcStat(statOut);
+  return parseCpuTopMacos(macosOut);
 }
 
-async function parseRamCombined(memOut: string, session: SshSession): Promise<number | undefined> {
+function parseRamCombined(memOut: string, memsizeOut: string): number | undefined {
   const linux = parseRamFree(memOut);
   if (linux !== undefined) return linux;
-
-  if (memOut.includes('Mach Virtual Memory')) {
-    const memsizeOut = await session.runCommand('sysctl hw.memsize 2>/dev/null').catch(() => '');
-    return parseRamVmstat(memOut, memsizeOut);
-  }
+  if (memOut.includes('Mach Virtual Memory')) return parseRamVmstat(memOut, memsizeOut);
   return undefined;
 }

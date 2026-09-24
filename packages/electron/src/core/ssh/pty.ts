@@ -73,11 +73,58 @@ function processLocaleEnv(): Record<string, string> {
   return Object.fromEntries(localeEnv(vars));
 }
 
+/** Above this many buffered bytes a batch goes out at once rather than
+ *  waiting for the end of the event-loop turn. */
+const MAX_BATCH_BYTES = 256 * 1024;
+
+/**
+ * Merges the output chunks a session receives within one event-loop turn
+ * into a single delivery. `ssh2` emits one `data` event per SSH packet, so a
+ * burst (`cat` of a large file, a build log) arrives as thousands of small
+ * chunks — each otherwise its own IPC message and its own `term.write` in the
+ * renderer. Flushing on `setImmediate` adds no perceptible latency: a lone
+ * keystroke echo still goes out in the same turn it arrived.
+ */
+export class OutputBatcher {
+  private chunks: Buffer[] = [];
+  private bytes = 0;
+  private scheduled: NodeJS.Immediate | undefined;
+
+  constructor(private readonly deliver: (data: Buffer) => void) {}
+
+  push(data: Buffer): void {
+    this.chunks.push(data);
+    this.bytes += data.length;
+    if (this.bytes >= MAX_BATCH_BYTES) this.flush();
+    else this.scheduled ??= setImmediate(() => this.flush());
+  }
+
+  /** Delivers whatever is buffered now. */
+  flush(): void {
+    if (this.scheduled !== undefined) clearImmediate(this.scheduled);
+    this.scheduled = undefined;
+    if (this.chunks.length === 0) return;
+    const data = this.chunks.length === 1 ? this.chunks[0] : Buffer.concat(this.chunks, this.bytes);
+    this.chunks = [];
+    this.bytes = 0;
+    this.deliver(data);
+  }
+
+  /** Drops whatever is buffered, undelivered. */
+  discard(): void {
+    if (this.scheduled !== undefined) clearImmediate(this.scheduled);
+    this.scheduled = undefined;
+    this.chunks = [];
+    this.bytes = 0;
+  }
+}
+
 interface Session {
   id: SessionId;
   host: Host;
   channel: ClientChannel;
   sshSession: SshSession;
+  output: OutputBatcher;
   closedByUser: boolean;
 }
 
@@ -101,12 +148,15 @@ export class PtyManager {
       throw e;
     }
 
-    const session: Session = { id, host, channel, sshSession, closedByUser: false };
+    const output = new OutputBatcher((data) => this.onOutput(id, data));
+    const session: Session = { id, host, channel, sshSession, output, closedByUser: false };
     this.sessions.set(id, session);
 
-    channel.on('data', (data: Buffer) => this.onOutput(id, data));
-    channel.stderr.on('data', (data: Buffer) => this.onOutput(id, data));
+    channel.on('data', (data: Buffer) => output.push(data));
+    channel.stderr.on('data', (data: Buffer) => output.push(data));
     channel.on('close', () => {
+      // The shell's last words land before the exit notice that closes the tab.
+      if (!session.closedByUser) output.flush();
       this.sessions.delete(id);
       sshSession.disconnect();
       if (!session.closedByUser) emit({ type: 'ptyExited', sessionId: id });
@@ -131,6 +181,7 @@ export class PtyManager {
     const session = this.sessions.get(id);
     if (session === undefined) return;
     session.closedByUser = true;
+    session.output.discard();
     session.channel.end();
     this.sessions.delete(id);
     session.sshSession.disconnect();

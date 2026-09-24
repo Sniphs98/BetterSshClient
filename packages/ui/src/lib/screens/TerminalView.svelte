@@ -115,7 +115,7 @@
       for (const chunk of chunkBytes(bytes)) {
         if (destroyed || termId == null) return;
         try {
-          await terminalWrite(termId, Array.from(chunk));
+          await terminalWrite(termId, chunk);
         } catch {
           // Stop this input on a write failure rather than sending a gapped stream.
           return;

@@ -57,6 +57,29 @@ export function guardTransferPaths(local: string, remote: string, localRole: 'de
   }
 }
 
+/** How often a running transfer reports progress, at most. */
+export const PROGRESS_INTERVAL_MS = 100;
+
+/**
+ * Rate-limits a transfer's progress callback. `fastGet`/`fastPut` report
+ * every 32 KiB block — some 30 000 calls for a 1 GiB file, each otherwise an
+ * IPC event and a store update in the renderer — while a progress bar needs
+ * a handful a second. The first report and the completing one always pass.
+ */
+export function throttleProgress(
+  onProgress: (done: number, total: number) => void,
+  intervalMs: number = PROGRESS_INTERVAL_MS,
+  now: () => number = Date.now
+): (done: number, total: number) => void {
+  let last: number | undefined;
+  return (done, total) => {
+    const t = now();
+    if (last !== undefined && done < total && t - last < intervalMs) return;
+    last = t;
+    onProgress(done, total);
+  };
+}
+
 export class SftpManager {
   private constructor(
     private readonly sftp: SFTPWrapper,
@@ -101,7 +124,8 @@ export class SftpManager {
   async download(remote: string, local: string, onProgress: (done: number, total: number) => void): Promise<void> {
     guardTransferPaths(local, remote, 'destination');
     await new Promise<void>((resolve, reject) => {
-      this.sftp.fastGet(remote, local, { step: (total, _nb, fsize) => onProgress(total, fsize) }, (err) => (err ? reject(err) : resolve()));
+      const report = throttleProgress(onProgress);
+      this.sftp.fastGet(remote, local, { step: (total, _nb, fsize) => report(total, fsize) }, (err) => (err ? reject(err) : resolve()));
     });
   }
 
@@ -109,7 +133,8 @@ export class SftpManager {
   async upload(local: string, remote: string, onProgress: (done: number, total: number) => void): Promise<void> {
     guardTransferPaths(local, remote, 'source');
     await new Promise<void>((resolve, reject) => {
-      this.sftp.fastPut(local, remote, { step: (total, _nb, fsize) => onProgress(total, fsize) }, (err) => (err ? reject(err) : resolve()));
+      const report = throttleProgress(onProgress);
+      this.sftp.fastPut(local, remote, { step: (total, _nb, fsize) => report(total, fsize) }, (err) => (err ? reject(err) : resolve()));
     });
   }
 

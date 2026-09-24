@@ -54,7 +54,7 @@ export async function terminalOpen(
 }
 
 /** Send keystrokes (UTF-8 bytes) to a terminal. */
-export async function terminalWrite(sessionId: number, data: number[]): Promise<void> {
+export async function terminalWrite(sessionId: number, data: Uint8Array): Promise<void> {
   const res = await commands.terminalWrite(sessionId, data);
   if (res.status === 'error') throw new Error(res.error.message);
 }

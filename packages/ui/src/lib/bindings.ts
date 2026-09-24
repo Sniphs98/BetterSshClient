@@ -36,7 +36,7 @@ export const commands = {
       return { status: 'error', error: e as CommandError };
     }
   },
-  async terminalWrite(sessionId: number, data: number[]): Promise<Result<null, CommandError>> {
+  async terminalWrite(sessionId: number, data: Uint8Array): Promise<Result<null, CommandError>> {
     return call('terminal_write', sessionId, data);
   },
   async terminalResize(sessionId: number, cols: number, rows: number): Promise<Result<null, CommandError>> {

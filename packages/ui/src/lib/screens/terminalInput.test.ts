@@ -30,3 +30,22 @@ describe('chunkBytes — bounded terminal input', () => {
     expect(chunkBytes(seq(INPUT_CHUNK + 1)).map((c) => c.length)).toEqual([INPUT_CHUNK, 1]);
   });
 });
+
+describe('chunkBytes — IPC-safe slices', () => {
+  it('gives every slice a buffer of exactly its own size', () => {
+    const chunks = chunkBytes(seq(21), 8);
+    expect(chunks.map((c) => c.buffer.byteLength)).toEqual([8, 8, 5]);
+  });
+
+  it('copies a small view out of a larger buffer', () => {
+    const view = seq(64).subarray(10, 13);
+    const [only] = chunkBytes(view, 8);
+    expect(only.buffer.byteLength).toBe(3);
+    expect([...only]).toEqual([10, 11, 12]);
+  });
+
+  it('passes an already self-contained keystroke through untouched', () => {
+    const data = seq(3);
+    expect(chunkBytes(data, 8)[0]).toBe(data);
+  });
+});

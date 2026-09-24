@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { localeEnv } from './pty.js';
+import { OutputBatcher, localeEnv } from './pty.js';
 
 // Ported from crates/omnyssh-core/src/ssh/pty.rs's #[cfg(test)] module
 // (the locale_env / is_utf8_locale battery — the vt100/session parts have
@@ -54,5 +54,47 @@ describe('localeEnv', () => {
   it('ignores non-locale variables entirely', () => {
     const got = localeEnv(env([['EDITOR', 'vim'], ['LANG', 'en_US.UTF-8']]));
     expect(got).toEqual(result([['LANG', 'en_US.UTF-8']]));
+  });
+});
+
+describe('OutputBatcher', () => {
+  const nextTurn = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+  it('merges the chunks of one event-loop turn into a single delivery', async () => {
+    const out: string[] = [];
+    const batcher = new OutputBatcher((data) => out.push(data.toString()));
+    batcher.push(Buffer.from('ab'));
+    batcher.push(Buffer.from('cd'));
+    expect(out).toEqual([]);
+    await nextTurn();
+    expect(out).toEqual(['abcd']);
+  });
+
+  it('delivers a lone chunk as-is, without waiting past the turn', async () => {
+    const out: Buffer[] = [];
+    const batcher = new OutputBatcher((data) => out.push(data));
+    const chunk = Buffer.from('x');
+    batcher.push(chunk);
+    await nextTurn();
+    expect(out).toEqual([chunk]);
+  });
+
+  it('sends a large burst at once instead of holding it', () => {
+    const out: number[] = [];
+    const batcher = new OutputBatcher((data) => out.push(data.length));
+    batcher.push(Buffer.alloc(200 * 1024));
+    batcher.push(Buffer.alloc(100 * 1024));
+    expect(out).toEqual([300 * 1024]);
+  });
+
+  it('flush delivers immediately; discard drops the buffer', async () => {
+    const out: string[] = [];
+    const batcher = new OutputBatcher((data) => out.push(data.toString()));
+    batcher.push(Buffer.from('kept'));
+    batcher.flush();
+    batcher.push(Buffer.from('dropped'));
+    batcher.discard();
+    await nextTurn();
+    expect(out).toEqual(['kept']);
   });
 });

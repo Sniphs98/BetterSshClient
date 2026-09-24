@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { guardTransferPaths, listLocalDir, posixParent, previewLocalFile, sortEntries, type FileEntry } from './sftp.js';
+import { guardTransferPaths, listLocalDir, posixParent, previewLocalFile, sortEntries, throttleProgress, type FileEntry } from './sftp.js';
 
 // sftp.rs is almost entirely I/O against a live SFTP session (untestable
 // without a real server); this ports what's pure or exercisable against the
@@ -105,5 +105,38 @@ describe('local filesystem helpers', () => {
     await writeFile(join(tmp, 'big.txt'), big);
     const preview = await previewLocalFile(join(tmp, 'big.txt'));
     expect(preview.length).toBe(4096);
+  });
+});
+
+describe('throttleProgress', () => {
+  function harness(): { calls: [number, number][]; report: (done: number, total: number) => void; advance: (ms: number) => void } {
+    let clock = 0;
+    const calls: [number, number][] = [];
+    const report = throttleProgress((done, total) => calls.push([done, total]), 100, () => clock);
+    return { calls, report, advance: (ms) => (clock += ms) };
+  }
+
+  it('passes the first report, then at most one per interval', () => {
+    const { calls, report, advance } = harness();
+    report(1, 10);
+    report(2, 10);
+    advance(50);
+    report(3, 10);
+    advance(50);
+    report(4, 10);
+    expect(calls).toEqual([
+      [1, 10],
+      [4, 10]
+    ]);
+  });
+
+  it('always passes the completing report, however soon it follows', () => {
+    const { calls, report } = harness();
+    report(5, 10);
+    report(10, 10);
+    expect(calls).toEqual([
+      [5, 10],
+      [10, 10]
+    ]);
   });
 });

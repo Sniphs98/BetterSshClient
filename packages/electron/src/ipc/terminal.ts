@@ -22,7 +22,7 @@ export function registerTerminalIpc(ipcMain: IpcMain, state: GuiState): void {
     }
   });
 
-  ipcMain.handle('terminal_write', (_event, sessionId: number, data: number[]) => {
+  ipcMain.handle('terminal_write', (_event, sessionId: number, data: Uint8Array) => {
     state.pty.write(sessionId, Buffer.from(data));
   });
 

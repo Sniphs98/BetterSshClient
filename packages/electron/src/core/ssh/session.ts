@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { Client, type ClientChannel, type ConnectConfig } from 'ssh2';
+import { Client, type AnyAuthMethod, type ClientChannel, type ConnectConfig } from 'ssh2';
 
 import type { Host } from './client.js';
 import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
@@ -13,10 +13,8 @@ import { loadAllHosts } from '../config/hosts.js';
  * crates/omnyssh-core/src/ssh/session.rs.
  *
  * Authentication is attempted in order: SSH agent → explicit identity file
- * → default key files → password. Each attempt is a fresh TCP connection
- * (ssh2's high-level `connect()` performs handshake + one auth method per
- * call, unlike russh's per-connection multi-attempt `authenticate_*`
- * calls) — functionally equivalent, at the cost of re-dialling per method.
+ * → default key files → password, all on one connection via ssh2's
+ * `authHandler` (see `authenticate` for the per-method fallback).
  *
  * A host with a ProxyJump is reached through its bastion chain: each hop is
  * connected and authenticated in turn, and the next hop rides a
@@ -277,9 +275,37 @@ async function connectTunnelled(via: Client, host: Host): Promise<Client> {
   return authenticate(host, { sock: stream });
 }
 
-/** Tries agent → explicit identity file → default key files → password, in
- *  order, against `host` — each over a fresh connection carrying `extra`
- *  (either nothing, for a direct dial, or a tunnel `sock`). */
+/** The auth methods to offer `host`, in priority order: agent → explicit
+ *  identity file → default key files → password. Unreadable key files are
+ *  left out; an unparseable (e.g. passphrase-protected) one is skipped by
+ *  `ssh2` itself. */
+function authMethods(host: Host): AnyAuthMethod[] {
+  const username = host.user;
+  const methods: AnyAuthMethod[] = [];
+
+  const agentPath = defaultAgentPath();
+  if (agentPath !== undefined) methods.push({ type: 'agent', username, agent: agentPath });
+
+  const keyPaths = host.identityFile !== undefined ? [expandTilde(host.identityFile)] : [];
+  for (const path of defaultKeyPaths()) if (existsSync(path)) keyPaths.push(path);
+  for (const path of keyPaths) {
+    const key = tryReadKey(path);
+    if (key !== undefined) methods.push({ type: 'publickey', username, key });
+  }
+
+  if (host.password !== undefined) methods.push({ type: 'password', username, password: host.password });
+  return methods;
+}
+
+/** Authenticates against `host` over a connection carrying `extra` (either
+ *  nothing, for a direct dial, or a tunnel `sock`).
+ *
+ *  Every method is tried in turn on a single connection, so a host that only
+ *  accepts the last method (typically the password) costs one TCP connect and
+ *  one key exchange rather than one per method. A server with a low
+ *  `MaxAuthTries` can drop that connection before the list is exhausted
+ *  ("Too many authentication failures"); only then does it fall back to a
+ *  fresh connection per method, so every method still gets its turn. */
 async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<Client> {
   const base: ConnectConfig = {
     host: host.hostname,
@@ -292,62 +318,62 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
     ...extra
   };
 
-  const agentPath = defaultAgentPath();
-  if (agentPath !== undefined) {
-    const viaAgent = await tryConnect({ ...base, agent: agentPath });
-    if (viaAgent) return viaAgent;
-  }
+  const methods = authMethods(host);
+  if (methods.length > 0) {
+    const attempt = await tryConnect({ ...base, authHandler: methods });
+    if (attempt.client) return attempt.client;
 
-  if (host.identityFile !== undefined) {
-    const key = tryReadKey(expandTilde(host.identityFile));
-    if (key !== undefined) {
-      const viaKey = await tryConnect({ ...base, privateKey: key });
-      if (viaKey) return viaKey;
+    // A tunnel `sock` is consumed by its first connection, so a per-method
+    // retry can't reuse it — and there is nothing left to retry when the
+    // server rejected every method, or never got as far as asking.
+    if (attempt.handshake && !attempt.exhausted && extra.sock === undefined && methods.length > 1) {
+      for (const method of methods) {
+        const retry = await tryConnect({ ...base, authHandler: [method] });
+        if (retry.client) return retry.client;
+      }
     }
-  }
-
-  for (const path of defaultKeyPaths()) {
-    if (!existsSync(path)) continue;
-    const key = tryReadKey(path);
-    if (key === undefined) continue;
-    const viaKey = await tryConnect({ ...base, privateKey: key });
-    if (viaKey) return viaKey;
-  }
-
-  if (host.password !== undefined) {
-    const viaPassword = await tryConnect({ ...base, password: host.password });
-    if (viaPassword) return viaPassword;
   }
 
   throw new SshAuthError(`SSH authentication failed for ${host.name}`);
 }
 
-async function tryConnect(config: ConnectConfig): Promise<Client | undefined> {
+interface ConnectAttempt {
+  client?: Client;
+  /** The key exchange completed, so the failure happened during auth. */
+  handshake: boolean;
+  /** The server rejected every offered method (as opposed to hanging up early). */
+  exhausted: boolean;
+}
+
+async function tryConnect(config: ConnectConfig): Promise<ConnectAttempt> {
   return new Promise((resolve) => {
     const client = new Client();
     let settled = false;
+    let handshake = false;
+    const fail = (exhausted: boolean): void => {
+      if (settled) return;
+      settled = true;
+      resolve({ handshake, exhausted });
+    };
+    client.on('handshake', () => {
+      handshake = true;
+    });
     client.on('ready', () => {
       if (settled) return;
       settled = true;
-      resolve(client);
+      resolve({ client, handshake: true, exhausted: false });
     });
-    client.on('error', () => {
-      if (settled) return;
-      settled = true;
-      resolve(undefined);
+    client.on('error', (err: Error & { level?: string }) => {
+      // An unreachable agent (no agent running) is reported as an error, but
+      // `ssh2` carries on with the next method on the same connection.
+      if (err.level === 'agent') return;
+      fail(err.level === 'client-authentication');
     });
-    client.on('close', () => {
-      if (settled) return;
-      settled = true;
-      resolve(undefined);
-    });
+    client.on('close', () => fail(false));
     try {
       client.connect(config);
     } catch {
-      if (!settled) {
-        settled = true;
-        resolve(undefined);
-      }
+      fail(false);
     }
   });
 }

@@ -6,9 +6,11 @@ import {
   CPU_MACOS_CMD,
   DISK_CMD,
   MEM_CMD,
+  METRICS_SCRIPT,
   PS_LOCALE,
   RefreshChannel,
   UPTIME_CMD,
+  splitMetricSections,
   topProcessesCommand,
   waitBackoff,
   waitOrRefresh
@@ -126,5 +128,41 @@ describe('waitBackoff / waitOrRefresh', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(resolved).toBe(true);
     await promise;
+  });
+});
+
+describe('METRICS_SCRIPT', () => {
+  // The body `sh -c` receives, with the outer single-quote escaping undone.
+  const body = METRICS_SCRIPT.replace(/^exec sh -c '/, '').replace(/'$/, '').replaceAll(`'\\''`, "'");
+
+  it('hands a POSIX script to sh in place of the login shell', () => {
+    expect(METRICS_SCRIPT.startsWith("exec sh -c '")).toBe(true);
+  });
+
+  it('runs every metric command, verbatim, after its section marker', () => {
+    for (const cmd of [CPU_CMD, MEM_CMD, DISK_CMD, UPTIME_CMD]) expect(body).toContain(cmd);
+    expect(body).toContain(topProcessesCommand('-eo pid=,ppid=,pcpu=,pmem=,comm= --sort=-pcpu'));
+    expect(body.indexOf("echo '@@bssh-metric:cpu'")).toBeLessThan(body.indexOf(CPU_CMD));
+  });
+});
+
+describe('splitMetricSections', () => {
+  it('routes each line to the section its marker opened', () => {
+    const out = ['@@bssh-metric:cpu', '%Cpu(s): 1.0 us', '@@bssh-metric:disk', 'Filesystem', '/dev/sda1'].join('\n');
+    const s = splitMetricSections(out);
+    expect(s.cpu).toBe('%Cpu(s): 1.0 us\n');
+    expect(s.disk).toBe('Filesystem\n/dev/sda1\n');
+  });
+
+  it('reads a section whose marker never appeared as empty', () => {
+    const s = splitMetricSections('@@bssh-metric:cpu\nx');
+    expect(s.mem).toBe('');
+    expect(s.ps).toBe('');
+  });
+
+  it('ignores output before the first marker and under an unknown one', () => {
+    const s = splitMetricSections(['motd', '@@bssh-metric:bogus', 'noise', '@@bssh-metric:uptime', 'up 3 days'].join('\n'));
+    expect(s.uptime).toBe('up 3 days\n');
+    expect(Object.values(s).join('')).not.toContain('noise');
   });
 });
