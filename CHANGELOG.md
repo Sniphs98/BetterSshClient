@@ -1,6 +1,6 @@
 # Changelog
 
-**From 1.2.0 on, release notes live on the [GitHub Releases page](https://github.com/Sniphs98/better-ssh-client/releases)**,
+**From 1.2.0 on, release notes live on the [GitHub Releases page](https://github.com/Sniphs98/BetterSshClient/releases)**,
 generated automatically from the commits of each release (see CONTRIBUTING.md → Releases).
 This file keeps the history up to 1.1.2, from when the project was OmnySSH.
 

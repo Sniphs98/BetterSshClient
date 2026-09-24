@@ -7,7 +7,7 @@ handled before anything else.
 ## Reporting a vulnerability
 
 **Please don't open a public issue.** Report it privately instead:
-[**Security → Report a vulnerability**](https://github.com/Sniphs98/better-ssh-client/security/advisories/new).
+[**Security → Report a vulnerability**](https://github.com/Sniphs98/BetterSshClient/security/advisories/new).
 
 Helpful to include:
 

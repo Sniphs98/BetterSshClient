@@ -30,8 +30,8 @@ development workflow, coding conventions, and review process.
 **Clone and install:**
 
 ```bash
-git clone https://github.com/Sniphs98/better-ssh-client.git
-cd better-ssh-client
+git clone https://github.com/Sniphs98/BetterSshClient.git
+cd BetterSshClient
 npm install
 ```
 

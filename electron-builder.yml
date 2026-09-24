@@ -17,7 +17,7 @@ copyright: Copyright © BetterSshClient contributors
 publish:
   provider: github
   owner: Sniphs98
-  repo: better-ssh-client
+  repo: BetterSshClient
   releaseType: draft
 
 # One predictable, space-free name per file, and none shared between platforms (the

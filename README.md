@@ -6,8 +6,8 @@
 
 <img src="assets/dashboard.png" alt="The Better Ssh Client dashboard: a card per server with live CPU, RAM, disk, top processes and detected services" width="900">
 
-[![Latest release](https://img.shields.io/github/v/release/Sniphs98/better-ssh-client?label=latest)](https://github.com/Sniphs98/better-ssh-client/releases/latest)
-[![Release](https://img.shields.io/github/actions/workflow/status/Sniphs98/better-ssh-client/release.yml?branch=main&label=build)](https://github.com/Sniphs98/better-ssh-client/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/Sniphs98/BetterSshClient?label=latest)](https://github.com/Sniphs98/BetterSshClient/releases/latest)
+[![Release](https://img.shields.io/github/actions/workflow/status/Sniphs98/BetterSshClient/release.yml?branch=main&label=build)](https://github.com/Sniphs98/BetterSshClient/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **[Why this exists](#why-this-exists)** •
@@ -48,15 +48,15 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **In-place file editor** | Double-click a text file to edit it with Monaco, the editor from VS Code, local or remote. |
 | ✅ | **One-click SSH key setup** | Generates an Ed25519 key, installs it, verifies it, and optionally turns off password login, with automatic rollback if anything fails. |
 | ✅ | **ProxyJump** | Hosts behind one or more bastions work everywhere: dashboard, terminal, SFTP. |
-| ✅ | **Shared connections** | Dashboard, terminals and SFTP share one connection per host, so a new tab opens instantly. |
 | ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
-| ✅ | **Command palette** | `Ctrl+K` / `⌘K` finds any host or open session. |
-| ✅ | **Streamer mode** | Replaces every real address on screen with a fake one for demos and screen sharing. |
 | ✅ | **Light & dark theme** | |
 | 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps. Usable, but still changing. |
 | 📋 | **Remote desktop (RDP)** *(to do)* | RDP profiles next to your SSH hosts, launched through the OS's own client. Not ready yet. |
+| 💡 | **AI integration** *(maybe in the future)* | Help with commands, explain output or errors, right in the terminal. |
+| 💡 | **Plugin system** *(maybe in the future)* | Extend the app with your own features without touching the core. |
+| 💡 | **1Password integration** *(maybe in the future)* | Use SSH keys and passwords straight from your 1Password vault. |
 
-✅ done · 🚧 in progress · 📋 planned
+✅ done · 🚧 in progress · 📋 planned · 💡 maybe in the future
 
 ---
 
@@ -72,7 +72,7 @@ for what works, what's in progress, and what's still planned.
 
 ## Install
 
-Download the file for your system from the [**latest release**](https://github.com/Sniphs98/better-ssh-client/releases/latest):
+Download the file for your system from the [**latest release**](https://github.com/Sniphs98/BetterSshClient/releases/latest):
 
 | System | File |
 |---|---|
@@ -99,7 +99,7 @@ own data in `%APPDATA%\better-ssh-client\` (Windows), `~/Library/Application Sup
 
 ## Feedback and contributing
 
-Found a bug or have an idea? **[Open an issue](https://github.com/Sniphs98/better-ssh-client/issues/new/choose)**
+Found a bug or have an idea? **[Open an issue](https://github.com/Sniphs98/BetterSshClient/issues/new/choose)**
 and describe it there. Feedback on macOS and Linux is especially welcome.
 
 If you've fixed something yourself, feel free to open a **pull request**. I'll look at it
@@ -114,8 +114,8 @@ opening a public issue.
 You need **Node.js 22+** and npm. Docker is optional (for the integration tests).
 
 ```bash
-git clone https://github.com/Sniphs98/better-ssh-client.git
-cd better-ssh-client
+git clone https://github.com/Sniphs98/BetterSshClient.git
+cd BetterSshClient
 npm ci
 npm run dev:electron     # build and start the app
 ```
