@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadRemoteDesktopConnections, saveRemoteDesktopConnections, type RemoteDesktopConnection } from './remoteDesktop.js';
+import { appConfigDir, remoteDesktopConfigPath } from './platform.js';
 import { getSecretCipher, setSecretCipher, type SecretCipher } from './secretCipher.js';
 
 function fakeCipher(available = true): SecretCipher {
@@ -63,7 +64,7 @@ describe('remote-desktop.toml I/O', () => {
 
   it('omits optional fields on write', async () => {
     await saveRemoteDesktopConnections([connection()]);
-    const content = await readFile(join(tmp, 'better-ssh-client', 'remote-desktop.toml'), 'utf-8');
+    const content = await readFile(remoteDesktopConfigPath(), 'utf-8');
     expect(content).not.toContain('username');
     expect(content).not.toContain('password');
     expect(content).not.toContain('domain');
@@ -80,7 +81,7 @@ describe('remote-desktop.toml I/O', () => {
     setSecretCipher(fakeCipher());
     await saveRemoteDesktopConnections([connection({ password: 'secret' })]);
 
-    const raw = await readFile(join(tmp, 'better-ssh-client', 'remote-desktop.toml'), 'utf-8');
+    const raw = await readFile(remoteDesktopConfigPath(), 'utf-8');
     expect(raw).not.toContain('secret');
     expect(raw).toContain('enc:v1:');
 
@@ -90,7 +91,7 @@ describe('remote-desktop.toml I/O', () => {
 
   it('rejects an unknown protocol', async () => {
     const { mkdir, writeFile } = await import('node:fs/promises');
-    const dir = join(tmp, 'better-ssh-client');
+    const dir = appConfigDir();
     await mkdir(dir, { recursive: true });
     await writeFile(
       join(dir, 'remote-desktop.toml'),
