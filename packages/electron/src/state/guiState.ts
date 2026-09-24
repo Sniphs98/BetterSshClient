@@ -4,7 +4,7 @@ import { loadAppConfig } from '../core/config/appConfig.js';
 import type { Host } from '../core/ssh/client.js';
 import { PollManager } from '../core/ssh/pool.js';
 import { PtyManager } from '../core/ssh/pty.js';
-import { invalidateSharedConnections } from '../core/ssh/session.js';
+import { useHosts } from '../core/ssh/session.js';
 import type { SftpManager } from '../core/ssh/sftp.js';
 import { connectionStatusToDto, hostToDto, metricsToDto, serviceToDto } from '../dto.js';
 import type { HostDto } from '../dto.js';
@@ -107,9 +107,7 @@ export class GuiState {
 
   setHosts(hosts: Host[]): void {
     this.hosts = hosts;
-    // A reload can change a jump host's settings, which the connection key
-    // can't see; start later sessions on fresh connections.
-    invalidateSharedConnections();
+    useHosts(hosts);
   }
 
   getHosts(): Host[] {

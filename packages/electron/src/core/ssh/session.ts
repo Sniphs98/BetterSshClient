@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Client, type AnyAuthMethod, type ClientChannel, type ConnectConfig } from 'ssh2';
@@ -69,9 +69,17 @@ function connectionKey(host: Host): string {
 
 const sharedConnections = new ConnectionPool<Host, SshConnection>(connectionKey, connectAndAuth);
 
-/** Stops handing out the current shared connections — call when the host
- *  configuration changed. Connections in use stay up until released. */
-export function invalidateSharedConnections(): void {
+/** The host list ProxyJump chains resolve against: the app's own, as of its last
+ *  (re)load, so a connection doesn't re-read and re-parse `hosts.toml` and
+ *  `~/.ssh/config`. Unset (tests, one-off tools), chains load it themselves. */
+let knownHosts: Host[] | undefined;
+
+/** The host configuration was (re)loaded: resolve jump chains against `hosts`
+ *  from now on, and stop handing out the current shared connections — a
+ *  reload can change a setting (a jump host's, say) their key can't see.
+ *  Connections in use stay up until released. */
+export function useHosts(hosts: Host[]): void {
+  knownHosts = hosts;
   sharedConnections.invalidateAll();
 }
 
@@ -308,8 +316,7 @@ export async function connectBudgetMs(host: Host): Promise<number> {
 
 async function jumpChain(host: Host): Promise<Host[]> {
   if (jumpValue(host) === undefined) return [];
-  const known = await loadAllHosts();
-  return resolveChain(host, known);
+  return resolveChain(host, knownHosts ?? (await loadAllHosts()));
 }
 
 async function connectAndAuth(host: Host): Promise<SshConnection> {
@@ -363,19 +370,17 @@ async function connectTunnelled(via: Client, host: Host): Promise<Client> {
  *  identity file → default key files → password. Unreadable key files are
  *  left out; an unparseable (e.g. passphrase-protected) one is skipped by
  *  `ssh2` itself. */
-function authMethods(host: Host): AnyAuthMethod[] {
+async function authMethods(host: Host): Promise<AnyAuthMethod[]> {
   const username = host.user;
   const methods: AnyAuthMethod[] = [];
 
   const agentPath = defaultAgentPath();
   if (agentPath !== undefined) methods.push({ type: 'agent', username, agent: agentPath });
 
-  const keyPaths = host.identityFile !== undefined ? [expandTilde(host.identityFile)] : [];
-  for (const path of defaultKeyPaths()) if (existsSync(path)) keyPaths.push(path);
-  for (const path of keyPaths) {
-    const key = tryReadKey(path);
-    if (key !== undefined) methods.push({ type: 'publickey', username, key });
-  }
+  // Read side by side and off the main thread; a missing file just drops out.
+  const keyPaths = [...(host.identityFile !== undefined ? [expandTilde(host.identityFile)] : []), ...defaultKeyPaths()];
+  const keys = await Promise.all(keyPaths.map(tryReadKey));
+  for (const key of keys) if (key !== undefined) methods.push({ type: 'publickey', username, key });
 
   if (host.password !== undefined) methods.push({ type: 'password', username, password: host.password });
   return methods;
@@ -402,7 +407,7 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
     ...extra
   };
 
-  const methods = authMethods(host);
+  const methods = await authMethods(host);
   if (methods.length > 0) {
     const attempt = await tryConnect({ ...base, authHandler: methods });
     if (attempt.client) return attempt.client;
@@ -498,9 +503,9 @@ function defaultKeyPaths(): string[] {
   return ['id_ed25519', 'id_rsa', 'id_ecdsa', 'id_ecdsa_sk', 'id_ed25519_sk'].map((name) => join(ssh, name));
 }
 
-function tryReadKey(path: string): Buffer | undefined {
+async function tryReadKey(path: string): Promise<Buffer | undefined> {
   try {
-    return readFileSync(path);
+    return await readFile(path);
   } catch {
     return undefined;
   }
