@@ -1,0 +1,58 @@
+name: Bug report
+description: Something doesn't work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please don't include passwords, private keys or real server addresses —
+        streamer mode (Settings → Privacy) masks addresses if you attach screenshots.
+        **Security issues:** please don't open a public issue — see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: BetterSshClient version
+      description: Shown in Settings.
+      placeholder: 1.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux (AppImage)
+        - Linux (.deb)
+        - Linux (.rpm)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add a host with …
+        2. Open a terminal …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: server
+    attributes:
+      label: Server side (if relevant)
+      description: Remote OS and shell, OpenSSH version, ProxyJump in use, …
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: Anything from the developer console (Ctrl+Shift+I) or the terminal the app was started from.
+      render: text

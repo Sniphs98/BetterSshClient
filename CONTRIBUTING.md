@@ -14,6 +14,7 @@ development workflow, coding conventions, and review process.
 5. [Commit style](#5-commit-style)
 6. [Opening a pull request](#6-opening-a-pull-request)
 7. [Reporting bugs](#7-reporting-bugs)
+8. [Releases](#8-releases)
 
 ---
 
@@ -201,6 +202,13 @@ BetterSshClient uses [Conventional Commits](https://www.conventionalcommits.org/
 | `test`     | Adding or fixing tests |
 | `chore`    | Build system, CI, dependency bumps |
 | `perf`     | Performance improvement |
+| `ci`       | CI/CD workflows |
+
+The type is not just a label: it decides the next release (see [Releases](#8-releases)).
+`feat` ships a minor release, `fix` and `perf` a patch release, and `feat!:` / `fix!:`
+or a `BREAKING CHANGE:` footer a major one. `docs`, `refactor`, `test`, `chore` and `ci`
+don't release anything on their own. Pick the type for what the *user* gets — a
+refactor that happens to fix a bug is a `fix`.
 
 **Examples:**
 
@@ -233,11 +241,15 @@ chore: bump ssh2 to 1.17
 
 **PR checklist:**
 
+- [ ] PR title is a Conventional Commit — with a squash merge it becomes the commit
+      message, and with it the release note and the version bump
 - [ ] All tests pass (`npm test`)
 - [ ] `npm run check` passes (svelte-check + tsc, both packages)
 - [ ] Relevant tests added (parsers, new features)
-- [ ] CHANGELOG entry added
 - [ ] README updated if the change is user-visible
+
+CI runs everything on the PR — checks, unit, end-to-end and integration tests, and
+packaging on all three platforms — so a green PR is a releasable one.
 
 ---
 
@@ -251,5 +263,36 @@ Please open a GitHub Issue with:
 - Expected behaviour vs. actual behaviour
 - Relevant log output
 
-For security issues, please **do not** open a public issue. Email the
-maintainers directly.
+For security issues, please **do not** open a public issue — see
+[SECURITY.md](SECURITY.md) for how to report one privately.
+
+---
+
+## 8. Releases
+
+Releases are automatic: every merge to `main` runs the Release workflow
+(`.github/workflows/release.yml`).
+
+1. The whole CI workflow runs again on the merged code.
+2. `scripts/next-version.mjs` reads the commits since the last `vX.Y.Z` tag and decides
+   the version from their types (table in [Commit style](#5-commit-style)). No `feat`,
+   `fix`, `perf` or breaking change since the last release → no release.
+3. A draft GitHub Release is opened with notes grouped from those commits; each OS builds
+   its installers under the new version and uploads them, plus the `latest*.yml` update
+   manifests, into it.
+4. Only when every platform succeeded is the draft published, which creates the tag.
+
+A few consequences worth knowing:
+
+- **You never edit the version by hand** for a normal release. The version in
+  `packages/electron/package.json` is stamped by the workflow at build time and isn't
+  committed back, so local builds keep reporting the last hand-set version.
+- **To force a specific version** (say, a jump to `2.0.0`), set it in
+  `packages/electron/package.json`. A version there that is ahead of the last release is
+  used as-is on the next merge.
+- **Release notes come from commit messages**, so write the summary for a user reading
+  the release page. `CHANGELOG.md` holds the history up to 1.1.2.
+- **Dry run:** *Actions → Release → Run workflow* runs the same checks and packaging,
+  and attaches the installers to the run instead of publishing them.
+- **Test the version logic** with `node --test "scripts/*.test.mjs"`, or see what the
+  next release would be with `node scripts/next-version.mjs`.

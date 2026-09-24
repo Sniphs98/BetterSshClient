@@ -1,5 +1,9 @@
 # Changelog
 
+**From 1.2.0 on, release notes live on the [GitHub Releases page](https://github.com/Sniphs98/better-ssh-client/releases)**,
+generated automatically from the commits of each release (see CONTRIBUTING.md → Releases).
+This file keeps the history up to 1.1.2, from when the project was OmnySSH.
+
 All notable changes to OmnySSH are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
