@@ -21,6 +21,11 @@ export interface FileEntry {
   isDir: boolean;
 }
 
+/** Case-insensitive, accent-sensitive name order — what lowercasing both
+ *  sides and `localeCompare`-ing them gives, without two string allocations
+ *  per comparison (a large directory runs hundreds of thousands of them). */
+const NAME_ORDER = new Intl.Collator(undefined, { sensitivity: 'accent' });
+
 /** Sorts entries `".."` first, then directories before files, both
  *  alphabetically case-insensitive within their group — mutates in place,
  *  mirroring the Rust `sort_by`. */
@@ -29,7 +34,7 @@ export function sortEntries(entries: FileEntry[]): void {
     if (a.name === '..') return -1;
     if (b.name === '..') return 1;
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    return NAME_ORDER.compare(a.name, b.name);
   });
 }
 
@@ -216,20 +221,26 @@ export async function listLocalDir(path: string): Promise<FileEntry[]> {
     entries.push({ name: '..', path: parent, size: 0, isDir: true });
   }
 
-  for (const dirent of dirents) {
-    const entryPath = joinNative(path, dirent.name);
-    let size = 0;
-    let isDir = dirent.isDirectory();
-    if (!isDir) {
-      try {
-        size = (await stat(entryPath)).size;
-      } catch {
-        // Unreadable entry (permission, broken symlink target, race) — 0 is
-        // the same "unknown" the Rust source falls back to.
+  // The sizes are stat'ed side by side rather than one after another: a
+  // directory of thousands of files otherwise waits out thousands of
+  // sequential filesystem round trips (slow on network drives especially).
+  const listed = await Promise.all(
+    dirents.map(async (dirent): Promise<FileEntry> => {
+      const entryPath = joinNative(path, dirent.name);
+      const isDir = dirent.isDirectory();
+      let size = 0;
+      if (!isDir) {
+        try {
+          size = (await stat(entryPath)).size;
+        } catch {
+          // Unreadable entry (permission, broken symlink target, race) — 0 is
+          // the same "unknown" the Rust source falls back to.
+        }
       }
-    }
-    entries.push({ name: dirent.name, path: entryPath, size, isDir });
-  }
+      return { name: dirent.name, path: entryPath, size, isDir };
+    })
+  );
+  entries.push(...listed);
 
   sortEntries(entries);
   return entries;
