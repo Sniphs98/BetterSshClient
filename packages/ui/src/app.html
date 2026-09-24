@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/png" href="%sveltekit.assets%/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      // No-FOUC: paint the persisted theme before first frame. Mirrors the
+      // localStorage copy the theme store keeps; defaults to dark (tech-gui.md §5.1).
+      (function () {
+        try {
+          var t = localStorage.getItem('better-ssh-client-theme');
+          document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+        // Reserve the overlay title-bar inset only on macOS (--titlebar-h), where the
+        // window uses an overlay title bar with the traffic lights drawn over the app.
+        try {
+          if (/Mac/.test(navigator.userAgent)) {
+            document.documentElement.setAttribute('data-os', 'macos');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

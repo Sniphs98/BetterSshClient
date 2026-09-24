@@ -1,0 +1,180 @@
+import { expect, test, type Page } from '@playwright/test';
+
+// Host management CRUD (tech-gui.md §4.1). e2e runs against the static SPA; the
+// Electron preload bridge is absent, so we install a `window.bsshClient` stub matching
+// the `BsshClientBridge` shape (electron.d.ts) at the boundary. The stub is stateful:
+// save/delete mutate an in-memory list, and `reload_hosts` replays it as a
+// `hosts-loaded` event through the same listener the app registers — so a save/delete
+// round-trips into the dashboard grid exactly as the real backend would drive it.
+const HOSTS = [
+  { name: 'web-1', hostname: 'web-1.example.com', user: 'deploy', port: 22, tags: ['prod'], source: 'manual', hasKey: true },
+  { name: 'imported', hostname: 'imported.example.com', user: 'root', port: 22, tags: [], source: 'sshConfig', hasKey: false }
+];
+
+async function boot(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ hosts }) => {
+      const listeners: Record<string, Array<(payload: unknown) => void>> = {};
+      const state: { hosts: Array<Record<string, unknown>> } = { hosts: hosts.map((h) => ({ ...h })) };
+
+      function fire(channel: string, payload: unknown): void {
+        for (const cb of listeners[channel] ?? []) cb(payload);
+      }
+
+      (window as unknown as { bsshClient: unknown }).bsshClient = {
+        invoke: (channel: string, ...args: unknown[]) => {
+          switch (channel) {
+            case 'list_hosts':
+              return Promise.resolve([...state.hosts]);
+            case 'reload_hosts':
+              // The real command reloads + restarts pollers, then broadcasts the list.
+              setTimeout(() => fire('hosts-loaded', [...state.hosts]), 0);
+              return Promise.resolve(null);
+            case 'save_host': {
+              // Upsert by name as a manual host; the outbound view (HostDto) omits the
+              // secret fields the input carried, mirroring the backend map (§3.4).
+              const h = args[0] as Record<string, unknown> & { name: string; identityFile?: string };
+              const view = {
+                name: h.name,
+                hostname: h.hostname,
+                user: h.user,
+                port: h.port,
+                tags: (h.tags as string[]) ?? [],
+                notes: h.notes,
+                source: 'manual',
+                hasKey: !!h.identityFile,
+                defaultPath: h.defaultPath
+              };
+              const i = state.hosts.findIndex((x) => (x as { name: string }).name === view.name);
+              if (i >= 0) state.hosts[i] = { ...state.hosts[i], ...view };
+              else state.hosts.push(view);
+              return Promise.resolve(null);
+            }
+            case 'delete_host':
+              state.hosts = state.hosts.filter((x) => (x as { name: string }).name !== args[0]);
+              return Promise.resolve(null);
+            default:
+              return Promise.resolve(null);
+          }
+        },
+        on: (channel: string, cb: (payload: unknown) => void) => {
+          (listeners[channel] ||= []).push(cb);
+          return () => {
+            listeners[channel] = (listeners[channel] ?? []).filter((x) => x !== cb);
+          };
+        },
+        settings: { get: () => Promise.resolve(undefined), set: () => Promise.resolve() },
+        openExternal: () => Promise.resolve(),
+        homeDir: () => Promise.resolve('/home/user'),
+        getPathForFile: () => ''
+      };
+    },
+    { hosts: HOSTS }
+  );
+  await page.goto('/');
+  // The dashboard is the default screen; the seeded cards confirm the app booted.
+  await expect(page.getByText('web-1', { exact: true })).toBeVisible();
+}
+
+test('adds a host and it appears as a card', async ({ page }) => {
+  await boot(page);
+
+  await page.getByRole('button', { name: 'Add host' }).click();
+  const editor = page.getByRole('dialog', { name: 'Add host' });
+  await expect(editor).toBeVisible();
+
+  await editor.getByLabel('Name', { exact: true }).fill('db-1');
+  await editor.getByLabel('Hostname / IP').fill('db-1.example.com');
+  await editor.getByLabel('User').fill('postgres');
+  await editor.getByRole('button', { name: 'Add host' }).click();
+
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('db-1', { exact: true })).toBeVisible();
+  await expect(page.getByText('postgres@db-1.example.com:22')).toBeVisible();
+});
+
+test('a default path set on add is there again when the host is reopened for edit', async ({
+  page
+}) => {
+  await boot(page);
+
+  await page.getByRole('button', { name: 'Add host' }).click();
+  let editor = page.getByRole('dialog', { name: 'Add host' });
+  await editor.getByLabel('Name', { exact: true }).fill('db-1');
+  await editor.getByLabel('Hostname / IP').fill('db-1.example.com');
+  await editor.getByLabel('Default path').fill('/var/lib/postgresql');
+  await editor.getByRole('button', { name: 'Add host' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Edit db-1' }).click();
+  editor = page.getByRole('dialog', { name: 'Edit host' });
+  await expect(editor.getByLabel('Default path')).toHaveValue('/var/lib/postgresql');
+});
+
+test('edits a manual host in place', async ({ page }) => {
+  await boot(page);
+
+  await page.getByRole('button', { name: 'Edit web-1' }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit host' });
+  await expect(editor).toBeVisible();
+
+  // The name is the on-disk key: fixed on edit.
+  await expect(editor.getByLabel(/^Name/)).toHaveAttribute('readonly', '');
+
+  const hostname = editor.getByLabel('Hostname / IP');
+  await hostname.fill('web-1b.example.com');
+  await editor.getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('deploy@web-1b.example.com:22')).toBeVisible();
+});
+
+test('deletes a manual host after confirmation', async ({ page }) => {
+  await boot(page);
+  await expect(page.getByText('web-1', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Delete web-1' }).click();
+  const confirm = page.getByRole('dialog', { name: 'Delete host' });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
+
+  await expect(page.getByText('web-1', { exact: true })).toHaveCount(0);
+});
+
+test('an SSH-config host is adopted by editing it', async ({ page }) => {
+  await boot(page);
+
+  // The import is marked, and there is nothing here to delete: it lives in
+  // ~/.ssh/config, which this app never writes.
+  await expect(page.getByText('ssh config')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete imported' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Edit imported' }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit host' });
+  await expect(editor).toBeVisible();
+  // The form states what saving does, since the SSH config file itself does not change.
+  await expect(editor.getByText(/never written/)).toBeVisible();
+
+  await editor.getByLabel('Hostname / IP').fill('adopted.example.com');
+  await editor.getByRole('button', { name: 'Save' }).click();
+
+  // Saved as a manual copy: the import badge is gone and delete is now offered.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('root@adopted.example.com:22')).toBeVisible();
+  await expect(page.getByText('ssh config')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Delete imported' })).toHaveCount(1);
+});
+
+test('rejects a new host whose name already exists', async ({ page }) => {
+  await boot(page);
+
+  await page.getByRole('button', { name: 'Add host' }).click();
+  const editor = page.getByRole('dialog', { name: 'Add host' });
+  await editor.getByLabel('Name', { exact: true }).fill('web-1');
+  await editor.getByLabel('Hostname / IP').fill('dupe.example.com');
+  await editor.getByRole('button', { name: 'Add host' }).click();
+
+  // The editor stays open with an inline error rather than clobbering the existing host.
+  await expect(editor).toBeVisible();
+  await expect(editor.getByText('A host named "web-1" already exists')).toBeVisible();
+});

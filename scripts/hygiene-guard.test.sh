@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Exercises hygiene-guard.sh on fixtures: a clean tree is green, each class of
-# forbidden file (instruction doc, .env, updater key, embedded private key) turns
-# it red regardless of case, and it fails closed outside a git repo.
-# See tech-gui.md §0.0.
+# forbidden file (instruction doc, .env, code-signing certificate, embedded
+# private key) turns it red regardless of case, and it fails closed outside a
+# git repo.
 set -eo pipefail
 
 guard="$(cd "$(dirname "$0")" && pwd)/hygiene-guard.sh"
@@ -49,7 +49,10 @@ setup_repo
 printf 'X=1\n' >"$repo/.ENV" && git -C "$repo" add -f .ENV && expect_fail "case-variant .ENV"
 
 setup_repo
-: >"$repo/omnyssh.tauri.key" && git -C "$repo" add -f omnyssh.tauri.key && expect_fail "tracked *.tauri.key"
+: >"$repo/better-ssh-client.p12" && git -C "$repo" add -f better-ssh-client.p12 && expect_fail "tracked *.p12"
+
+setup_repo
+: >"$repo/better-ssh-client.pfx" && git -C "$repo" add -f better-ssh-client.pfx && expect_fail "tracked *.pfx"
 
 setup_repo
 printf -- '-----BEGIN OPENSSH PRIVATE KEY-----\nx\n-----END OPENSSH PRIVATE KEY-----\n' >"$repo/id_ed25519"

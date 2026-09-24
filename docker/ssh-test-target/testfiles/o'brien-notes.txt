@@ -1,0 +1,4 @@
+A filename with a single quote — the one character shellQuote() (packages/
+ui/src/lib/screens/shellQuote.ts) has to escape when the terminal drawer or
+Terminal's default-path autocd sends `cd` for a directory containing this
+file's parent.

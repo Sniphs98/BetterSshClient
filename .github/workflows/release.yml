@@ -5,13 +5,9 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-  # Manual dry run: build the TUI + GUI on every OS to validate a release before
-  # tagging. The publish job is gated on a tag (below), so nothing is published.
+  # Manual dry run: package on every OS to validate a release before tagging.
+  # `electron-builder --publish never` below means nothing is published.
   workflow_dispatch:
-
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
 
 jobs:
   # ── 1. Quality checks (same as the CI workflow) ────────────────────────────
@@ -21,360 +17,77 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
-          components: clippy, rustfmt
+          node-version: 22
+          cache: npm
 
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ci-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
 
-      - run: cargo test --verbose
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo fmt --check
-
-      # The bundlers name every artifact after the manifest version, and the collect
-      # steps check the bundles against it — so a tag that disagrees with the manifest
-      # would sail through all of that and publish the previous version's binaries.
-      - name: Tag matches the workspace version
+      # electron-builder names every artifact after the app's package.json
+      # version, and the GitHub publish step trusts that name — so a tag that
+      # disagrees with it would publish under the wrong filename.
+      - name: Tag matches the app version
         if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
         run: |
-          version="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          version="$(node -p "require('./packages/electron/package.json').version")"
           [ "$version" = "${GITHUB_REF_NAME#v}" ] ||
             { echo "tag ${GITHUB_REF_NAME} does not match version $version"; exit 1; }
 
-  # ── 2. Build release binaries ──────────────────────────────────────────────
+  # ── 2. Package + publish ────────────────────────────────────────────────────
   #
-  # The four platforms are built in parallel and independently.
-  # Each job uploads its archive as a GitHub Actions artifact,
-  # which the final "publish" job then attaches to the Release.
-  #
-  # runner → target mapping:
-  #   ubuntu-22.04   → x86_64-unknown-linux-gnu   (older glibc for wider compat)
-  #   ubuntu-22.04   → aarch64-unknown-linux-musl (static, cross-compiled; runs on Termux)
-  #   macos-latest   → x86_64-apple-darwin        (ARM runner, cross-compiled)
-  #   macos-latest   → aarch64-apple-darwin       (Apple Silicon runner, native)
-  #   windows-latest → x86_64-pc-windows-msvc     (native)
-  build:
-    name: Build · ${{ matrix.target }}
+  # electron-builder builds natively per OS (it can't cross-compile a signed
+  # macOS .dmg from Linux/Windows), and its GitHub provider both uploads the
+  # installers and creates/updates the draft Release — no separate collect/
+  # checksum/publish job needed, unlike a cross-compiled Rust binary matrix.
+  package:
+    name: Package · ${{ matrix.os }}
     needs: ci
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Built on Ubuntu 22.04 (glibc 2.35) so the binary also runs on
-          # 22.04 hosts — ubuntu-latest moved to 24.04 (glibc 2.39).
-          - target:  x86_64-unknown-linux-gnu
-            runner:  ubuntu-22.04
-            binary:  omny
-            archive: omny-x86_64-unknown-linux-gnu.tar.gz
-
-          # Statically linked aarch64 Linux build. The musl runtime is bundled
-          # into the binary so it runs anywhere with a Linux kernel — including
-          # Termux on Android, which does not ship glibc.
-          - target:  aarch64-unknown-linux-musl
-            runner:  ubuntu-22.04
-            binary:  omny
-            archive: omny-aarch64-unknown-linux-musl.tar.gz
-
-          - target:  x86_64-apple-darwin
-            runner:  macos-latest
-            binary:  omny
-            archive: omny-x86_64-apple-darwin.tar.gz
-
-          - target:  aarch64-apple-darwin
-            runner:  macos-latest
-            binary:  omny
-            archive: omny-aarch64-apple-darwin.tar.gz
-
-          - target:  x86_64-pc-windows-msvc
-            runner:  windows-latest
-            binary:  omny.exe
-            archive: omny-x86_64-pc-windows-msvc.zip
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ matrix.target }}-cargo-
-
-      # Cross-linker for the aarch64-musl target. Rust bundles the musl libc
-      # itself; gcc-aarch64-linux-gnu only supplies the ELF linker.
-      - name: Install aarch64 cross linker
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        timeout-minutes: 6
-        run: |
-          # The image's mirrorlist puts an Azure mirror first. When it black-holes
-          # connections apt still tries it for every index file before falling back,
-          # which cost one run 36 minutes and, even with retries capped, more than
-          # six. Point apt straight at the canonical archive: this installs two dev
-          # packages, so the mirror's proximity buys nothing worth that risk.
-          if [ -f /etc/apt/apt-mirrors.txt ]; then
-            echo 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-          fi
-          printf 'Acquire::Retries "2";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-omnyssh-ci-timeouts > /dev/null
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      # Build the release binary (optimized, stripped)
-      - name: Build release binary
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
-          CC_aarch64_unknown_linux_musl: aarch64-linux-gnu-gcc
-        run: cargo build --release --locked --target ${{ matrix.target }}
-
-      # Package for Unix (tar.gz)
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          cd target/${{ matrix.target }}/release
-          tar czf "${{ matrix.archive }}" ${{ matrix.binary }}
-          mv "${{ matrix.archive }}" "${{ github.workspace }}/"
-
-      # Package for Windows (zip)
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cd target/${{ matrix.target }}/release
-          Compress-Archive -Path ${{ matrix.binary }} -DestinationPath "${{ github.workspace }}/${{ matrix.archive }}"
-
-      # Upload the archive as an artifact — the publish job downloads it
-      - name: Upload artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ${{ matrix.archive }}
-          path: ${{ matrix.archive }}
-          retention-days: 1
-          if-no-files-found: error
-          # Re-running the whole workflow on a tag reuses these names; without this
-          # the upload conflicts with the failed attempt's artifact.
-          overwrite: true
-
-  # ── 2b. Build the GUI desktop installers ───────────────────────────────────
-  #
-  # Native Tauri bundles, renamed to stable `omnyssh-gui-<target>.<ext>` names so
-  # install.sh can build download URLs the same way it does for the TUI. macOS
-  # ships unsigned (a documented one-time Gatekeeper bypass). Linux is x86_64 only
-  # — the webkit cross-compile for ARM is out of scope, and ARM/Termux users have
-  # the TUI.
-  #
-  #   macos-latest   → aarch64-apple-darwin   (native)        → .dmg
-  #   macos-latest   → x86_64-apple-darwin    (cross)         → .dmg
-  #   ubuntu-22.04   → x86_64-unknown-linux-gnu                → .deb + .AppImage + .rpm
-  #   windows-latest → x86_64-pc-windows-msvc                  → NSIS -setup.exe
-  bundle-gui:
-    name: Bundle GUI · ${{ matrix.target }}
-    needs: ci
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target:  aarch64-apple-darwin
-            runner:  macos-latest
-            bundles: dmg
-            asset:   OmnySSH-aarch64-apple-darwin
-          - target:  x86_64-apple-darwin
-            runner:  macos-latest
-            bundles: dmg
-            asset:   OmnySSH-x86_64-apple-darwin
-          - target:  x86_64-unknown-linux-gnu
-            runner:  ubuntu-22.04
-            bundles: deb,appimage,rpm
-            asset:   OmnySSH-x86_64
-          - target:  x86_64-pc-windows-msvc
-            runner:  windows-latest
-            bundles: nsis
-            asset:   OmnySSH-x86_64
-
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          targets: ${{ matrix.target }}
 
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: crates/omnyssh-gui/ui/package-lock.json
 
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: gui-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            gui-${{ matrix.target }}-cargo-
+      - run: npm ci
+      - run: npm run build
 
-      # Tauri v2 build dependencies (webkit2gtk + appindicator; patchelf/file for
-      # the AppImage). Only Linux needs them; macOS/Windows use system webviews.
-      - name: Install Linux bundle dependencies
-        if: runner.os == 'Linux'
-        timeout-minutes: 6
-        run: |
-          # The image's mirrorlist puts an Azure mirror first. When it black-holes
-          # connections apt still tries it for every index file before falling back,
-          # which cost one run 36 minutes and, even with retries capped, more than
-          # six. Point apt straight at the canonical archive: this installs two dev
-          # packages, so the mirror's proximity buys nothing worth that risk.
-          if [ -f /etc/apt/apt-mirrors.txt ]; then
-            echo 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-          fi
-          printf 'Acquire::Retries "2";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-omnyssh-ci-timeouts > /dev/null
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
-            libayatana-appindicator3-dev libssl-dev patchelf file
+      - name: Package (dry run, no publish)
+        if: github.event_name == 'workflow_dispatch'
+        run: npx electron-builder --publish never
 
-      - name: Install the Tauri CLI
-        run: npm install -g @tauri-apps/cli@^2
-
-      - name: Install frontend dependencies
-        working-directory: crates/omnyssh-gui/ui
-        run: npm ci
-
-      # The cache above restores the whole `target` tree, bundles an earlier run left
-      # behind included, and the bundler only ever adds to `bundle/`. Clear it so the
-      # collect steps can see nothing but what this run produces.
-      - name: Drop bundles left by an earlier run
-        shell: bash
-        run: rm -rf "target/${{ matrix.target }}/release/bundle"
-
-      # `tauri build` runs the frontend build (beforeBuildCommand), compiles the
-      # OmnySSH binary, and packages the requested bundles.
-      - name: Build bundles
-        working-directory: crates/omnyssh-gui
+      - name: Package and publish
+        if: startsWith(github.ref, 'refs/tags/')
         env:
-          # Run the AppImage tooling without FUSE, which CI runners lack.
-          APPIMAGE_EXTRACT_AND_RUN: 1
-        run: tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --publish always
 
-      # Rename each produced bundle to its public release name (matches the README
-      # download table and the URLs install.sh builds). Those names carry no version, so
-      # each format is checked against the version this run built first — collect the
-      # wrong file and the release ships an old binary under a new tag, with nothing
-      # downstream (checksums included) able to tell the difference.
-      - name: Collect bundles (Unix)
-        if: runner.os != 'Windows'
-        shell: bash   # `-o pipefail`, so a failed `grep` below cannot pass as an empty version
-        env:
-          BUNDLES: ${{ matrix.bundles }}
-        run: |
-          out="target/${{ matrix.target }}/release/bundle"
-          version="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
-          # An empty version would make the check below match anything.
-          [ -n "$version" ] || { echo "no version in Cargo.toml"; exit 1; }
-          collect() {
-            local files=("$out/$1"/*"$2")
-            [ -e "${files[0]}" ] || { echo "no $2 bundle"; exit 1; }
-            [ "${#files[@]}" -eq 1 ] || { echo "several $2 bundles: ${files[*]}"; exit 1; }
-            case "${files[0]}" in
-              *"$version"*) cp "${files[0]}" "$3" ;;
-              *) echo "${files[0]} is not $version"; exit 1 ;;
-            esac
-          }
-          # Driven by the formats this leg asked `tauri build` for, so a bundler that
-          # stops emitting one fails the dry run instead of only the tag.
-          for format in ${BUNDLES//,/ }; do
-            case "$format" in
-              dmg)      collect dmg      .dmg      "${{ matrix.asset }}.dmg" ;;
-              appimage) collect appimage .AppImage "${{ matrix.asset }}.AppImage" ;;
-              deb)      collect deb      .deb      "${{ matrix.asset }}.deb" ;;
-              rpm)      collect rpm      .rpm      "${{ matrix.asset }}.rpm" ;;
-              *) echo "unknown bundle format: $format"; exit 1 ;;
-            esac
-          done
-          ls -lh "${{ matrix.asset }}".*
-
-      - name: Collect bundles (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' |
-                      Select-Object -First 1).Matches[0].Groups[1].Value
-          $setup = @(Get-ChildItem "target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe")
-          if ($setup.Count -ne 1) { throw "expected one installer, found $($setup.Count): $($setup.Name -join ', ')" }
-          if ($setup[0].Name -notlike "*$version*") { throw "$($setup[0].Name) is not $version" }
-
-          # Subsystem 3 (console) is what makes Windows open a terminal beside the
-          # window. Offset: PE signature (4) + COFF header (20) + 68 into the optional
-          # header, where the field sits in both PE32 and PE32+.
-          $exe = [IO.File]::ReadAllBytes("target/${{ matrix.target }}/release/OmnySSH.exe")
-          $subsystem = [BitConverter]::ToUInt16($exe, [BitConverter]::ToInt32($exe, 0x3C) + 92)
-          if ($subsystem -ne 2) { throw "OmnySSH.exe links as subsystem $subsystem, expected 2 (Windows GUI)" }
-
-          Copy-Item $setup[0].FullName "${{ matrix.asset }}-setup.exe"
-          Get-ChildItem "${{ matrix.asset }}*"
-
-      - name: Upload GUI artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: gui-${{ matrix.target }}
-          path: ${{ matrix.asset }}*
-          retention-days: 1
-          if-no-files-found: error
-          overwrite: true
-
-  # ── 3. Create the GitHub Release and attach the binaries ───────────────────
+  # ── 3. Finalize the GitHub Release ──────────────────────────────────────────
   #
-  # Both build jobs are required. README and install.sh address every asset by a
-  # fixed name, so a release missing one is a broken download link rather than a
-  # smaller release — better to fail the tag and re-run it.
+  # electron-builder's GitHub provider publishes a draft release per OS run
+  # (each attaches its own installers) and relies on the *last* one to
+  # un-draft it — this job does that explicitly instead, and adds the
+  # CHANGELOG.md entry as the release body.
   publish:
-    name: Publish GitHub Release
-    needs: [build, bundle-gui]
-    # Only ever publish on a tag push — a manual dry run builds everything but
-    # skips this job. `needs` already skips it when either build job failed.
+    name: Finalize GitHub Release
+    needs: package
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # required to create the Release
+      contents: write
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      # Download every artifact (TUI archives + GUI bundles).
-      - name: Download all artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      # Make sure all files are present
-      - name: List artifacts
-        run: ls -lh artifacts/
-
-      # Generate SHA256SUMS with bare filenames so the in-app updater and
-      # install.sh can verify a downloaded archive (TUI) or installer (GUI).
-      - name: Generate checksums
-        run: |
-          cd artifacts
-          sha256sum omny-* OmnySSH-* > SHA256SUMS
-          cat SHA256SUMS
 
       # Extract the current release block from CHANGELOG.md: from the
       # "## X.Y.Z" heading down to the next "## " heading or "---" rule.
@@ -383,34 +96,14 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"   # strip the leading "v" from the tag
           BODY=$(awk "/^## ${VERSION} /{found=1; next} found && (/^## /||/^---\$/){exit} found{print}" CHANGELOG.md)
-          # Pass the multi-line text through GITHUB_OUTPUT
           {
             echo 'body<<CHANGELOG_EOF'
             echo "$BODY"
             echo 'CHANGELOG_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      # Attach the TUI archives, the GUI installers and the checksums. Every file
-      # below is required — a release that quietly drops one leaves the README's
-      # download links and install.sh pointing at nothing.
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
-        with:
-          name: OmnySSH ${{ github.ref_name }}
-          body: ${{ steps.changelog.outputs.body }}
-          draft: false
-          prerelease: false
-          fail_on_unmatched_files: true
-          files: |
-            artifacts/omny-x86_64-unknown-linux-gnu.tar.gz
-            artifacts/omny-aarch64-unknown-linux-musl.tar.gz
-            artifacts/omny-x86_64-apple-darwin.tar.gz
-            artifacts/omny-aarch64-apple-darwin.tar.gz
-            artifacts/omny-x86_64-pc-windows-msvc.zip
-            artifacts/OmnySSH-aarch64-apple-darwin.dmg
-            artifacts/OmnySSH-x86_64-apple-darwin.dmg
-            artifacts/OmnySSH-x86_64.AppImage
-            artifacts/OmnySSH-x86_64.deb
-            artifacts/OmnySSH-x86_64.rpm
-            artifacts/OmnySSH-x86_64-setup.exe
-            artifacts/SHA256SUMS
+      - name: Un-draft the release and set its notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" --draft=false --notes "${{ steps.changelog.outputs.body }}"

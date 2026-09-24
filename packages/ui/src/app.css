@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Semantic design tokens (tech-gui.md §5.1), extracted from voice-brandbook.html.
+   One name set, two value maps: a theme switch swaps `data-theme` and every
+   surface follows. Components reference these tokens via Tailwind utilities
+   (bg-surface, text-muted, …) — never a raw brand hex. Brand is monochrome, so
+   the accent is a contrast inversion (ink on light, paper on dark); the only
+   chromatic tokens are the server-state colours, each tuned to clear AA on both
+   --surface and --bg. */
+:root[data-theme='light'] {
+  --bg: #eaeff5;
+  --surface: #ffffff;
+  --surface-raised: #fcfdfe;
+  --surface-inset: #dde3ec;
+  --text: #212121;
+  --text-muted: #5b6066;
+  --text-faint: #aeb7c2;
+  --border: #dde3ec;
+  --border-strong: #aeb7c2;
+  --accent: #212121;
+  --accent-fg: #ffffff;
+  --focus-ring: rgba(33, 33, 33, 0.4);
+  --glass: rgba(255, 255, 255, 0.8);
+  --overlay: rgba(33, 33, 33, 0.4);
+  --status-ok: #1e824c;
+  --status-warn: #b7791f;
+  --status-crit: #c0392b;
+  --status-off: #6e7681;
+  --shadow-soft: 0 10px 30px -12px rgba(33, 33, 33, 0.18);
+}
+
+:root[data-theme='dark'] {
+  --bg: #171717;
+  --surface: #212121;
+  --surface-raised: #2a2a2d;
+  --surface-inset: #1a1a1a;
+  --text: #ffffff;
+  --text-muted: #aeb7c2;
+  --text-faint: rgba(255, 255, 255, 0.45);
+  --border: rgba(255, 255, 255, 0.15);
+  --border-strong: rgba(255, 255, 255, 0.25);
+  --accent: #ffffff;
+  --accent-fg: #212121;
+  --focus-ring: rgba(255, 255, 255, 0.4);
+  --glass: rgba(33, 33, 33, 0.7);
+  --overlay: rgba(0, 0, 0, 0.55);
+  --status-ok: #5fd08a;
+  --status-warn: #e8c15a;
+  --status-crit: #f07777;
+  --status-off: #7c8595;
+  --shadow-soft: 0 10px 30px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Overlay title-bar inset: on macOS the window draws the traffic lights over the
+   app (frameless, hiddenTitle), so the shell reserves a draggable strip at the top.
+   Zero elsewhere — Windows/Linux keep their native title bar. Set on <html> by the
+   app.html pre-paint script so there is no layout shift. */
+:root {
+  --titlebar-h: 0px;
+  /* Collapsed sidebar width. The macOS traffic lights are anchored to the window, not
+     to the layout, and the cluster runs to x=69px — past a 3.5rem rail, whose right
+     border lands on the green button's left edge and leaves it over the content pane.
+     5rem holds the whole cluster; the other platforms have no lights to clear. */
+  --rail-w: 3.5rem;
+}
+:root[data-os='macos'] {
+  --titlebar-h: 1.75rem;
+  --rail-w: 5rem;
+}
+
+html,
+body {
+  height: 100%;
+  /* The shell is a fixed viewport: content scrolls inside its own panes, the
+     window itself never scrolls or rubber-bands (no empty gap on overscroll). */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Native-app feel: chrome, cards, and labels are not selectable. Selection is
+     re-enabled only inside a terminal session and in editable fields. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* Scrollbars, themed with the same semantic tokens as everything else (§5.1) instead
+   of the OS default — this only ever runs in Electron's Chromium, so the WebKit
+   pseudo-elements are all that's needed (the standard `scrollbar-*` properties are
+   included too, harmlessly, for anywhere else the app happens to render, e.g. a
+   browser preview during development). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

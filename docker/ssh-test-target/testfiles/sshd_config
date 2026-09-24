@@ -1,0 +1,6 @@
+# Sample fixture — NOT the container's real /etc/ssh/sshd_config. Exists so
+# `sshd_config` (recognised by filename in fileEdit.ts, no extension needed)
+# has something to open here too.
+Port 22
+PermitRootLogin no
+PasswordAuthentication yes

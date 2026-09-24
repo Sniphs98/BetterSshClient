@@ -1,0 +1,62 @@
+# electron-builder packaging config. Mirrors the target set the old
+# crates/omnyssh-gui/tauri.conf.json shipped (dmg, AppImage, deb, rpm, nsis).
+#
+# `directories.app` points at the Electron package (its package.json's
+# `main`/`version`/`name` become the packaged app's); `packages/ui/build`
+# (the SvelteKit static output) lives outside it, so it's copied in via
+# `extraResources` at the same relative depth the dev-time app:// protocol
+# handler already expects (`dist/../../ui/build`) — two levels above
+# `app.asar` is exactly `resources/`, where `extraResources` lands it.
+appId: com.sniphs.bettersshclient
+productName: BetterSshClient
+copyright: Copyright © BetterSshClient contributors
+
+publish:
+  provider: github
+  owner: Sniphs98
+  repo: better-ssh-client
+
+directories:
+  app: packages/electron
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+  - "!**/*.test.js"
+  - "!**/*.test.js.map"
+
+extraResources:
+  - from: packages/ui/build
+    to: ui/build
+
+asarUnpack:
+  - "**/*.node"
+
+mac:
+  target: [dmg]
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+
+win:
+  target: [nsis, portable, zip]
+  icon: build/icon.ico
+  # electron-builder otherwise fetches the (macOS-targeted) winCodeSign bundle even
+  # for a plain unsigned Windows build, then fails extracting it here: its symlinks
+  # need SeCreateSymbolicLinkPrivilege, which a non-admin/non-Developer-Mode Windows
+  # account doesn't have. Not needed anyway — this build isn't signed.
+  signAndEditExecutable: false
+
+linux:
+  target: [AppImage, deb, rpm]
+  icon: build/icons
+  category: Utility
+  desktop:
+    entry:
+      Comment: SSH dashboard, terminal, and SFTP file manager
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false

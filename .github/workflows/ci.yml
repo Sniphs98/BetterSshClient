@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [main, master]
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
-
 jobs:
   hygiene:
     name: Repo hygiene guard
@@ -38,153 +34,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
-          components: clippy, rustfmt
+          node-version: 22
+          cache: npm
 
-      - name: Cache cargo registry
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build
-        run: cargo build --verbose
-
-      - name: Verify committed man page is up to date
-        if: runner.os == 'Linux'
-        run: git diff --exit-code doc/omny.1
+      - name: Type-check + svelte-check
+        run: npm run check
 
       - name: Run tests
-        run: cargo test --verbose
+        run: npm test
 
-      - name: Clippy (no warnings)
-        run: cargo clippy --all-targets -- -D warnings
+      - name: Build (renderer + main process)
+        run: npm run build
 
-      - name: Check formatting
-        run: cargo fmt --check
-
-  # The workspace `default-members` keeps omnyssh-gui out of a bare `cargo build`
-  # (see `tui-build-independence` below), so nothing above ever compiles it. This
-  # job is where the GUI's own gates run — including the startup contract, whose
-  # whole point is to guard link-time settings no other test can reach.
-  gui:
-    name: GUI checks
-    runs-on: ubuntu-latest
+  # electron-builder needs each OS's own native tooling (codesign stubs, NSIS,
+  # AppImage/rpm/deb packagers), so this only proves `--dir` packaging works —
+  # not that a signed installer is producible. No `--publish` here; a real
+  # release run configures signing/publish separately.
+  package-smoke-test:
+    name: Package (--dir, ${{ matrix.os }})
+    needs: build-and-test
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          components: clippy
 
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: crates/omnyssh-gui/ui/package-lock.json
 
-      - name: Cache cargo registry
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          # Deliberately outside the `${{ runner.os }}-cargo-` namespace: this job's
-          # target tree contains the GUI binary, and `tui-build-independence` restores
-          # by that prefix and fails when it finds one.
-          key: gui-ci-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            gui-ci-${{ runner.os }}-cargo-
-
-      # The pkg-config libraries behind gtk-sys and webkit2gtk-sys. The release job
-      # installs more, but those are the bundler's (icons, AppImage) and this job only
-      # compiles.
-      - name: Install GUI build dependencies
-        timeout-minutes: 6
-        run: |
-          # The image's mirrorlist puts an Azure mirror first. When it black-holes
-          # connections apt still tries it for every index file before falling back,
-          # which cost one run 36 minutes and, even with retries capped, more than
-          # six. Point apt straight at the canonical archive: this installs two dev
-          # packages, so the mirror's proximity buys nothing worth that risk.
-          if [ -f /etc/apt/apt-mirrors.txt ]; then
-            echo 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-          fi
-          printf 'Acquire::Retries "2";\nAcquire::http::Timeout "15";\nAcquire::https::Timeout "15";\n' \
-            | sudo tee /etc/apt/apt.conf.d/99-omnyssh-ci-timeouts > /dev/null
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev
-
-      - name: Install frontend dependencies
-        working-directory: crates/omnyssh-gui/ui
+      - name: Install dependencies
         run: npm ci
 
-      - name: Frontend checks
-        working-directory: crates/omnyssh-gui/ui
-        run: |
-          npm run check
-          npm test
-
-      # `generate_context!` embeds the built frontend, so the crate does not compile
-      # until it exists. `tauri build` does this via beforeBuildCommand; plain cargo
-      # does not.
-      - name: Build the frontend
-        working-directory: crates/omnyssh-gui/ui
-        run: npm run build
-
-      - name: Clippy (no warnings)
-        run: cargo clippy -p omnyssh-gui --all-targets -- -D warnings
-
-      - name: Run tests
-        run: cargo test -p omnyssh-gui
-
-  tui-build-independence:
-    name: TUI builds without the GUI toolchain
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-
-      - name: Cache cargo registry
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-independence-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Remove Node/npm from PATH
-        run: |
-          for b in node npm npx corepack pnpm yarn; do
-            while p="$(command -v "$b" 2>/dev/null)"; do sudo rm -f "$p"; hash -r; done
-          done
-          echo "node: $(command -v node || echo absent)"
-
-      - name: Bare build is core + TUI only (no Node, no Tauri)
-        run: |
-          test -z "$(command -v node)" || { echo "node still present"; exit 1; }
-          cargo build --locked
-          cargo test --locked
-          test -f target/debug/omny || { echo "omny missing"; exit 1; }
-          if [ -f target/debug/OmnySSH ]; then
-            echo "GUI leaked into the bare build"; exit 1
-          fi
-          echo "OK: bare build produced omny, excluded OmnySSH, needed no Node."
+      - name: Package (unpacked directory only)
+        run: npm run package:dir

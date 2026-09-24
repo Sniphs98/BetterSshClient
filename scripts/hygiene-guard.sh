@@ -34,7 +34,7 @@ while IFS= read -r path; do
   esac
 
   case $base in
-    *.tauri.key) violations+=("updater signing key: $path") ;;
+    *.p12 | *.pfx) violations+=("code-signing certificate: $path") ;;
   esac
 
   # Content scan for private keys; skip this guard's own sources, which must
