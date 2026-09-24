@@ -1,11 +1,12 @@
 /**
- * In-app update checker. Ported from crates/omnyssh-core/src/update.rs,
- * minus the bespoke self-update mechanism (`perform_update`, checksum
- * verification, binary self-replace) — Electron has its own mature
- * auto-update tooling (`electron-updater`) for that, which needs signed
- * releases and a publish provider configured before it can do anything
- * real. Until then `install_update` reports "not available yet", matching
- * the Tauri build's own unconfigured updater.
+ * In-app update checker: asks GitHub for the latest release and compares it
+ * with the running version. Ported from crates/omnyssh-core/src/update.rs.
+ *
+ * This only *detects* a newer release, on every platform. Installing it is
+ * electron-updater's job (`ipc/update.ts`), and only where this copy of the
+ * app can update itself (`selfUpdate.ts`) — the caller says which through
+ * `canSelfUpdate`, and the banner offers "Update now" or a download link
+ * accordingly.
  */
 
 const REPO = 'Sniphs98/BetterSshClient';
@@ -28,7 +29,7 @@ interface GithubRelease {
 /** Queries GitHub for the latest release. Returns `undefined` unless a
  *  strictly newer version exists. Any network/parse error yields
  *  `undefined` too, so a failed check never disrupts startup. */
-export async function checkUpdate(currentVersion: string): Promise<UpdateInfo | undefined> {
+export async function checkUpdate(currentVersion: string, canSelfUpdate = false): Promise<UpdateInfo | undefined> {
   let tag: string;
   try {
     tag = await fetchLatestTag();
@@ -43,8 +44,7 @@ export async function checkUpdate(currentVersion: string): Promise<UpdateInfo | 
     version,
     tag,
     url: `https://github.com/${REPO}/releases/tag/${tag}`,
-    // No self-update mechanism wired up yet (see module doc comment).
-    canSelfUpdate: false
+    canSelfUpdate
   };
 }
 
