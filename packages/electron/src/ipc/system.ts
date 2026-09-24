@@ -8,4 +8,6 @@ export function registerSystemIpc(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle('system:home-dir', () => app.getPath('home'));
+
+  ipcMain.handle('system:app-version', () => app.getVersion());
 }

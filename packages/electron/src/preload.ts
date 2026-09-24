@@ -22,6 +22,7 @@ const bsshClient = {
 
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('shell:open-external', url),
   homeDir: (): Promise<string> => ipcRenderer.invoke('system:home-dir'),
+  appVersion: (): Promise<string> => ipcRenderer.invoke('system:app-version'),
 
   /** Resolves a dropped `File`'s absolute filesystem path (replaces Tauri's
    *  webview drag/drop payload paths). Must run in the preload/renderer
