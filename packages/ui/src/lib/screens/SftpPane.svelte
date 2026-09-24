@@ -33,6 +33,7 @@
     onDrop,
     onEntryContextMenu,
     onEmptyContextMenu,
+    onPathContextMenu,
     toolbar
   }: {
     title: string;
@@ -47,6 +48,8 @@
     onDrop: () => void;
     onEntryContextMenu: (entry: FileEntryDto, event: MouseEvent) => void;
     onEmptyContextMenu: (event: MouseEvent) => void;
+    /** Right-click on the current-path line (copy / paste / set as default). */
+    onPathContextMenu?: (event: MouseEvent) => void;
     toolbar?: Snippet;
   } = $props();
 
@@ -118,7 +121,18 @@
         {@render toolbar?.()}
       </div>
     </div>
-    <div class="mt-1 truncate font-mono text-xs text-faint" title={pane.path}>
+    <!-- svelte-ignore a11y_no_static_element_interactions -- a right-click shortcut only;
+         the default path can also be set from the host form. -->
+    <div
+      class="mt-1 truncate font-mono text-xs text-faint"
+      title={pane.path}
+      data-testid="pane-path"
+      oncontextmenu={(event) => {
+        if (!onPathContextMenu) return;
+        event.preventDefault();
+        onPathContextMenu(event);
+      }}
+    >
       {pane.path || '—'}
     </div>
   </header>

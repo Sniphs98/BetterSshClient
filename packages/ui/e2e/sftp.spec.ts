@@ -186,6 +186,9 @@ async function boot(
             }
             case 'sftp_close':
               return Promise.resolve(null);
+            case 'save_host':
+              win.__savedHost = args[0];
+              return Promise.resolve(null);
             // A minimal Automation library — just enough for the "Run automation with this file"
             // context menu item (SftpView.svelte) to have something file-eligible (a
             // `'text'` param) to list and prefill. No `run_automation`/`automation-*` stub:
@@ -742,4 +745,76 @@ test('a second action waits until the batch before it has finished', async ({ pa
   await complete(page);
   await expect.poll(() => sftpCalls(page)).toEqual(['download /config.yml', 'delete /app.log']);
   await expect(remotePane.getByText('app.log')).toHaveCount(0);
+});
+
+type PathTestWindow = { __savedHost?: { name: string; defaultPath?: string } };
+
+test.describe('the path line', () => {
+  // A clipboard of each page's own: the real one is shared by every test running in
+  // parallel (and by whoever is using the machine), so tests would read each other's text.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      let text = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          writeText: async (t: string) => void (text = t),
+          readText: async () => text
+        }
+      });
+    });
+  });
+
+  const pathLine = (page: Page, pane: string) =>
+    page.getByRole('region', { name: pane, exact: true }).getByTestId('pane-path');
+
+  test('right-click copies the current path', async ({ page }) => {
+    await boot(page);
+    await page.getByTitle('files on web-1').click();
+    await expect(page.getByRole('region', { name: 'web-1', exact: true }).getByText('config.yml')).toBeVisible();
+
+    await pathLine(page, 'web-1').click({ button: 'right' });
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Copy path' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('/');
+  });
+
+  test('paste path jumps to a path from the clipboard, quotes and all', async ({ page }) => {
+    await boot(page);
+    await page.getByTitle('files on web-1').click();
+    const remote = page.getByRole('region', { name: 'web-1', exact: true });
+    await expect(remote.getByText('config.yml')).toBeVisible();
+
+    await page.evaluate(() => navigator.clipboard.writeText('"/var/www"\n'));
+    await pathLine(page, 'web-1').click({ button: 'right' });
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Paste path' }).click();
+    await expect(remote.getByText('index.html')).toBeVisible();
+    await expect(pathLine(page, 'web-1')).toHaveText('/var/www');
+  });
+
+  test('set as default path saves the host with the current remote path', async ({ page }) => {
+    await boot(page);
+    await page.getByTitle('files on web-1').click();
+    const remote = page.getByRole('region', { name: 'web-1', exact: true });
+    await expect(remote.getByText('config.yml')).toBeVisible();
+    await page.evaluate(() => navigator.clipboard.writeText('/var/www'));
+    await pathLine(page, 'web-1').click({ button: 'right' });
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Paste path' }).click();
+    await expect(remote.getByText('index.html')).toBeVisible();
+
+    await pathLine(page, 'web-1').click({ button: 'right' });
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Set as default path' }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as PathTestWindow).__savedHost))
+      .toMatchObject({ name: 'web-1', defaultPath: '/var/www' });
+  });
+
+  test('the local side offers copy and paste, but no default path', async ({ page }) => {
+    await boot(page);
+    await page.getByTitle('files on web-1').click();
+    await expect(page.getByRole('region', { name: 'Local', exact: true }).getByText('notes.txt')).toBeVisible();
+
+    await pathLine(page, 'Local').click({ button: 'right' });
+    const menu = page.getByRole('menu');
+    await expect(menu.getByRole('menuitem', { name: 'Copy path' })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Set as default path' })).toHaveCount(0);
+  });
 });
