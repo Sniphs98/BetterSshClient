@@ -1,55 +1,94 @@
 name: Release
 
-# Triggered only by pushing a tag like v1.0.0, v1.2.3, etc.
+# Every merge to main is a release candidate:
+#
+#   1. ci        — the full CI workflow (ci.yml) runs on the merged code.
+#   2. prepare   — scripts/next-version.mjs reads the Conventional Commits since the
+#                  last release tag and decides the next version (feat → minor,
+#                  fix/perf → patch, `!`/BREAKING CHANGE → major). A merge of only
+#                  docs/test/chore/refactor commits stops here: tested, not released.
+#                  Otherwise it opens a *draft* GitHub Release with generated notes.
+#   3. package   — each OS builds its installers under that version and uploads them,
+#                  together with electron-builder's latest*.yml update manifests
+#                  (what electron-updater reads), into the draft.
+#   4. publish   — only once every platform uploaded: the draft is published, which
+#                  creates the git tag. A failure anywhere leaves at most a draft and
+#                  no tag, so the next run simply computes the same version again.
+#
+# Run it by hand (Actions → Release → Run workflow) for a dry run: the same checks and
+# packaging, with the installers attached to the run as artifacts instead of released.
 on:
   push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-  # Manual dry run: package on every OS to validate a release before tagging.
-  # `electron-builder --publish never` below means nothing is published.
+    branches: [main]
   workflow_dispatch:
 
+# Two merges in quick succession must not race for the same version number.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
-  # ── 1. Quality checks (same as the CI workflow) ────────────────────────────
   ci:
-    name: CI checks
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  prepare:
+    name: Decide version
+    needs: ci
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release: ${{ steps.version.outputs.release }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Checkout (full history and tags)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: 22
-          cache: npm
 
-      - run: npm ci
-      - run: npm run check
-      - run: npm test
+      - name: Next version from the commits since the last release
+        id: version
+        run: node scripts/next-version.mjs --notes release-notes.md
 
-      # electron-builder names every artifact after the app's package.json
-      # version, and the GitHub publish step trusts that name — so a tag that
-      # disagrees with it would publish under the wrong filename.
-      - name: Tag matches the app version
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Open a draft release
+        if: steps.version.outputs.release == 'true' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version="$(node -p "require('./packages/electron/package.json').version")"
-          [ "$version" = "${GITHUB_REF_NAME#v}" ] ||
-            { echo "tag ${GITHUB_REF_NAME} does not match version $version"; exit 1; }
+          # A draft left behind by a failed earlier run of the same version is reused.
+          if gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null | grep -q true; then
+            gh release edit "$TAG" --target "$GITHUB_SHA" --notes-file release-notes.md
+          else
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" \
+              --title "BetterSshClient $VERSION" --notes-file release-notes.md
+          fi
 
-  # ── 2. Package + publish ────────────────────────────────────────────────────
-  #
-  # electron-builder builds natively per OS (it can't cross-compile a signed
-  # macOS .dmg from Linux/Windows), and its GitHub provider both uploads the
-  # installers and creates/updates the draft Release — no separate collect/
-  # checksum/publish job needed, unlike a cross-compiled Rust binary matrix.
   package:
     name: Package · ${{ matrix.os }}
-    needs: ci
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      # Unsigned builds: don't let electron-builder go looking for a signing identity.
+      CSC_IDENTITY_AUTO_DISCOVERY: false
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -60,50 +99,50 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # electron-builder names the installers, the update manifests and the release
+      # it uploads into after this version, and the app reports it as its own.
+      - name: Stamp the release version
+        run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version --workspace packages/electron
+
       - run: npm run build
 
-      - name: Package (dry run, no publish)
-        if: github.event_name == 'workflow_dispatch'
-        run: npx electron-builder --publish never
-
-      - name: Package and publish
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Package and upload to the draft release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --publish always
 
-  # ── 3. Finalize the GitHub Release ──────────────────────────────────────────
-  #
-  # electron-builder's GitHub provider publishes a draft release per OS run
-  # (each attaches its own installers) and relies on the *last* one to
-  # un-draft it — this job does that explicitly instead, and adds the
-  # CHANGELOG.md entry as the release body.
+      - name: Package (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        run: npx electron-builder --publish never
+
+      - name: Keep the dry-run installers
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+            release/*.rpm
+            release/*.yml
+          retention-days: 7
+
   publish:
-    name: Finalize GitHub Release
-    needs: package
-    if: startsWith(github.ref, 'refs/tags/')
+    name: Publish release
+    needs: [prepare, package]
+    if: needs.prepare.outputs.release == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
-
-      # Extract the current release block from CHANGELOG.md: from the
-      # "## X.Y.Z" heading down to the next "## " heading or "---" rule.
-      - name: Extract changelog entry
-        id: changelog
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"   # strip the leading "v" from the tag
-          BODY=$(awk "/^## ${VERSION} /{found=1; next} found && (/^## /||/^---\$/){exit} found{print}" CHANGELOG.md)
-          {
-            echo 'body<<CHANGELOG_EOF'
-            echo "$BODY"
-            echo 'CHANGELOG_EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Un-draft the release and set its notes
+      - name: Publish the draft (creates the tag)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release edit "${{ github.ref_name }}" --draft=false --notes "${{ steps.changelog.outputs.body }}"
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false --latest

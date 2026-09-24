@@ -1,14 +1,20 @@
 name: CI
 
+# Every check the project has, in one place. Runs on pull requests, and is called
+# by the Release workflow (release.yml) before anything is published — so a merge
+# to main is only ever released after exactly these jobs pass on the merged code.
 on:
-  push:
-    branches: [main, master]
   pull_request:
-    branches: [main, master]
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   hygiene:
-    name: Repo hygiene guard
+    name: Repo hygiene + release scripts
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,8 +27,15 @@ jobs:
       - name: Exercise the guard on fixtures
         run: bash scripts/hygiene-guard.test.sh
 
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+
+      - name: Test the release version calculation
+        run: node --test "scripts/*.test.mjs"
+
   build-and-test:
-    name: Build & Test (${{ matrix.os }})
+    name: Check, unit tests, build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -45,16 +58,73 @@ jobs:
       - name: Type-check + svelte-check
         run: npm run check
 
-      - name: Run tests
+      - name: Unit tests
         run: npm test
 
       - name: Build (renderer + main process)
         run: npm run build
 
-  # electron-builder needs each OS's own native tooling (codesign stubs, NSIS,
-  # AppImage/rpm/deb packagers), so this only proves `--dir` packaging works —
-  # not that a signed installer is producible. No `--publish` here; a real
-  # release run configures signing/publish separately.
+  e2e:
+    name: End-to-end tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/ui
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+  integration:
+    name: Integration tests (real SSH server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start the SSH test container
+        run: |
+          docker compose up -d --build
+          # sshd answers once it has read its config; give it a moment.
+          for _ in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/2222) 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "SSH test container did not come up" >&2
+          docker compose logs
+          exit 1
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Stop the SSH test container
+        if: always()
+        run: docker compose down
+
+  # electron-builder needs each OS's own native tooling (NSIS, AppImage/rpm/deb
+  # packagers, the macOS dmg tools), so this proves packaging works on all three
+  # before anything reaches a release. `--dir` only: no installers, no publish.
   package-smoke-test:
     name: Package (--dir, ${{ matrix.os }})
     needs: build-and-test
@@ -64,6 +134,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
 
     steps:
       - name: Checkout
