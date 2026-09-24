@@ -12,10 +12,13 @@ const HOSTS = [
   { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false }
 ];
 
-async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Promise<void> {
+async function boot(page: Page, opts: { webOneDefaultPath?: string; gpu?: boolean } = {}): Promise<void> {
   await page.addInitScript(
-    ({ hosts, webOneDefaultPath }) => {
+    ({ hosts, webOneDefaultPath, gpu }) => {
       const win = window as unknown as Record<string, unknown>;
+      // These tests read terminal text back from xterm's DOM renderer; with GPU
+      // rendering on, it is drawn into a canvas instead.
+      localStorage.setItem('better-ssh-client-terminal-gpu', String(gpu));
       const seededHosts = webOneDefaultPath
         ? hosts.map((h) => (h.name === 'web-1' ? { ...h, defaultPath: webOneDefaultPath } : h))
         : hosts;
@@ -94,7 +97,7 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
         getPathForFile: () => ''
       };
     },
-    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath }
+    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath, gpu: opts.gpu ?? false }
   );
 
   await page.goto('/');
@@ -362,4 +365,18 @@ test("the app's global chords don't hijack keys the shell needs", async ({ page 
   // Same for Ctrl+B, which collapses the sidebar elsewhere and moves the cursor back here.
   await page.keyboard.press('Control+b');
   await expect.poll(() => ptyWrites(page)).toContain('\x02');
+});
+
+test('with GPU acceleration on, the terminal draws through WebGL', async ({ page }) => {
+  await boot(page, { gpu: true });
+  await page.getByTitle('sh on web-1').click();
+  await expect(page.locator('.xterm')).toBeVisible();
+  // The WebGL renderer paints into its own canvas; the DOM renderer has no canvas at all.
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        [...document.querySelectorAll('.xterm-screen canvas')].some((c) => (c as HTMLCanvasElement).getContext('webgl2') !== null)
+      )
+    )
+    .toBe(true);
 });

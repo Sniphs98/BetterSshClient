@@ -21,7 +21,8 @@
   import { chunkBytes } from './terminalInput';
   import { shellQuote } from './shellQuote';
   import { copySelection, isCopyChord, isMacPlatform, isPasteChord, pasteFromClipboard } from './terminalClipboard';
-  import { terminalCopyOnSelect, terminalRightClick } from '$lib/stores/terminalPrefs';
+  import { terminalCopyOnSelect, terminalGpu, terminalRightClick } from '$lib/stores/terminalPrefs';
+  import { followGpuPref } from './terminalRenderer';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import { Channel, type TerminalBytes } from '$lib/bindings';
 
@@ -132,6 +133,7 @@
   let connected = false;
   let ready = $state(false);
   let themeUnsub: (() => void) | undefined;
+  let gpuUnsub: (() => void) | undefined;
   let resizeObserver: ResizeObserver | undefined;
   let fitScheduled = false;
   // The top-edge fade dissolves scrolled output into the top edge, but never the live
@@ -182,6 +184,7 @@
       fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(container);
+      gpuUnsub = followGpuPref(term, terminalGpu);
       term.onScroll(syncScrolled);
 
       // The #1 theme-regression guard (§5.1): push the matching xterm theme to this
@@ -249,6 +252,7 @@
   onDestroy(() => {
     destroyed = true;
     themeUnsub?.();
+    gpuUnsub?.();
     resizeObserver?.disconnect();
     // Idempotent: a remote-exit teardown already dropped this id backend-side (§3.4).
     if (termId != null) void terminalClose(termId).catch(() => {});

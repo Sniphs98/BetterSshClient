@@ -13,10 +13,13 @@ const HOSTS = [
   { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false }
 ];
 
-async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Promise<void> {
+async function boot(page: Page, opts: { webOneDefaultPath?: string; gpu?: boolean } = {}): Promise<void> {
   await page.addInitScript(
-    ({ hosts, webOneDefaultPath }) => {
+    ({ hosts, webOneDefaultPath, gpu }) => {
       const win = window as unknown as Record<string, unknown>;
+      // These tests read terminal text back from xterm's DOM renderer; with GPU
+      // rendering on, it is drawn into a canvas instead.
+      localStorage.setItem('better-ssh-client-terminal-gpu', String(gpu));
       const seededHosts = webOneDefaultPath
         ? hosts.map((h) => (h.name === 'web-1' ? { ...h, defaultPath: webOneDefaultPath } : h))
         : hosts;
@@ -210,7 +213,7 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string } = {}): Prom
         getPathForFile: () => ''
       };
     },
-    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath }
+    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath, gpu: opts.gpu ?? false }
   );
 
   await page.goto('/');

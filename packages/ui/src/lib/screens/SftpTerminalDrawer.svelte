@@ -22,7 +22,8 @@
   import { chunkBytes } from './terminalInput';
   import { shellQuote } from './shellQuote';
   import { copySelection, isCopyChord, isMacPlatform, isPasteChord, pasteFromClipboard } from './terminalClipboard';
-  import { terminalCopyOnSelect, terminalRightClick } from '$lib/stores/terminalPrefs';
+  import { terminalCopyOnSelect, terminalGpu, terminalRightClick } from '$lib/stores/terminalPrefs';
+  import { followGpuPref } from './terminalRenderer';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ContextMenu.svelte';
   import { Channel, type TerminalBytes } from '$lib/bindings';
 
@@ -137,6 +138,7 @@
   let ready = $state(false);
   let exited = $state(false);
   let themeUnsub: (() => void) | undefined;
+  let gpuUnsub: (() => void) | undefined;
   let resizeObserver: ResizeObserver | undefined;
   let fitScheduled = false;
   let scrolled = $state(false);
@@ -181,6 +183,7 @@
       fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(container);
+      gpuUnsub = followGpuPref(term, terminalGpu);
       term.onScroll(syncScrolled);
 
       themeUnsub = theme.subscribe((t) => {
@@ -233,6 +236,7 @@
   onDestroy(() => {
     destroyed = true;
     themeUnsub?.();
+    gpuUnsub?.();
     resizeObserver?.disconnect();
     if (termId != null) {
       offOrphanTerminalExit(termId);

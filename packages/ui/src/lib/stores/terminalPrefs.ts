@@ -14,6 +14,8 @@ const RIGHT_CLICK_LOCAL_KEY = 'better-ssh-client-terminal-right-click';
 const RIGHT_CLICK_STORE_KEY = 'terminalRightClick';
 const COPY_ON_SELECT_LOCAL_KEY = 'better-ssh-client-terminal-copy-on-select';
 const COPY_ON_SELECT_STORE_KEY = 'terminalCopyOnSelect';
+const GPU_LOCAL_KEY = 'better-ssh-client-terminal-gpu';
+const GPU_STORE_KEY = 'terminalGpu';
 
 async function settingsStore() {
   const { loadSettingsStore } = await import('$lib/ipc/settingsStore');
@@ -98,3 +100,7 @@ export const terminalCopyOnSelect = createPref<boolean>(
   parseBoolean,
   true
 );
+
+/** Draw terminals with WebGL (see `screens/terminalRenderer.ts`). Defaults on — it is
+ *  much faster under heavy output; off is the escape hatch for a misbehaving GPU. */
+export const terminalGpu = createPref<boolean>(GPU_LOCAL_KEY, GPU_STORE_KEY, parseBoolean, true);

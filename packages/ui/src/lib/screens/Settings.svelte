@@ -9,7 +9,7 @@
   import { theme } from '$lib/stores/theme';
   import { streamerMode } from '$lib/stores/streamer';
   import { refreshInterval, REFRESH_OPTIONS } from '$lib/stores/settings';
-  import { terminalCopyOnSelect, terminalRightClick } from '$lib/stores/terminalPrefs';
+  import { terminalCopyOnSelect, terminalGpu, terminalRightClick } from '$lib/stores/terminalPrefs';
   import { offerUpdate } from '$lib/stores/update';
   import { lastError } from '$lib/stores/notifications';
   import { checkUpdate, loadUpdateConfig, saveUpdateConfig } from '$lib/ipc/commands';
@@ -158,6 +158,31 @@
         >
           <span
             class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow-soft transition-[left] {$terminalCopyOnSelect
+              ? 'left-[1.375rem]'
+              : 'left-0.5'}"
+          ></span>
+        </button>
+      </div>
+
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-sm">GPU acceleration</p>
+          <p class="text-xs text-muted">
+            Draw terminals with WebGL, much faster under heavy output. Turn off if text renders garbled.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={$terminalGpu}
+          aria-label="GPU acceleration"
+          onclick={() => terminalGpu.set(!$terminalGpu)}
+          class="relative h-6 w-11 shrink-0 rounded-full transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus {$terminalGpu
+            ? 'bg-accent'
+            : 'bg-surface-inset'}"
+        >
+          <span
+            class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow-soft transition-[left] {$terminalGpu
               ? 'left-[1.375rem]'
               : 'left-0.5'}"
           ></span>
