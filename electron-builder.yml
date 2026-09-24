@@ -38,6 +38,9 @@ files:
 extraResources:
   - from: packages/ui/build
     to: ui/build
+  # The window icon on Linux, where a window has none of its own (main.ts `windowIcon`).
+  - from: build/icons/256x256.png
+    to: icon.png
 
 asarUnpack:
   - "**/*.node"
@@ -54,10 +57,11 @@ win:
   target: [nsis, portable, zip]
   artifactName: ${productName}-${version}-win-${arch}.${ext}
   icon: build/icon.ico
-  # electron-builder otherwise fetches the (macOS-targeted) winCodeSign bundle even
-  # for a plain unsigned Windows build, then fails extracting it here: its symlinks
-  # need SeCreateSymbolicLinkPrivilege, which a non-admin/non-Developer-Mode Windows
-  # account doesn't have. Not needed anyway — this build isn't signed.
+  # Off for local builds: editing the .exe needs electron-builder's winCodeSign bundle,
+  # whose macOS symlinks a non-admin, non-Developer-Mode Windows account can't extract.
+  # But editing is also what stamps the app icon and version info into the .exe — without
+  # it Windows shows Electron's default icon — so the CI and Release workflows turn it on
+  # (`-c.win.signAndEditExecutable=true`); their runners have the privilege.
   signAndEditExecutable: false
 
 linux:

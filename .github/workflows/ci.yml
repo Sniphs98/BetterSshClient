@@ -149,5 +149,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # With the .exe editing the release build does (app icon + version info), so a
+      # break in it shows up here rather than on release day.
       - name: Package (unpacked directory only)
-        run: npm run package:dir
+        run: npm run package:dir -- -c.win.signAndEditExecutable=true

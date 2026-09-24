@@ -112,15 +112,17 @@ jobs:
 
       - run: npm run build
 
+      # signAndEditExecutable: stamps the app icon and version info into the Windows .exe
+      # (off in electron-builder.yml for local builds, see there). Ignored on other OSes.
       - name: Package and upload to the draft release
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --publish always
+        run: npx electron-builder --publish always -c.win.signAndEditExecutable=true
 
       - name: Package (dry run)
         if: github.event_name == 'workflow_dispatch'
-        run: npx electron-builder --publish never
+        run: npx electron-builder --publish never -c.win.signAndEditExecutable=true
 
       - name: Keep the dry-run installers
         if: github.event_name == 'workflow_dispatch'
