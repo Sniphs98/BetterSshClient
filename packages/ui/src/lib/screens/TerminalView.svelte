@@ -226,8 +226,11 @@
       // there; a fresh terminal cd's into it too), same technique as
       // SftpTerminalDrawer.svelte: queued by the pty until the shell is ready to read
       // it, no race with the shell's own startup.
-      const defaultPath = get(hosts).find((h) => h.name === session.hostName)?.defaultPath;
-      if (defaultPath) sendInput(ENCODER.encode(`cd ${shellQuote(defaultPath)}\n`));
+      const host = get(hosts).find((h) => h.name === session.hostName);
+      if (host?.defaultPath) sendInput(ENCODER.encode(`cd ${shellQuote(host.defaultPath)}\n`));
+      // The host's startup command, typed in after that `cd` — visible in the terminal and
+      // its history, exactly as if the user had entered it.
+      if (host?.startupCommand) sendInput(ENCODER.encode(`${host.startupCommand}\n`));
 
       // Text keystrokes/paste are UTF-8; onBinary carries raw 8-bit sequences
       // (e.g. legacy mouse reporting) that must go byte-for-byte, not re-encoded.

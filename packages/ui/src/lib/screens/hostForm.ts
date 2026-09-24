@@ -20,6 +20,8 @@ export interface HostFormFields {
   monitorPort: string;
   /** Remote directory to land in on connect. Blank means the login default / `/`. */
   defaultPath: string;
+  /** Command typed into every new terminal on the host. Blank means none. */
+  startupCommand: string;
 }
 
 export function emptyForm(): HostFormFields {
@@ -36,7 +38,8 @@ export function emptyForm(): HostFormFields {
     notes: '',
     monitoring: 'ssh',
     monitorPort: '',
-    defaultPath: ''
+    defaultPath: '',
+    startupCommand: ''
   };
 }
 
@@ -55,7 +58,8 @@ export function formFromHost(h: HostDto): HostFormFields {
     notes: h.notes ?? '',
     monitoring: h.monitoring,
     monitorPort: h.monitorPort == null ? '' : String(h.monitorPort),
-    defaultPath: h.defaultPath ?? ''
+    defaultPath: h.defaultPath ?? '',
+    startupCommand: h.startupCommand ?? ''
   };
 }
 
@@ -110,6 +114,7 @@ export function formToInput(f: HostFormFields): HostFormResult {
   const notes = f.notes.trim();
   const tags = splitCsv(f.tags);
   const defaultPath = f.defaultPath.trim();
+  const startupCommand = f.startupCommand.trim();
   return {
     ok: true,
     input: {
@@ -123,7 +128,8 @@ export function formToInput(f: HostFormFields): HostFormResult {
       notes: notes || undefined,
       monitoring: f.monitoring,
       monitorPort,
-      defaultPath: defaultPath || undefined
+      defaultPath: defaultPath || undefined,
+      startupCommand: startupCommand || undefined
     }
   };
 }

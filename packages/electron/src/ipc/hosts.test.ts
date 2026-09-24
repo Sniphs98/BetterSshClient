@@ -28,6 +28,17 @@ describe('upsertHost', () => {
     expect(hosts[0].notes).toBe('new');
   });
 
+  it('sets, changes and clears a startup command through the form', () => {
+    const hosts: Host[] = [];
+    upsertHost(hosts, { ...input('web'), startupCommand: 'sudo -i' }, undefined);
+    expect(hosts[0].startupCommand).toBe('sudo -i');
+    upsertHost(hosts, { ...input('web'), startupCommand: 'tmux attach' }, undefined);
+    expect(hosts[0].startupCommand).toBe('tmux attach');
+    // The form always sends the field; leaving it blank removes the command.
+    upsertHost(hosts, input('web'), undefined);
+    expect(hosts[0].startupCommand).toBeUndefined();
+  });
+
   it('preserves secrets and metadata the form cannot see', () => {
     const hosts: Host[] = [
       {

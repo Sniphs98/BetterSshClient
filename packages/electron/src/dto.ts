@@ -28,6 +28,7 @@ export interface HostDto {
   monitoring: MonitorModeDto;
   monitorPort?: number;
   defaultPath?: string;
+  startupCommand?: string;
 }
 
 /** Inbound host form payload for `save_host`. Always builds a manual `Host`:
@@ -46,6 +47,7 @@ export interface HostInputDto {
   monitoring?: MonitorModeDto;
   monitorPort?: number;
   defaultPath?: string;
+  startupCommand?: string;
 }
 
 function sourceToDto(source: HostSource): HostSourceDto {
@@ -78,7 +80,8 @@ export function hostToDto(host: Host): HostDto {
     passwordAuthDisabled: host.passwordAuthDisabled,
     monitoring: monitorModeToDto(host.monitoring),
     monitorPort: host.monitorPort,
-    defaultPath: host.defaultPath
+    defaultPath: host.defaultPath,
+    startupCommand: host.startupCommand
   };
 }
 
@@ -99,7 +102,8 @@ export function hostFromInputDto(input: HostInputDto): Host {
     source: 'manual',
     monitoring: input.monitoring !== undefined ? monitorModeFromDto(input.monitoring) : 'ssh',
     monitorPort: input.monitorPort,
-    defaultPath: input.defaultPath
+    defaultPath: input.defaultPath,
+    startupCommand: input.startupCommand
   };
 }
 

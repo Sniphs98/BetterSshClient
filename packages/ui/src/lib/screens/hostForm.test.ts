@@ -93,6 +93,14 @@ describe('formToInput — mirrors the TUI to_host', () => {
     expect(set.ok && set.input.defaultPath).toBe('/var/www');
   });
 
+  it('drops a blank startup command to undefined, keeps a trimmed one as written', () => {
+    const blank = formToInput(fields({ name: 'n', hostname: 'h', startupCommand: '  ' }));
+    expect(blank.ok && blank.input.startupCommand).toBeUndefined();
+
+    const set = formToInput(fields({ name: 'n', hostname: 'h', startupCommand: ' tmux attach || tmux ' }));
+    expect(set.ok && set.input.startupCommand).toBe('tmux attach || tmux');
+  });
+
   it('keeps identity/password/notes when provided', () => {
     const r = formToInput(
       fields({ name: 'n', hostname: 'h', identityFile: '~/.ssh/id', password: 's3cret', notes: 'prod box' })
@@ -125,6 +133,11 @@ describe('formFromHost', () => {
   it('seeds the default connection path, blank when unset', () => {
     expect(formFromHost(host({ defaultPath: '/srv/app' })).defaultPath).toBe('/srv/app');
     expect(formFromHost(host({})).defaultPath).toBe('');
+  });
+
+  it('seeds the startup command, blank when unset', () => {
+    expect(formFromHost(host({ startupCommand: 'sudo -i' })).startupCommand).toBe('sudo -i');
+    expect(formFromHost(host({})).startupCommand).toBe('');
   });
 
   it('round-trips the observable fields back through formToInput', () => {
