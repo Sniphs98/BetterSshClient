@@ -52,16 +52,11 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **Light & dark theme** | |
 | 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps. Usable, but still changing. |
 | 📋 | **Remote desktop (RDP)** *(to do)* | RDP profiles next to your SSH hosts, launched through the OS's own client. Not ready yet. |
+| 💡 | **AI integration** *(maybe in the future)* | Help with commands, explain output or errors, right in the terminal. |
+| 💡 | **Plugin system** *(maybe in the future)* | Extend the app with your own features without touching the core. |
+| 💡 | **1Password integration** *(maybe in the future)* | Use SSH keys and passwords straight from your 1Password vault. |
 
-✅ done · 🚧 in progress · 📋 planned
-
-### Maybe later
-
-Ideas I'd like to explore. No promises on if or when:
-
-- 🤖 **AI integration**: help with commands, explain output or errors, right in the terminal.
-- 🧩 **Plugin system**: extend the app with your own features without touching the core.
-- 🔑 **1Password integration**: use SSH keys and passwords straight from your 1Password vault.
+✅ done · 🚧 in progress · 📋 planned · 💡 maybe in the future
 
 ---
 
