@@ -102,6 +102,9 @@ export const commands = {
   async installUpdate(): Promise<Result<null, CommandError>> {
     return call('install_update');
   },
+  async restartToUpdate(): Promise<Result<null, CommandError>> {
+    return call('restart_to_update');
+  },
   async loadUpdateConfig(): Promise<Result<UpdateConfigDto, CommandError>> {
     return call('load_update_config');
   },
@@ -177,7 +180,9 @@ const EVENT_CHANNELS = {
   sftpOpDone: 'sftp-op-done',
   terminalExited: 'terminal-exited',
   transferProgress: 'transfer-progress',
-  updateAvailable: 'update-available'
+  updateAvailable: 'update-available',
+  updateDownloadProgress: 'update-download-progress',
+  updateDownloaded: 'update-downloaded'
 } as const;
 
 type EventMap = {
@@ -204,6 +209,8 @@ type EventMap = {
   terminalExited: TerminalExited;
   transferProgress: TransferProgress;
   updateAvailable: UpdateAvailable;
+  updateDownloadProgress: UpdateDownloadProgress;
+  updateDownloaded: UpdateDownloaded;
 };
 
 type EventCallback<T> = (event: { payload: T }) => void;
@@ -440,8 +447,13 @@ export type TransferProgressDto = { sessionId: number; transferId: number; opId?
 export type UpdateAvailable = { info: UpdateInfoDto };
 /** Update-checker preferences. */
 export type UpdateConfigDto = { checkOnStartup: boolean; skipVersion: string };
-/** A newer release the app can offer. */
+/** A newer release the app can offer. `canSelfUpdate`: this copy can download and install
+ *  it itself (`install_update`); otherwise only the release page is offered. */
 export type UpdateInfoDto = { version: string; url: string; tag: string; canSelfUpdate: boolean };
+/** How far along the download started by `install_update` is (`percent` 0–100). */
+export type UpdateDownloadProgress = { percent: number; transferred: number; total: number };
+/** The update is downloaded; `restart_to_update` installs it. */
+export type UpdateDownloaded = { version: string };
 
 export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
 

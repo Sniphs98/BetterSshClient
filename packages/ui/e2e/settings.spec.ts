@@ -4,7 +4,9 @@ import { expect, test, type Page } from '@playwright/test';
 // Electron preload bridge absent, so we install a `window.bsshClient` stub at the boundary
 // (electron.d.ts). The stub backs the update config in memory and returns an update from
 // `check_update`; `update-available` is fired after `reload_hosts` (which the layout calls
-// once its listeners are attached), mirroring the startup check.
+// once its listeners are attached), mirroring the startup check. `install_update` reports
+// 42 % and then holds until the test calls `__finishDownload()` (or fails outright with
+// `installFails`); `restart_to_update` and opened links are recorded on `window`.
 const HOSTS = [
   { name: 'web-1', hostname: 'web-1.example.com', user: 'deploy', port: 22, tags: [], source: 'manual', hasKey: true }
 ];
@@ -16,9 +18,12 @@ const UPDATE = {
   canSelfUpdate: true
 };
 
-async function boot(page: Page, opts: { fireUpdateOnBoot: boolean }): Promise<void> {
+async function boot(
+  page: Page,
+  opts: { fireUpdateOnBoot: boolean; canSelfUpdate?: boolean; installFails?: boolean }
+): Promise<void> {
   await page.addInitScript(
-    ({ hosts, update, fireUpdateOnBoot }) => {
+    ({ hosts, update, fireUpdateOnBoot, installFails }) => {
       const listeners: Record<string, Array<(payload: unknown) => void>> = {};
       const state = {
         hosts: hosts.map((h) => ({ ...h })),
@@ -51,6 +56,18 @@ async function boot(page: Page, opts: { fireUpdateOnBoot: boolean }): Promise<vo
               return Promise.resolve(null);
             case 'check_update':
               return Promise.resolve({ ...update });
+            case 'install_update':
+              if (installFails) return Promise.reject({ message: 'network unreachable' });
+              setTimeout(() => fire('update-download-progress', { percent: 42, transferred: 42, total: 100 }), 0);
+              return new Promise((resolve) => {
+                win.__finishDownload = () => {
+                  fire('update-downloaded', { version: update.version });
+                  resolve(null);
+                };
+              });
+            case 'restart_to_update':
+              win.__restarted = true;
+              return Promise.resolve(null);
             default:
               return Promise.resolve(null);
           }
@@ -62,12 +79,20 @@ async function boot(page: Page, opts: { fireUpdateOnBoot: boolean }): Promise<vo
           };
         },
         settings: { get: () => Promise.resolve(undefined), set: () => Promise.resolve() },
-        openExternal: () => Promise.resolve(),
+        openExternal: (url: string) => {
+          win.__opened = url;
+          return Promise.resolve();
+        },
         homeDir: () => Promise.resolve('/home/user'),
         getPathForFile: () => ''
       };
     },
-    { hosts: HOSTS, update: UPDATE, fireUpdateOnBoot: opts.fireUpdateOnBoot }
+    {
+      hosts: HOSTS,
+      update: { ...UPDATE, canSelfUpdate: opts.canSelfUpdate ?? true },
+      fireUpdateOnBoot: opts.fireUpdateOnBoot,
+      installFails: opts.installFails ?? false
+    }
   );
   await page.goto('/');
   await expect(page.getByText('web-1', { exact: true })).toBeVisible();
@@ -134,4 +159,43 @@ test('a settings toggle preserves a skipVersion the banner wrote out-of-band', a
   );
   expect(saved?.skipVersion).toBe('2.0.0');
   expect(saved?.checkOnStartup).toBe(false);
+});
+
+type UpdateTestWindow = { __finishDownload: () => void; __restarted?: boolean; __opened?: string };
+
+test('update in place: download with progress, then restart to install', async ({ page }) => {
+  await boot(page, { fireUpdateOnBoot: true });
+  await expect(page.getByText('Update available — v2.0.0')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Update now' }).click();
+  await expect(page.getByText('Downloading v2.0.0… 42%')).toBeVisible();
+  // Nothing to skip or restart for while the download runs.
+  await expect(page.getByRole('button', { name: 'Skip', exact: true })).toHaveCount(0);
+
+  await page.evaluate(() => (window as unknown as UpdateTestWindow).__finishDownload());
+  await expect(page.getByText('v2.0.0 is ready to install')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Restart to update' }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as UpdateTestWindow).__restarted)).toBe(true);
+});
+
+test('a failed download says so and offers a retry and the release page', async ({ page }) => {
+  await boot(page, { fireUpdateOnBoot: true, installFails: true });
+
+  await page.getByRole('button', { name: 'Update now' }).click();
+  await expect(page.getByText("The update couldn't be downloaded")).toBeVisible();
+  await expect(page.getByText('network unreachable')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Download', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as UpdateTestWindow).__opened)).toBe(UPDATE.url);
+});
+
+test('where the app cannot update itself, the banner links to the release page', async ({ page }) => {
+  await boot(page, { fireUpdateOnBoot: true, canSelfUpdate: false });
+  await expect(page.getByText('Update available — v2.0.0')).toBeVisible();
+
+  await expect(page.getByRole('button', { name: 'Update now' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Download', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as UpdateTestWindow).__opened)).toBe(UPDATE.url);
 });

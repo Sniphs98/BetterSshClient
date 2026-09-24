@@ -23,6 +23,8 @@ import {
   applyServicesDetected,
   applyServicesFailed,
   applyUpdateAvailable,
+  applyUpdateDownloaded,
+  applyUpdateDownloadProgress,
   applySftpConnected,
   applySftpDirListed,
   applySftpDisconnected,
@@ -51,6 +53,8 @@ export async function startEventBridge(): Promise<() => void> {
     offs.push(await events.keySetupFailed.listen((e) => applyKeySetupFailed(e.payload)));
     offs.push(await events.keySetupRollback.listen((e) => applyKeySetupRollback(e.payload)));
     offs.push(await events.updateAvailable.listen((e) => applyUpdateAvailable(e.payload)));
+    offs.push(await events.updateDownloadProgress.listen((e) => applyUpdateDownloadProgress(e.payload)));
+    offs.push(await events.updateDownloaded.listen((e) => applyUpdateDownloaded(e.payload)));
     offs.push(await events.automationStarted.listen((e) => applyAutomationStarted(e.payload)));
     offs.push(await events.automationNodeStarted.listen((e) => applyAutomationNodeStarted(e.payload)));
     offs.push(await events.automationNodeResult.listen((e) => applyAutomationNodeResult(e.payload)));

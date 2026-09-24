@@ -1,14 +1,12 @@
 import type { IpcMain } from 'electron';
 
-import { app } from 'electron';
-
 import { loadAppConfig } from '../core/config/appConfig.js';
 import { loadAllHosts, loadHosts, saveHosts } from '../core/config/hosts.js';
 import type { Host } from '../core/ssh/client.js';
-import { checkUpdate } from '../core/update.js';
 import { hostFromInputDto, toCommandError } from '../dto.js';
 import type { HostInputDto } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
+import { checkForAppUpdate } from './update.js';
 
 /**
  * Host commands. Ported from crates/omnyssh-gui/src/commands/hosts.rs.
@@ -123,7 +121,7 @@ async function startupUpdateCheck(state: GuiState): Promise<void> {
   try {
     const config = await loadAppConfig();
     if (!config.update.checkOnStartup) return;
-    const info = await checkUpdate(app.getVersion());
+    const info = await checkForAppUpdate();
     if (info === undefined || info.version === config.update.skipVersion) return;
     state.emit('update-available', { info });
   } catch {

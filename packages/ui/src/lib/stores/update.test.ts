@@ -1,10 +1,16 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import type { UpdateInfoDto } from '$lib/bindings';
-import { availableUpdate, dismissUpdate, offerUpdate } from './update';
-import { applyUpdateAvailable } from '$lib/ipc/router';
+import {
+  availableUpdate,
+  beginUpdateDownload,
+  dismissUpdate,
+  offerUpdate,
+  updateDownload,
+  updateDownloaded,
+  updateDownloadFailed
+} from './update';
+import { applyUpdateAvailable, applyUpdateDownloaded, applyUpdateDownloadProgress } from '$lib/ipc/router';
 
 const info: UpdateInfoDto = {
   version: '1.2.0',
@@ -33,18 +39,30 @@ describe('update banner store', () => {
   });
 });
 
-// There is no component-test harness here, so the banner's action is guarded at the
-// source — this catches the literal shape only, not what the button renders. Until
-// `plugins.updater` has endpoints (§3.7, Stage 5) `install_update` fails on every
-// platform, so wiring the banner to it puts back a button that cannot work.
-describe('update banner action', () => {
-  const banner = readFileSync(
-    fileURLToPath(new URL('../components/UpdateBanner.svelte', import.meta.url)),
-    'utf8'
-  );
+describe('update download state', () => {
+  beforeEach(() => updateDownload.set({ phase: 'idle' }));
 
-  it('links to the release page and does not call the unconfigured self-update', () => {
-    expect(banner).toMatch(/download\(info\.url\)/);
-    expect(banner).not.toMatch(/installUpdate/);
+  it('runs idle → downloading → ready', () => {
+    beginUpdateDownload();
+    expect(get(updateDownload)).toEqual({ phase: 'downloading', percent: 0 });
+    applyUpdateDownloadProgress({ percent: 57.5, transferred: 575, total: 1000 });
+    expect(get(updateDownload)).toEqual({ phase: 'downloading', percent: 57.5 });
+    applyUpdateDownloaded({ version: '1.2.0' });
+    expect(get(updateDownload)).toEqual({ phase: 'ready', version: '1.2.0' });
+  });
+
+  it('ignores a progress tick that arrives after the download finished or failed', () => {
+    updateDownloaded('1.2.0');
+    applyUpdateDownloadProgress({ percent: 99, transferred: 99, total: 100 });
+    expect(get(updateDownload)).toEqual({ phase: 'ready', version: '1.2.0' });
+    updateDownloadFailed('boom');
+    applyUpdateDownloadProgress({ percent: 10, transferred: 1, total: 10 });
+    expect(get(updateDownload)).toEqual({ phase: 'failed', error: 'boom' });
+  });
+
+  it('clamps progress to 0–100', () => {
+    beginUpdateDownload();
+    applyUpdateDownloadProgress({ percent: 140, transferred: 0, total: 0 });
+    expect(get(updateDownload)).toEqual({ phase: 'downloading', percent: 100 });
   });
 });

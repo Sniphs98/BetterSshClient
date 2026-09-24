@@ -112,7 +112,7 @@ app.whenReady().then(async () => {
   registerTerminalIpc(ipcMain, state);
   registerSftpIpc(ipcMain, state);
   registerKeySetupIpc(ipcMain, state);
-  registerUpdateIpc(ipcMain);
+  registerUpdateIpc(ipcMain, state);
   registerAutomationsIpc(ipcMain, state);
   registerRemoteDesktopIpc(ipcMain);
   registerRdpIpc(ipcMain);

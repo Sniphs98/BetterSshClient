@@ -91,6 +91,10 @@ The builds aren't code-signed, so your OS asks once on first launch:
 - **macOS:** right-click the app → *Open* → *Open*.
 - **Linux AppImage:** `chmod +x BetterSshClient-*.AppImage`, then run it.
 
+**Updates:** the app tells you when a new release is out. The Windows installer version and
+the Linux AppImage update themselves with one click ("Update now", then restart). The other
+builds link to the release page to download it.
+
 The app reads the hosts from your `~/.ssh/config` (it never writes to it) and stores its
 own data in `%APPDATA%\better-ssh-client\` (Windows), `~/Library/Application Support/better-ssh-client/`
 (macOS) or `~/.config/better-ssh-client/` (Linux).

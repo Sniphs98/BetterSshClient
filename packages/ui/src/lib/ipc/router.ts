@@ -45,8 +45,8 @@ import {
   reduceProgress,
   reduceRollback
 } from '$lib/stores/keySetup';
-import { offerUpdate } from '$lib/stores/update';
-import type { UpdateAvailable } from '$lib/bindings';
+import { offerUpdate, updateDownloaded, updateDownloadProgress } from '$lib/stores/update';
+import type { UpdateAvailable, UpdateDownloadProgress, UpdateDownloaded } from '$lib/bindings';
 
 export function applyHostsLoaded(payload: HostDto[]): void {
   hosts.set(payload);
@@ -218,6 +218,14 @@ export function applyAutomationFailed(payload: AutomationFailed): void {
 // A newer release found by the startup check (tech-gui.md §4.3) → the update banner.
 export function applyUpdateAvailable(payload: UpdateAvailable): void {
   offerUpdate(payload.info);
+}
+
+export function applyUpdateDownloadProgress(payload: UpdateDownloadProgress): void {
+  updateDownloadProgress(payload);
+}
+
+export function applyUpdateDownloaded(payload: UpdateDownloaded): void {
+  updateDownloaded(payload.version);
 }
 
 export function applyError(message: string): void {

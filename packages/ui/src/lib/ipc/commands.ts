@@ -201,10 +201,17 @@ export async function checkUpdate(): Promise<UpdateInfoDto | null> {
   return res.data;
 }
 
-/** Download and install the latest desktop bundle (tech-gui.md §4.3). Fully wired once
- *  Stage 5 configures the updater endpoints; until then it reports "not available yet". */
+/** Download the latest release for installing in place. Progress arrives as
+ *  `update-download-progress`, completion as `update-downloaded`; only offered when the
+ *  update's `canSelfUpdate` is true (rejects otherwise, and on any download failure). */
 export async function installUpdate(): Promise<void> {
   const res = await commands.installUpdate();
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Quit and install the downloaded update; the app restarts on the new version. */
+export async function restartToUpdate(): Promise<void> {
+  const res = await commands.restartToUpdate();
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
