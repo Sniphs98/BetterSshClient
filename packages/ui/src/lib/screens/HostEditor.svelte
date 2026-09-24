@@ -150,6 +150,20 @@
       </p>
 
       <label class={label}>
+        <span>Startup command</span>
+        <input
+          bind:value={fields.startupCommand}
+          class="{field} font-mono"
+          placeholder="tmux attach || tmux (optional)"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <p class="-mt-2.5 text-xs text-faint">
+        Runs in every new terminal on this host, right after it connects.
+      </p>
+
+      <label class={label}>
         <span>Tags</span>
         <input bind:value={fields.tags} class={field} placeholder="prod, web" />
       </label>

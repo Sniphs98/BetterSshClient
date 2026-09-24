@@ -59,4 +59,15 @@ describe('hostFromToml / hostToToml round trip', () => {
     expect(withoutPath.defaultPath).toBeUndefined();
     expect(hostToToml(withoutPath)).not.toHaveProperty('default_path');
   });
+
+  it('round-trips a startup command, and omits it when unset', () => {
+    const withCommand = { ...defaultHost(), name: 'a', hostname: 'a', startupCommand: 'tmux attach || tmux' };
+    const written = hostToToml(withCommand);
+    expect(written.startup_command).toBe('tmux attach || tmux');
+    expect(hostFromToml(written).startupCommand).toBe('tmux attach || tmux');
+
+    const withoutCommand = hostFromToml({ name: 'b', hostname: 'b' });
+    expect(withoutCommand.startupCommand).toBeUndefined();
+    expect(hostToToml(withoutCommand)).not.toHaveProperty('startup_command');
+  });
 });

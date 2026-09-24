@@ -30,6 +30,9 @@ export interface Host {
   /** Remote directory to land in on connect — `cd`'d into for a terminal, and the
    *  SFTP browser's initial remote listing. Unset means the login default / `/`. */
   defaultPath?: string;
+  /** A command typed into every new terminal on this host once it opens (after the
+   *  `cd` into `defaultPath`), e.g. `sudo -i` or `tmux attach`. Unset means none. */
+  startupCommand?: string;
 }
 
 export function defaultUser(): string {
@@ -85,7 +88,8 @@ export function hostFromToml(raw: Record<string, unknown>): Host {
     keySetupDate: typeof raw.key_setup_date === 'string' ? raw.key_setup_date : undefined,
     passwordAuthDisabled:
       typeof raw.password_auth_disabled === 'boolean' ? raw.password_auth_disabled : undefined,
-    defaultPath: typeof raw.default_path === 'string' ? raw.default_path : undefined
+    defaultPath: typeof raw.default_path === 'string' ? raw.default_path : undefined,
+    startupCommand: typeof raw.startup_command === 'string' ? raw.startup_command : undefined
   };
 }
 
@@ -114,5 +118,6 @@ export function hostToToml(host: Host): Record<string, unknown> {
   if (host.keySetupDate !== undefined) out.key_setup_date = host.keySetupDate;
   if (host.passwordAuthDisabled !== undefined) out.password_auth_disabled = host.passwordAuthDisabled;
   if (host.defaultPath !== undefined) out.default_path = host.defaultPath;
+  if (host.startupCommand !== undefined) out.startup_command = host.startupCommand;
   return out;
 }

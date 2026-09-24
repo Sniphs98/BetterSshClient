@@ -12,16 +12,25 @@ const HOSTS = [
   { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false }
 ];
 
-async function boot(page: Page, opts: { webOneDefaultPath?: string; gpu?: boolean } = {}): Promise<void> {
+async function boot(
+  page: Page,
+  opts: { webOneDefaultPath?: string; webOneStartupCommand?: string; gpu?: boolean } = {}
+): Promise<void> {
   await page.addInitScript(
-    ({ hosts, webOneDefaultPath, gpu }) => {
+    ({ hosts, webOneDefaultPath, webOneStartupCommand, gpu }) => {
       const win = window as unknown as Record<string, unknown>;
       // These tests read terminal text back from xterm's DOM renderer; with GPU
       // rendering on, it is drawn into a canvas instead.
       localStorage.setItem('better-ssh-client-terminal-gpu', String(gpu));
-      const seededHosts = webOneDefaultPath
-        ? hosts.map((h) => (h.name === 'web-1' ? { ...h, defaultPath: webOneDefaultPath } : h))
-        : hosts;
+      const seededHosts = hosts.map((h) =>
+        h.name === 'web-1'
+          ? {
+              ...h,
+              ...(webOneDefaultPath ? { defaultPath: webOneDefaultPath } : {}),
+              ...(webOneStartupCommand ? { startupCommand: webOneStartupCommand } : {})
+            }
+          : h
+      );
       const listeners: Record<string, Array<(payload: unknown) => void>> = {};
       let nextSession = 0;
       let terminalWriteBuffer = '';
@@ -97,7 +106,12 @@ async function boot(page: Page, opts: { webOneDefaultPath?: string; gpu?: boolea
         getPathForFile: () => ''
       };
     },
-    { hosts: HOSTS, webOneDefaultPath: opts.webOneDefaultPath, gpu: opts.gpu ?? false }
+    {
+      hosts: HOSTS,
+      webOneDefaultPath: opts.webOneDefaultPath,
+      webOneStartupCommand: opts.webOneStartupCommand,
+      gpu: opts.gpu ?? false
+    }
   );
 
   await page.goto('/');
@@ -379,4 +393,27 @@ test('with GPU acceleration on, the terminal draws through WebGL', async ({ page
       )
     )
     .toBe(true);
+});
+
+type CommandsWindow = { __terminalCommands: string[] };
+
+test("a host's startup command runs when its terminal opens, after the cd into its default path", async ({
+  page
+}) => {
+  await boot(page, { webOneDefaultPath: '/var/www', webOneStartupCommand: 'tmux attach || tmux' });
+  await page.getByTitle('sh on web-1').click();
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as CommandsWindow).__terminalCommands))
+    .toEqual(["cd '/var/www'", 'tmux attach || tmux']);
+});
+
+test('a host without a startup command runs nothing when its terminal opens', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('sh on web-1').click();
+  await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
+  // Give a queued command time to have been sent, then check none was.
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as unknown as CommandsWindow).__terminalCommands)).toEqual([]);
 });
