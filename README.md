@@ -1,150 +1,155 @@
 <div align="center">
 
-# BetterSshClient
+# Better Ssh Client
 
-### Every server you manage, in one window. Dashboard, terminal, SFTP, automations, RDP.
+**An SSH client built around my daily workflow: dashboard, terminals, SFTP and automations in one window.**
 
-<img src="assets/gui.webp" alt="BetterSshClient GUI dashboard" width="900">
+<img src="assets/dashboard.png" alt="The Better Ssh Client dashboard: a card per server with live CPU, RAM, disk, top processes and detected services" width="900">
 
-[![Downloads](https://img.shields.io/github/downloads/Sniphs98/better-ssh-client/total?label=total%20installs&color=2ea44f)](https://github.com/Sniphs98/better-ssh-client/releases)
 [![Latest release](https://img.shields.io/github/v/release/Sniphs98/better-ssh-client?label=latest)](https://github.com/Sniphs98/better-ssh-client/releases/latest)
-[![Stars](https://img.shields.io/github/stars/Sniphs98/better-ssh-client?style=flat)](https://github.com/Sniphs98/better-ssh-client/stargazers)
+[![Release](https://img.shields.io/github/actions/workflow/status/Sniphs98/better-ssh-client/release.yml?branch=main&label=build)](https://github.com/Sniphs98/better-ssh-client/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Build](https://img.shields.io/github/actions/workflow/status/Sniphs98/better-ssh-client/ci.yml?branch=main)](https://github.com/Sniphs98/better-ssh-client/actions)
 
+**[Why this exists](#why-this-exists)** •
+**[Features](#features)** •
+**[Screenshots](#screenshots)** •
 **[Install](#install)** •
-**[What it does](#what-it-does)** •
-**[SSH keys](#ssh-key-setup)** •
-**[Credits](#credits)** •
-**[Contributing](#contributing)**
-
-*A fork of [OmnySSH](https://github.com/timhartmann7/omnyssh) by Tim Hartmann, continued
-under a new name — see [Credits](#credits).*
+**[Feedback](#feedback-and-contributing)** •
+**[Development](#development)**
 
 </div>
+
+---
+
+## Why this exists
+
+I built this SSH client for myself, to support my workflow at work. It's based on
+[**OmnySSH**](https://github.com/timhartmann7/omnyssh) by
+[Tim Hartmann](https://github.com/timhartmann7).
+
+I don't follow the idea that everything has to be as tiny and lightweight as possible.
+For me this is a tool, and it should simply work. If it needs a few hundred MB more RAM
+for that, that's fine by me. So I did exactly what goes against OmnySSH's core idea: I had
+it rebuilt in **Electron** by [Claude](https://claude.com/claude-code), in plain
+**TypeScript** with **SvelteKit** for everything.
+
+The tool isn't finished yet, but it already has a few new features. See the list below
+for what works, what's in progress, and what's still planned.
+
+---
+
+## Features
+
+| | Feature | What it does |
+|:-:|---|---|
+| ✅ | **Live dashboard** | A card per server with CPU, RAM, disk, uptime, OS and top processes. Detects running services (Docker, nginx, Node.js, PostgreSQL, Redis). Appliances without a shell can be watched with a plain TCP port check. |
+| ✅ | **Terminals** | Real PTY sessions in tabs, GPU-rendered with xterm.js. Copy on select, `Ctrl+Shift+C`/`V`, configurable right-click (menu or PuTTY-style paste). |
+| ✅ | **Two-panel SFTP** | Local and remote side by side, drag & drop (also from your file manager), parallel transfers, smooth even in folders with thousands of files. |
+| ✅ | **In-place file editor** | Double-click a text file to edit it with Monaco, the editor from VS Code, local or remote. |
+| ✅ | **One-click SSH key setup** | Generates an Ed25519 key, installs it, verifies it, and optionally turns off password login, with automatic rollback if anything fails. |
+| ✅ | **ProxyJump** | Hosts behind one or more bastions work everywhere: dashboard, terminal, SFTP. |
+| ✅ | **Shared connections** | Dashboard, terminals and SFTP share one connection per host, so a new tab opens instantly. |
+| ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
+| ✅ | **Command palette** | `Ctrl+K` / `⌘K` finds any host or open session. |
+| ✅ | **Streamer mode** | Replaces every real address on screen with a fake one for demos and screen sharing. |
+| ✅ | **Light & dark theme** | |
+| 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps. Usable, but still changing. |
+| 📋 | **Remote desktop (RDP)** *(to do)* | RDP profiles next to your SSH hosts, launched through the OS's own client. Not ready yet. |
+
+✅ done · 🚧 in progress · 📋 planned
+
+---
+
+## Screenshots
+
+| Terminal | SFTP |
+|:-:|:-:|
+| <img src="assets/terminal.png" alt="Terminal tabs" width="440"> | <img src="assets/sftp.png" alt="Two-panel SFTP browser" width="440"> |
+| **Automations** | **Settings** |
+| <img src="assets/automations.png" alt="Automation canvas" width="440"> | <img src="assets/settings.png" alt="Settings screen" width="440"> |
 
 ---
 
 ## Install
 
-Grab the file for your platform from [**Releases**](https://github.com/Sniphs98/better-ssh-client/releases/latest):
+Download the file for your system from the [**latest release**](https://github.com/Sniphs98/better-ssh-client/releases/latest):
 
-| Platform | File |
-|----------|------|
-| macOS | `BetterSshClient-*.dmg` |
-| Linux x86_64 | `BetterSshClient-*.AppImage` / `.deb` / `.rpm` |
-| Windows x86_64 | `BetterSshClient-*-setup.exe` |
+| System | File |
+|---|---|
+| **Windows** | `BetterSshClient-<version>-setup.exe` (installer) or `-portable.exe` (no install) |
+| **macOS** | `BetterSshClient-<version>-mac-<arch>.dmg` |
+| **Linux** | `.AppImage`, `.deb` or `.rpm` |
 
-No account, no login screen, no telemetry. The app opens with an empty dashboard and reads your existing `~/.ssh/config` if you have one — hosts behind a bastion (`ProxyJump`) included.
+> [!NOTE]
+> Since it's an Electron app, it should in theory run on every system, **but so far I've
+> only tested it on Windows.** macOS and Linux builds are produced automatically but are
+> untested. If something breaks there, please [open an issue](#feedback-and-contributing).
 
----
+The builds aren't code-signed, so your OS asks once on first launch:
 
-## What it does
+- **Windows:** SmartScreen shows "Windows protected your PC". Click *More info → Run anyway*.
+- **macOS:** right-click the app → *Open* → *Open*.
+- **Linux AppImage:** `chmod +x BetterSshClient-*.AppImage`, then run it.
 
-You add a server once. After that it sits on the dashboard as a card with live CPU, RAM and disk, uptime, distro, the top processes eating your CPU, and a badge for what runs on it. One click on `sh` drops you into a real terminal. One click on `files` opens a two panel SFTP browser. Ten servers fit on one screen and refresh on their own.
-
-### Live dashboard
-Cards for every host with CPU, RAM and disk bars, uptime, OS version, top processes, and a Docker badge showing how many containers are up. Bars turn yellow, then red, so a sick server is obvious from across the room.
-
-### Real terminals
-Full PTY sessions in tabs, rendered with [xterm.js](https://xtermjs.org/). Open as many
-servers as you need, switch between them from the sidebar, and keep them running while
-you work in the dashboard. Selecting copies, `Ctrl+Shift+V` pastes, and right-click is
-yours to set — a Copy/Paste menu, or straight PuTTY-style paste.
-
-### Two panel SFTP
-Local on the left, remote on the right. Tick the files you want and move them across, watch the progress bar, select many at once. Nobody remembers `scp -r` syntax anyway.
-
-### Snippets and automations
-A snippet is one named shell command — the thing you paste every week. An automation
-wires snippets together on a canvas: each node runs locally or on a host, edges say what
-has to finish first, and a node can feed its output into the next one with
-`{{nodes.<label>.output}}`. Parameters are asked for when you run it, so one automation
-works against whichever host you point it at.
-
-Snippets also run on their own: right-click a file in the SFTP browser and pick one, and
-`{{file}}` in the command becomes that file's path.
-
-### Remote desktop
-RDP connection profiles live beside your SSH hosts, behind a switch at the top of the
-sidebar. Connect hands the session to the OS's own client — `mstsc` on Windows,
-`xfreerdp` elsewhere — so there's no half-finished protocol implementation in the way.
-Passwords are stored with the same OS-level encryption as SSH passwords.
-
-### Search everything
-Hit ⌘K and start typing. Every host you have, plus every session already open. Enter drops you into a terminal on the host you picked, or back into the session you left.
-
-### Streamer mode
-Swaps every real IP on screen for a fake one. Record a demo or share your screen without leaking client infrastructure.
-
-### Light and dark themes
-Both ship in the app. Switch from the sidebar.
+The app reads the hosts from your `~/.ssh/config` (it never writes to it) and stores its
+own data in `%APPDATA%\better-ssh-client\` (Windows), `~/Library/Application Support/better-ssh-client/`
+(macOS) or `~/.config/better-ssh-client/` (Linux).
 
 ---
 
-## SSH key setup
+## Feedback and contributing
 
-Password auth on a fresh VPS is the thing you always mean to fix and never do. BetterSshClient does it in one click.
+Found a bug or have an idea? **[Open an issue](https://github.com/Sniphs98/better-ssh-client/issues/new/choose)**
+and describe it there. Feedback on macOS and Linux is especially welcome.
 
-Pick a host you added yourself that has no key configured, hit **Set up SSH key**, and choose whether it should also turn password login off once the key is verified — on by default, but you can leave password auth as a fallback. Confirm, and the app generates an Ed25519 key, appends the public half to `authorized_keys`, and opens a fresh connection with the new key to prove it works. Only after that — and only if you asked for it — does it turn password login off. There is no further confirmation step in between: from there on it goes through with it.
+If you've fixed something yourself, feel free to open a **pull request**. I'll look at it
+and merge it when I have time. [CONTRIBUTING.md](CONTRIBUTING.md) explains the setup and
+conventions. For security issues, please see [SECURITY.md](SECURITY.md) instead of
+opening a public issue.
 
-Before touching `sshd_config` it saves a backup on the server. If any step fails, it restores the backup and leaves your access exactly as it was. Your private key never leaves your machine, and nothing gets sent anywhere except the server you chose.
+---
 
-The code lives in [`packages/electron/src/core/ssh/keySetup.ts`](packages/electron/src/core/ssh/keySetup.ts). Read it before you point this at production. That is the whole point of shipping it open source.
+## Development
+
+You need **Node.js 22+** and npm. Docker is optional (for the integration tests).
+
+```bash
+git clone https://github.com/Sniphs98/better-ssh-client.git
+cd better-ssh-client
+npm ci
+npm run dev:electron     # build and start the app
+```
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | UI only, in the browser, for fast iteration on screens |
+| `npm run check` | Type checks for both packages |
+| `npm test` | Unit tests |
+| `npm run test:e2e` | End-to-end UI tests (Playwright) |
+| `npm run test:integration` | Tests against a real SSH server (`docker compose up -d --build` first) |
+| `npm run package:dir` | An unpacked app for your system, in `release/` |
+
+```
+packages/electron   Electron main process: SSH/SFTP engine, config, IPC
+packages/ui         SvelteKit UI: dashboard, terminal, SFTP, automations, settings
+```
+
+**Releases are automatic:** every merge to `main` runs all tests and, if it contains a
+`feat`, `fix` or `perf` commit, publishes a new release for all platforms. The details
+are in [CONTRIBUTING.md](CONTRIBUTING.md#8-releases).
 
 ---
 
 ## Credits
 
-BetterSshClient is a fork of [**OmnySSH**](https://github.com/timhartmann7/omnyssh) by
+Built on [**OmnySSH**](https://github.com/timhartmann7/omnyssh) by
 [Tim Hartmann](https://github.com/timhartmann7). The dashboard, the SSH and SFTP engine,
-the key setup, the terminal — that is his work, and it is still most of the code in this
-repository. If this app is useful to you, his is the project that made it exist.
+the key setup and the terminal all started as his work. Thanks for building it!
 
-What this fork changed:
-
-- **Renamed** from OmnySSH, with its own application id and config directory.
-- **Remote desktop:** RDP connection profiles, launched through the OS's native client.
-- **Snippets and automations reworked:** what used to be two features (flat snippets, and
-  automations as a graph) became one model — snippets are plain commands, automations
-  wire them together, and where a step runs is the automation's call rather than the
-  snippet's.
-- **Terminal clipboard:** copy on selection, `Ctrl+Shift+C`/`V`, and a configurable
-  right-click. This also replaced Electron's default menu, which had been swallowing
-  `Ctrl+C`, `Ctrl+Z` and `Ctrl+A` before the shell ever saw them.
-- **Stored passwords encrypted** with the OS keystore (DPAPI / Keychain / libsecret)
-  instead of plaintext in `hosts.toml`.
-
-Both projects are licensed under Apache 2.0.
-
-The file-type icons in the SFTP browser are from
-[vscode-icons](https://github.com/vscode-icons/vscode-icons) (MIT, © Roberto Huertas);
-the licence travels with them in `packages/ui/static/file-icons/LICENSE.txt`.
-
----
-
-## Contributing
-
-Pull requests welcome. [CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the conventions and the checklist. Open an issue first if you plan something big, so we do not both build it.
-
-Workspace layout:
-
-```
-packages/electron   Electron main process + preload + the ported SSH/config engine
-packages/ui         SvelteKit renderer (dashboard, terminal, SFTP, automations, RDP, settings)
-```
+The SFTP file icons are from [vscode-icons](https://github.com/vscode-icons/vscode-icons)
+(MIT, © Roberto Huertas).
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE). Copyright for the original work remains with the
-OmnySSH contributors; the modifications in this fork are released under the same terms.
-
-<div align="center">
-
-### ⭐ Star the repo if BetterSshClient saved you a terminal tab
-
-[Report a bug](https://github.com/Sniphs98/better-ssh-client/issues) •
-[Request a feature](https://github.com/Sniphs98/better-ssh-client/issues) •
-[Discussions](https://github.com/Sniphs98/better-ssh-client/discussions)
-
-</div>
+[Apache 2.0](LICENSE), like OmnySSH. Copyright in the original work remains with the
+OmnySSH contributors.

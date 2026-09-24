@@ -11,10 +11,18 @@ appId: com.sniphs.bettersshclient
 productName: BetterSshClient
 copyright: Copyright © BetterSshClient contributors
 
+# The Release workflow (.github/workflows/release.yml) opens a draft release for the
+# version first, then every OS run uploads into it — installers plus the latest*.yml
+# manifests electron-updater reads — and the workflow publishes it once all are in.
 publish:
   provider: github
   owner: Sniphs98
   repo: better-ssh-client
+  releaseType: draft
+
+# One predictable, space-free name per file, and none shared between platforms (the
+# Windows and macOS zips would otherwise collide in the release).
+artifactName: ${productName}-${version}-${arch}.${ext}
 
 directories:
   app: packages/electron
@@ -35,12 +43,16 @@ asarUnpack:
   - "**/*.node"
 
 mac:
-  target: [dmg]
+  # The zip is what electron-updater installs on macOS; the dmg is for first installs.
+  # (Self-update on macOS additionally needs a signed build.)
+  target: [dmg, zip]
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
   icon: build/icon.icns
   category: public.app-category.developer-tools
 
 win:
   target: [nsis, portable, zip]
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
   icon: build/icon.ico
   # electron-builder otherwise fetches the (macOS-targeted) winCodeSign bundle even
   # for a plain unsigned Windows build, then fails extracting it here: its symlinks
@@ -56,7 +68,12 @@ linux:
     entry:
       Comment: SSH dashboard, terminal, and SFTP file manager
 
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+
 nsis:
+  # The installer electron-updater updates through (latest.yml points at it).
+  artifactName: ${productName}-${version}-setup.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
