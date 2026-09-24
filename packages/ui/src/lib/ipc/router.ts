@@ -150,7 +150,7 @@ export function applySftpDirListed(payload: SftpDirListed): void {
 }
 
 export function applySftpOpDone(payload: SftpOpDone): void {
-  sftp.opDone(payload.sessionId, payload.ok, payload.error ?? undefined);
+  sftp.opDone(payload.sessionId, payload.ok, payload.error ?? undefined, payload.opId);
 }
 
 // The core emits `sftp-disconnected` on a listing error, not a hard teardown (§4.3);

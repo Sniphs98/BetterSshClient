@@ -15,8 +15,18 @@ import {
   applyOpDone,
   formatBytes,
   type Pane,
+  type PendingOp,
   type SftpSession
 } from './sftp';
+
+const op = (id: number, kind: PendingOp['kind'], name?: string): PendingOp => ({
+  id,
+  kind,
+  name,
+  refresh: 'remote',
+  batch: 1,
+  key: `remote:/${name ?? id}`
+});
 
 // The dual-pane browser's navigation/marking/transfer logic lives as pure reducers so
 // it is unit-testable without a Tauri runtime (tech-gui.md §3.2, §6.4).
@@ -123,46 +133,61 @@ describe('sftp reducers', () => {
     expect(mergeRefresh('both', 'local')).toBe('both');
   });
 
-  it('applyProgress binds a tick to the front pending transfer op', () => {
+  it('applyProgress binds a tick to the op it names', () => {
     const s: SftpSession = {
       ...newSession('web-1'),
-      pending: [{ kind: 'upload', name: 'a.txt', refresh: 'remote' }]
+      pending: [op(1, 'upload', 'a.txt'), op(2, 'upload', 'b.txt')]
     };
-    const next = applyProgress(s, { sessionId: 1, transferId: 9, done: 50, total: 100 });
-    expect(next.transfer).toEqual({ kind: 'upload', name: 'a.txt', done: 50, total: 100 });
+    const next = applyProgress(s, { sessionId: 1, transferId: 9, opId: 2, done: 50, total: 100 });
+    expect(next.transfers).toEqual([{ opId: 2, kind: 'upload', name: 'b.txt', done: 50, total: 100 }]);
   });
 
-  it('applyProgress ignores a tick when the front op is not a transfer', () => {
-    const s: SftpSession = {
-      ...newSession('web-1'),
-      pending: [{ kind: 'mkdir', refresh: 'remote' }]
-    };
-    expect(applyProgress(s, { sessionId: 1, transferId: 9, done: 1, total: 2 }).transfer).toBeUndefined();
+  it('applyProgress updates a running transfer in place and keeps the others', () => {
+    let s: SftpSession = { ...newSession('web-1'), pending: [op(1, 'upload', 'a'), op(2, 'download', 'b')] };
+    s = applyProgress(s, { sessionId: 1, transferId: 1, opId: 1, done: 1, total: 10 });
+    s = applyProgress(s, { sessionId: 1, transferId: 2, opId: 2, done: 2, total: 20 });
+    s = applyProgress(s, { sessionId: 1, transferId: 1, opId: 1, done: 5, total: 10 });
+    expect(s.transfers.map((t) => [t.name, t.done])).toEqual([
+      ['a', 5],
+      ['b', 2]
+    ]);
   });
 
-  it('applyOpDone pops the front op (FIFO), records its refresh, and clears a transfer', () => {
+  it('applyProgress drops a tick for a finished op or a non-transfer', () => {
+    const s: SftpSession = { ...newSession('web-1'), pending: [op(1, 'mkdir')] };
+    expect(applyProgress(s, { sessionId: 1, transferId: 9, opId: 1, done: 1, total: 2 }).transfers).toEqual([]);
+    expect(applyProgress(s, { sessionId: 1, transferId: 9, opId: 7, done: 1, total: 2 }).transfers).toEqual([]);
+  });
+
+  it('applyOpDone removes the op it names, records its refresh, and clears its transfer', () => {
     const s: SftpSession = {
       ...newSession('web-1'),
-      pending: [
-        { kind: 'upload', name: 'a', refresh: 'remote' },
-        { kind: 'mkdir', refresh: 'remote' }
-      ],
-      transfer: { kind: 'upload', name: 'a', done: 100, total: 100 }
+      pending: [op(1, 'upload', 'a'), op(2, 'upload', 'b')],
+      transfers: [
+        { opId: 1, kind: 'upload', name: 'a', done: 1, total: 9 },
+        { opId: 2, kind: 'upload', name: 'b', done: 9, total: 9 }
+      ]
     };
-    const next = applyOpDone(s, true);
-    expect(next.pending.map((p) => p.kind)).toEqual(['mkdir']);
+    const next = applyOpDone(s, true, undefined, 2);
+    expect(next.pending.map((p) => p.id)).toEqual([1]);
+    expect(next.transfers.map((t) => t.opId)).toEqual([1]);
     expect(next.refresh).toBe('remote');
-    // The finished op was the transfer, so its bar is cleared.
-    expect(next.transfer).toBeUndefined();
     expect(next.error).toBeUndefined();
   });
 
+  it('applyOpDone ignores an op-done for an op it does not know', () => {
+    const s: SftpSession = { ...newSession('web-1'), pending: [op(1, 'delete', 'x')] };
+    expect(applyOpDone(s, true, undefined, 42)).toBe(s);
+  });
+
+  it('applyOpDone falls back to the oldest op for an event without an id', () => {
+    const s: SftpSession = { ...newSession('web-1'), pending: [op(1, 'delete', 'x'), op(2, 'delete', 'y')] };
+    expect(applyOpDone(s, true).pending.map((p) => p.id)).toEqual([2]);
+  });
+
   it('applyOpDone surfaces the error message on failure', () => {
-    const s: SftpSession = {
-      ...newSession('web-1'),
-      pending: [{ kind: 'delete', name: 'x', refresh: 'remote' }]
-    };
-    const next = applyOpDone(s, false, 'permission denied');
+    const s: SftpSession = { ...newSession('web-1'), pending: [op(1, 'delete', 'x')] };
+    const next = applyOpDone(s, false, 'permission denied', 1);
     expect(next.error).toBe('permission denied');
     expect(next.pending).toEqual([]);
   });
@@ -172,37 +197,29 @@ describe('sftp reducers', () => {
     // sibling's success hide the folder's failure — the error persists.
     let s: SftpSession = {
       ...newSession('web-1'),
-      pending: [
-        { kind: 'delete', name: 'logs', refresh: 'remote' },
-        { kind: 'delete', name: 'notes.txt', refresh: 'remote' }
-      ]
+      pending: [op(1, 'delete', 'logs'), op(2, 'delete', 'notes.txt')]
     };
-    s = applyOpDone(s, false, 'directory not empty');
+    s = applyOpDone(s, false, 'directory not empty', 1);
     expect(s.error).toBe('directory not empty');
-    s = applyOpDone(s, true);
+    s = applyOpDone(s, true, undefined, 2);
     expect(s.error).toBe('directory not empty');
     expect(s.pending).toEqual([]);
   });
 
-  it('correlates a two-file batch by FIFO order across progress + op-done', () => {
-    // The core is sequential, so the front pending op is always the one running: A's
-    // progress shows A; A's op-done pops it; then B's progress shows B (§3.2/§4.3).
-    let s: SftpSession = {
-      ...newSession('web-1'),
-      pending: [
-        { kind: 'upload', name: 'A', refresh: 'remote' },
-        { kind: 'upload', name: 'B', refresh: 'remote' }
-      ]
-    };
-    s = applyProgress(s, { sessionId: 1, transferId: 1, done: 5, total: 10 });
-    expect(s.transfer?.name).toBe('A');
-    s = applyOpDone(s, true);
-    expect(s.transfer).toBeUndefined();
-    s = applyProgress(s, { sessionId: 1, transferId: 2, done: 3, total: 3 });
-    expect(s.transfer?.name).toBe('B');
-    s = applyOpDone(s, true);
+  it('ties progress and op-done to the right file when they arrive out of order', () => {
+    // A and B run side by side; B finishes first. Arrival order must not matter — each
+    // event names its op, so B's completion never ends A's transfer or vice versa.
+    let s: SftpSession = { ...newSession('web-1'), pending: [op(1, 'upload', 'A'), op(2, 'upload', 'B')] };
+    s = applyProgress(s, { sessionId: 1, transferId: 2, opId: 2, done: 3, total: 3 });
+    s = applyProgress(s, { sessionId: 1, transferId: 1, opId: 1, done: 5, total: 10 });
+    s = applyOpDone(s, false, 'disk full', 2);
+    expect(s.transfers.map((t) => t.name)).toEqual(['A']);
+    expect(s.pending.map((p) => p.name)).toEqual(['A']);
+    expect(s.error).toBe('disk full');
+    s = applyOpDone(s, true, undefined, 1);
     expect(s.pending).toEqual([]);
-    expect(s.refresh).toBe('remote');
+    expect(s.transfers).toEqual([]);
+    expect(s.error).toBe('disk full');
   });
 
   it('formatBytes is human readable', () => {
@@ -238,8 +255,8 @@ describe('sftp store', () => {
 
   it('clearError drops a lingering batch error when a new batch is enqueued', () => {
     sftp.open(1, 'web-1');
-    sftp.pushOp(1, { kind: 'delete', name: 'logs', refresh: 'remote' });
-    sftp.opDone(1, false, 'directory not empty');
+    sftp.pushOp(1, op(1, 'delete', 'logs'));
+    sftp.opDone(1, false, 'directory not empty', 1);
     expect(get(sftp).get(1)?.error).toBe('directory not empty');
     sftp.clearError(1);
     expect(get(sftp).get(1)?.error).toBeUndefined();

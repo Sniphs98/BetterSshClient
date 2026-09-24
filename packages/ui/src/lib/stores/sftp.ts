@@ -23,8 +23,10 @@ export interface Pane {
   error?: string;
 }
 
-/** The transfer currently reporting progress (one at a time — the core is sequential). */
-interface Transfer {
+/** A transfer in flight, reporting progress. Several run at once within a batch. */
+export interface Transfer {
+  /** The op it belongs to (`PendingOp.id`). */
+  opId: number;
   kind: 'upload' | 'download';
   name: string;
   done: number;
@@ -37,14 +39,20 @@ interface Preview {
   content: string;
 }
 
-// A mutating op awaiting its `sftp-op-done`. The core processes commands sequentially,
-// so op-done events arrive in issue order — this FIFO correlates each op-done to the op
-// that produced it (the contract carries no op id, §4.3). `refresh` is the pane whose
-// listing the op invalidates.
-interface PendingOp {
+// A mutating op sent to the backend and awaiting its `sftp-op-done`. Ops of one batch
+// run side by side (see sftpQueue.ts), so their events arrive in any order: each carries
+// the `id` its command was sent with, and that — never arrival order — ties it back to
+// its op. `refresh` is the pane whose listing the op invalidates; `batch` and `key` are
+// the scheduling facts sftpQueue.ts needs about ops already running.
+export interface PendingOp {
+  id: number;
   kind: OpKind;
   name?: string;
   refresh: PaneSide;
+  /** Ops enqueued by one user action share a batch; batches run one after another. */
+  batch: number;
+  /** What the op writes to (see `opKey`); two ops on the same key never overlap. */
+  key: string;
 }
 
 export interface SftpSession {
@@ -53,7 +61,8 @@ export interface SftpSession {
   local: Pane;
   remote: Pane;
   pending: PendingOp[];
-  transfer?: Transfer;
+  /** Transfers in flight, in the order they started. */
+  transfers: Transfer[];
   preview?: Preview;
   /** The last operation error, surfaced in the UI until the next successful action. */
   error?: string;
@@ -73,7 +82,8 @@ export function newSession(hostName: string): SftpSession {
     status: 'connecting',
     local: emptyPane(),
     remote: emptyPane(),
-    pending: []
+    pending: [],
+    transfers: []
   };
 }
 
@@ -142,33 +152,40 @@ export function mergeRefresh(
   return 'both';
 }
 
-/** Fold a `transfer-progress` tick in. The transfer's kind/name come from the front
- *  pending op — which, because the core is sequential, is always the op now running —
- *  so the frontend never needs to know the backend-allocated transfer id in advance. */
-export function applyProgress(session: SftpSession, p: TransferProgressDto): SftpSession {
-  const front = session.pending[0];
-  if (!front || (front.kind !== 'upload' && front.kind !== 'download')) return session;
-  return {
-    ...session,
-    transfer: { kind: front.kind, name: front.name ?? '', done: p.done, total: p.total }
-  };
+/** The pending op an event belongs to: the one with its `opId`. An event without one
+ *  (not sent by this app's backend) falls back to the oldest pending op. */
+function pendingIndex(session: SftpSession, opId: number | undefined): number {
+  if (opId == null) return session.pending.length > 0 ? 0 : -1;
+  return session.pending.findIndex((op) => op.id === opId);
 }
 
-/** Fold an `sftp-op-done` in: pop the front pending op (FIFO), record its refresh
- *  target, clear the transfer display if it was a transfer, and surface any error. */
-export function applyOpDone(session: SftpSession, ok: boolean, error?: string): SftpSession {
-  if (session.pending.length === 0) return session;
-  const [front, ...rest] = session.pending;
-  const wasTransfer = front.kind === 'upload' || front.kind === 'download';
+/** Fold a `transfer-progress` tick into the transfer of the op it names. A tick for an
+ *  op that already finished (or isn't a transfer) is dropped. */
+export function applyProgress(session: SftpSession, p: TransferProgressDto): SftpSession {
+  const op = session.pending[pendingIndex(session, p.opId ?? undefined)];
+  if (!op || (op.kind !== 'upload' && op.kind !== 'download')) return session;
+  const next: Transfer = { opId: op.id, kind: op.kind, name: op.name ?? '', done: p.done, total: p.total };
+  const at = session.transfers.findIndex((t) => t.opId === op.id);
+  const transfers =
+    at === -1 ? [...session.transfers, next] : session.transfers.map((t, i) => (i === at ? next : t));
+  return { ...session, transfers };
+}
+
+/** Fold an `sftp-op-done` in: drop the op it names from `pending` (and its transfer
+ *  bar), record the pane it invalidated, and surface any error. */
+export function applyOpDone(session: SftpSession, ok: boolean, error?: string, opId?: number): SftpSession {
+  const at = pendingIndex(session, opId);
+  if (at === -1) return session;
+  const done = session.pending[at];
   return {
     ...session,
-    pending: rest,
-    refresh: mergeRefresh(session.refresh, front.refresh),
+    pending: session.pending.filter((_, i) => i !== at),
+    refresh: mergeRefresh(session.refresh, done.refresh),
     // A later op's success must NOT wipe an earlier op's failure in the same batch — that
     // silently masks e.g. a non-empty-folder delete beside a deleted sibling. The error
     // persists until the next batch clears it (`clearError`, called on enqueue).
     error: ok ? session.error : (error ?? 'Operation failed'),
-    transfer: wasTransfer ? undefined : session.transfer
+    transfers: session.transfers.filter((t) => t.opId !== done.id)
   };
 }
 
@@ -223,8 +240,8 @@ function createSftp() {
     progress(id: number, p: TransferProgressDto): void {
       mut(id, (s) => applyProgress(s, p));
     },
-    opDone(id: number, ok: boolean, error?: string): void {
-      mut(id, (s) => applyOpDone(s, ok, error));
+    opDone(id: number, ok: boolean, error?: string, opId?: number): void {
+      mut(id, (s) => applyOpDone(s, ok, error, opId));
     },
     setPreview(id: number, preview: Preview): void {
       mut(id, (s) => ({ ...s, preview }));

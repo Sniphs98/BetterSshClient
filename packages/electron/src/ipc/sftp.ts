@@ -12,6 +12,10 @@ import type { GuiState } from '../state/guiState.js';
  * directly once its operation settles.
  */
 export function registerSftpIpc(ipcMain: IpcMain, state: GuiState): void {
+  // The mutating commands take the renderer's `opId` and echo it on their
+  // `sftp-op-done`/`transfer-progress`: the renderer runs a batch's ops side by
+  // side, so their events finish in any order and the id is what ties each one
+  // back to its op.
   ipcMain.handle('sftp_open', async (_event, hostName: string) => {
     const host = state.hostByName(hostName);
     if (host === undefined) throw toCommandError(new Error(`unknown host '${hostName}'`));
@@ -35,51 +39,51 @@ export function registerSftpIpc(ipcMain: IpcMain, state: GuiState): void {
       .catch((err: Error) => state.emit('sftp-disconnected', { sessionId, reason: `ListDir failed: ${err.message}` }));
   });
 
-  ipcMain.handle('sftp_upload', (_event, sessionId: number, local: string, remote: string) => {
+  ipcMain.handle('sftp_upload', (_event, sessionId: number, local: string, remote: string, opId?: number) => {
     const manager = state.getSftp(sessionId);
     if (manager === undefined) return;
     const transferId = state.allocateTransferId();
     manager
-      .upload(local, remote, (done, total) => state.emit('transfer-progress', { sessionId, transferId, done, total }))
-      .then(() => state.emit('sftp-op-done', { sessionId, ok: true }))
-      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, ok: false, error: err.message }));
+      .upload(local, remote, (done, total) => state.emit('transfer-progress', { sessionId, transferId, opId, done, total }))
+      .then(() => state.emit('sftp-op-done', { sessionId, opId, ok: true }))
+      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, opId, ok: false, error: err.message }));
   });
 
-  ipcMain.handle('sftp_download', (_event, sessionId: number, local: string, remote: string) => {
+  ipcMain.handle('sftp_download', (_event, sessionId: number, local: string, remote: string, opId?: number) => {
     const manager = state.getSftp(sessionId);
     if (manager === undefined) return;
     const transferId = state.allocateTransferId();
     manager
-      .download(remote, local, (done, total) => state.emit('transfer-progress', { sessionId, transferId, done, total }))
-      .then(() => state.emit('sftp-op-done', { sessionId, ok: true }))
-      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, ok: false, error: err.message }));
+      .download(remote, local, (done, total) => state.emit('transfer-progress', { sessionId, transferId, opId, done, total }))
+      .then(() => state.emit('sftp-op-done', { sessionId, opId, ok: true }))
+      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, opId, ok: false, error: err.message }));
   });
 
-  ipcMain.handle('sftp_mkdir', (_event, sessionId: number, path: string) => {
+  ipcMain.handle('sftp_mkdir', (_event, sessionId: number, path: string, opId?: number) => {
     const manager = state.getSftp(sessionId);
     if (manager === undefined) return;
     manager
       .mkdir(path)
-      .then(() => state.emit('sftp-op-done', { sessionId, ok: true }))
-      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, ok: false, error: err.message }));
+      .then(() => state.emit('sftp-op-done', { sessionId, opId, ok: true }))
+      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, opId, ok: false, error: err.message }));
   });
 
-  ipcMain.handle('sftp_rename', (_event, sessionId: number, from: string, to: string) => {
+  ipcMain.handle('sftp_rename', (_event, sessionId: number, from: string, to: string, opId?: number) => {
     const manager = state.getSftp(sessionId);
     if (manager === undefined) return;
     manager
       .rename(from, to)
-      .then(() => state.emit('sftp-op-done', { sessionId, ok: true }))
-      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, ok: false, error: err.message }));
+      .then(() => state.emit('sftp-op-done', { sessionId, opId, ok: true }))
+      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, opId, ok: false, error: err.message }));
   });
 
-  ipcMain.handle('sftp_delete', (_event, sessionId: number, path: string) => {
+  ipcMain.handle('sftp_delete', (_event, sessionId: number, path: string, opId?: number) => {
     const manager = state.getSftp(sessionId);
     if (manager === undefined) return;
     manager
       .delete(path)
-      .then(() => state.emit('sftp-op-done', { sessionId, ok: true }))
-      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, ok: false, error: err.message }));
+      .then(() => state.emit('sftp-op-done', { sessionId, opId, ok: true }))
+      .catch((err: Error) => state.emit('sftp-op-done', { sessionId, opId, ok: false, error: err.message }));
   });
 
   ipcMain.handle('sftp_read_file', async (_event, sessionId: number, path: string) => {

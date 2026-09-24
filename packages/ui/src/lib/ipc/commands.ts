@@ -85,9 +85,13 @@ export async function sftpList(sessionId: number, path: string): Promise<void> {
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
+// The mutating sftp_* commands take the op id their `sftp-op-done` (and, for a transfer,
+// `transfer-progress`) events echo back, so an event is tied to its op by id rather than
+// by arrival order — ops of a batch run side by side (stores/sftpQueue.ts).
+
 /** Upload a local file to a remote path; progress arrives as `transfer-progress`. */
-export async function sftpUpload(sessionId: number, local: string, remote: string): Promise<void> {
-  const res = await commands.sftpUpload(sessionId, local, remote);
+export async function sftpUpload(sessionId: number, local: string, remote: string, opId?: number): Promise<void> {
+  const res = await commands.sftpUpload(sessionId, local, remote, opId);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
@@ -95,27 +99,28 @@ export async function sftpUpload(sessionId: number, local: string, remote: strin
 export async function sftpDownload(
   sessionId: number,
   local: string,
-  remote: string
+  remote: string,
+  opId?: number
 ): Promise<void> {
-  const res = await commands.sftpDownload(sessionId, local, remote);
+  const res = await commands.sftpDownload(sessionId, local, remote, opId);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
 /** Create a remote directory; completion arrives as `sftp-op-done`. */
-export async function sftpMkdir(sessionId: number, path: string): Promise<void> {
-  const res = await commands.sftpMkdir(sessionId, path);
+export async function sftpMkdir(sessionId: number, path: string, opId?: number): Promise<void> {
+  const res = await commands.sftpMkdir(sessionId, path, opId);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
 /** Rename / move a remote path; completion arrives as `sftp-op-done`. */
-export async function sftpRename(sessionId: number, from: string, to: string): Promise<void> {
-  const res = await commands.sftpRename(sessionId, from, to);
+export async function sftpRename(sessionId: number, from: string, to: string, opId?: number): Promise<void> {
+  const res = await commands.sftpRename(sessionId, from, to, opId);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
 /** Delete a remote file (or empty directory); completion arrives as `sftp-op-done`. */
-export async function sftpDelete(sessionId: number, path: string): Promise<void> {
-  const res = await commands.sftpDelete(sessionId, path);
+export async function sftpDelete(sessionId: number, path: string, opId?: number): Promise<void> {
+  const res = await commands.sftpDelete(sessionId, path, opId);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 

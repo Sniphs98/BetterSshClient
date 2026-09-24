@@ -6,6 +6,9 @@ import { expect, test, type Page } from '@playwright/test';
 // returns directly, `sftp_*` commands fire the stamped `sftp-*` events the per-session
 // forwarder would emit, and a transfer holds at a progress tick until
 // `__completeTransfer()` fires its op-done — so the live progress bar is deterministically
+// observable. `__completeTransfer('newest')` finishes the latest one instead, to exercise
+// events arriving out of order; every mutating call is logged in `__sftpCalls`. Like the
+// real backend, each mutating command's events echo the op id it was sent with.
 // observable. Both spawn paths (a card's `files`, and the SFTP spawner via the host
 // picker) are load-bearing for the stage.
 const HOSTS = [
@@ -34,7 +37,7 @@ async function boot(
       const terminalCommands: string[] = [];
       win.__terminalCommands = terminalCommands;
       // A pending transfer holds until the test fires its op-done, so the progress bar
-      // is observable mid-flight (the core is sequential — one transfer at a time).
+      // is observable mid-flight.
       const completions: Array<() => void> = [];
 
       type Entry = { name: string; path: string; size: number; isDir: boolean };
@@ -84,8 +87,10 @@ async function boot(
         for (const cb of listeners[channel] ?? []) cb(payload);
       }
 
-      // Fire the oldest still-pending transfer's op-done (deterministic completion).
-      win.__completeTransfer = () => completions.shift()?.();
+      // Fire the oldest (or newest) still-pending transfer's op-done.
+      win.__completeTransfer = (which?: 'newest') => (which === 'newest' ? completions.pop() : completions.shift())?.();
+      const sftpCalls: string[] = [];
+      win.__sftpCalls = sftpCalls;
 
       win.bsshClient = {
         invoke: (channel: string, ...args: unknown[]) => {
@@ -113,49 +118,54 @@ async function boot(
               return Promise.resolve(null);
             }
             case 'sftp_upload': {
-              const [sessionId, , dest] = args as [number, string, string];
+              const [sessionId, src, dest, opId] = args as [number, string, string, number];
+              sftpCalls.push(`upload ${src}`);
               const tid = ++nextTransfer;
-              setTimeout(() => fire('transfer-progress', { sessionId, transferId: tid, done: 4, total: 8 }), 0);
+              setTimeout(() => fire('transfer-progress', { sessionId, transferId: tid, opId, done: 4, total: 8 }), 0);
               completions.push(() => {
                 addFile(remote, parentOf(dest), baseName(dest));
-                fire('sftp-op-done', { sessionId, ok: true });
+                fire('sftp-op-done', { sessionId, opId, ok: true });
               });
               return Promise.resolve(null);
             }
             case 'sftp_download': {
-              const [sessionId, dest] = args as [number, string, string];
+              const [sessionId, dest, src, opId] = args as [number, string, string, number];
+              sftpCalls.push(`download ${src}`);
               const tid = ++nextTransfer;
-              setTimeout(() => fire('transfer-progress', { sessionId, transferId: tid, done: 2, total: 8 }), 0);
+              setTimeout(() => fire('transfer-progress', { sessionId, transferId: tid, opId, done: 2, total: 8 }), 0);
               completions.push(() => {
                 addFile(local, parentOf(dest), baseName(dest));
-                fire('sftp-op-done', { sessionId, ok: true });
+                fire('sftp-op-done', { sessionId, opId, ok: true });
               });
               return Promise.resolve(null);
             }
             case 'sftp_delete': {
-              const [sessionId, path] = args as [number, string];
+              const [sessionId, path, opId] = args as [number, string, number];
+              sftpCalls.push(`delete ${path}`);
               const dir = parentOf(path);
               remote[dir] = (remote[dir] ?? []).filter((e) => e.path !== path);
-              setTimeout(() => fire('sftp-op-done', { sessionId, ok: true }), 0);
+              setTimeout(() => fire('sftp-op-done', { sessionId, opId, ok: true }), 0);
               return Promise.resolve(null);
             }
             case 'sftp_rename': {
-              const [sessionId, from, to] = args as [number, string, string];
+              const [sessionId, from, to, opId] = args as [number, string, string, number];
+              sftpCalls.push(`rename ${from}`);
               const e = (remote[parentOf(from)] ?? []).find((x) => x.path === from);
               if (e) {
                 e.path = to;
                 e.name = baseName(to);
               }
-              setTimeout(() => fire('sftp-op-done', { sessionId, ok: true }), 0);
+              setTimeout(() => fire('sftp-op-done', { sessionId, opId, ok: true }), 0);
               return Promise.resolve(null);
             }
             case 'sftp_mkdir': {
-              const [sessionId, path] = args as [number, string];
+              const [sessionId, path, opId] = args as [number, string, number];
+              sftpCalls.push(`mkdir ${path}`);
               const dir = parentOf(path);
               const list = (remote[dir] ||= []);
               const name = baseName(path);
               if (!list.some((e) => e.name === name)) list.push({ name, path, size: 0, isDir: true });
-              setTimeout(() => fire('sftp-op-done', { sessionId, ok: true }), 0);
+              setTimeout(() => fire('sftp-op-done', { sessionId, opId, ok: true }), 0);
               return Promise.resolve(null);
             }
             case 'sftp_read_file': {
@@ -672,4 +682,64 @@ test('a huge directory renders only the rows in view, and scrolls through all of
   // A row far down behaves like any other: clicking selects it.
   await remotePane.getByTitle('file-04999.txt').click();
   await expect(remotePane.getByRole('checkbox', { name: 'Mark file-04999.txt' })).toHaveAttribute('aria-checked', 'true');
+});
+
+type SftpTestWindow = { __completeTransfer: (which?: 'newest') => void; __sftpCalls: string[] };
+const complete = (page: Page, which?: 'newest') =>
+  page.evaluate((w) => (window as unknown as SftpTestWindow).__completeTransfer(w), which);
+const sftpCalls = (page: Page) => page.evaluate(() => [...(window as unknown as SftpTestWindow).__sftpCalls]);
+
+test('a batch of downloads runs side by side and settles correctly in any finishing order', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const localPane = page.getByRole('region', { name: 'Local' });
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('config.yml')).toBeVisible();
+
+  for (const name of ['config.yml', 'app.log', 'photo.png']) {
+    await remotePane.getByRole('checkbox', { name: `Mark ${name}` }).click();
+  }
+  await page.getByRole('button', { name: 'Download' }).click();
+
+  // All three are sent at once — none waits for another to finish.
+  await expect.poll(() => sftpCalls(page)).toEqual(['download /config.yml', 'download /app.log', 'download /photo.png']);
+  const progress = page.getByLabel('transfer progress');
+  await expect(progress).toContainText('and 2 more');
+
+  // Finish them newest-first: each completion must retire its own file, not the oldest.
+  await complete(page, 'newest');
+  await expect(progress).toContainText('config.yml');
+  await expect(progress).toContainText('and 1 more');
+  await complete(page, 'newest');
+  await expect(progress).not.toContainText('more');
+  await complete(page, 'newest');
+  await expect(progress).toHaveCount(0);
+
+  // The batch re-lists the local pane once, with every downloaded file.
+  for (const name of ['config.yml', 'app.log', 'photo.png']) await expect(localPane.getByText(name)).toBeVisible();
+});
+
+test('a second action waits until the batch before it has finished', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+
+  // Batch 1: a download that holds until completed.
+  await remotePane.getByRole('checkbox', { name: 'Mark config.yml' }).click();
+  await page.getByRole('button', { name: 'Download' }).click();
+  await expect(page.getByLabel('transfer progress')).toBeVisible();
+
+  // Batch 2: delete another file while batch 1 is still running.
+  await remotePane.getByTitle('app.log').click({ button: 'right' });
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Delete' }).click();
+  await page.getByRole('dialog', { name: 'Delete' }).getByRole('button', { name: 'Delete', exact: true }).click();
+
+  // Not sent yet: batches never overlap, even when they touch different files.
+  expect(await sftpCalls(page)).toEqual(['download /config.yml']);
+  await expect(remotePane.getByText('app.log')).toBeVisible();
+
+  await complete(page);
+  await expect.poll(() => sftpCalls(page)).toEqual(['download /config.yml', 'delete /app.log']);
+  await expect(remotePane.getByText('app.log')).toHaveCount(0);
 });

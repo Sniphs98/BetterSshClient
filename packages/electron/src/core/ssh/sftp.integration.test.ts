@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SftpManager } from './sftp.js';
 import { testTargetHost } from '../../testSupport/sshTestTarget.js';
@@ -56,5 +59,29 @@ describe('SftpManager against the test target', () => {
 
     await manager.delete(path);
     await manager.delete(dir);
+  });
+  it('runs uploads, downloads and deletes side by side on one session, each intact', async () => {
+    // What the renderer's parallel batches do (stores/sftpQueue.ts): several ops in
+    // flight on the one SFTP channel at once, distinct paths, every byte in the right file.
+    manager = await SftpManager.connect(testTargetHost());
+    const m = manager;
+    const local = await mkdtemp(join(tmpdir(), 'bssh-par-'));
+    const dir = `/home/better-ssh-client/it-par-${Date.now()}`;
+    await m.mkdir(dir);
+    try {
+      const names = Array.from({ length: 8 }, (_, i) => `f${i}.bin`);
+      const content = (i: number): Buffer => Buffer.alloc(200_000 + i * 1000, i + 1);
+      await Promise.all(names.map((n, i) => writeFile(join(local, n), content(i))));
+
+      await Promise.all(names.map((n) => m.upload(join(local, n), `${dir}/${n}`, () => {})));
+      await Promise.all(names.map((n) => m.download(`${dir}/${n}`, join(local, `back-${n}`), () => {})));
+      for (const [i, n] of names.entries()) expect((await readFile(join(local, `back-${n}`))).equals(content(i))).toBe(true);
+
+      await Promise.all(names.map((n) => m.delete(`${dir}/${n}`)));
+      expect(await m.listDir(dir)).toEqual([expect.objectContaining({ name: '..' })]);
+    } finally {
+      await m.delete(dir).catch(() => {});
+      await rm(local, { recursive: true, force: true });
+    }
   });
 });

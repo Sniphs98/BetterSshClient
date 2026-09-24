@@ -18,7 +18,8 @@
   import { get } from 'svelte/store';
   import { sessions, type Session } from '$lib/stores/sessions';
   import { hosts } from '$lib/stores/hosts';
-  import { sftp, markedEntries, formatBytes, type PaneSide } from '$lib/stores/sftp';
+  import { sftp, markedEntries, formatBytes, type PaneSide, type PendingOp } from '$lib/stores/sftp';
+  import { opKey, readyOps } from '$lib/stores/sftpQueue';
   import { lastError } from '$lib/stores/notifications';
   import { runAutomationNow } from '$lib/stores/automations';
   import {
@@ -51,11 +52,14 @@
   let dragged: { side: PaneSide; entry: FileEntryDto } | undefined;
   let stopExternalDrop: (() => void) | undefined;
 
-  // Queued mutations, dispatched one at a time (see the pump effect). The core's SFTP
-  // command channel is bounded and drops on overflow, so a large batch fired at once
-  // would silently lose commands and wedge the op-done FIFO; gating on the previous
-  // op's completion keeps at most one command outstanding.
-  let outbox = $state<Array<() => void>>([]);
+  // Queued mutations not yet sent. The pump effect starts whichever `readyOps` allows —
+  // side by side within a batch, batches in order, never two on one path (see
+  // stores/sftpQueue.ts) — and each sent op then waits in the store's `pending` for the
+  // `sftp-op-done` carrying its id.
+  type QueuedOp = Omit<PendingOp, 'id'> & { id: number; send: (opId: number) => Promise<void> };
+  let outbox = $state.raw<QueuedOp[]>([]);
+  let nextOpId = 1;
+  let nextBatch = 1;
 
   // A pending mkdir/rename input. Rename carries the entry being renamed.
   let prompt = $state<{ kind: 'mkdir' | 'rename'; value: string; target?: FileEntryDto } | null>(
@@ -125,7 +129,21 @@
   }
 
   const view = $derived(backendId != null ? $sftp.get(backendId) : undefined);
-  const transfer = $derived(view?.transfer);
+  // The progress bar: one transfer as before, several (a batch running side by side)
+  // as their combined bytes, named by the oldest with a count of the rest.
+  const transfers = $derived(view?.transfers ?? []);
+  const queuedTransfers = $derived(outbox.filter((op) => op.kind === 'upload' || op.kind === 'download').length);
+  const transfer = $derived(
+    transfers.length === 0
+      ? undefined
+      : {
+          kind: transfers[0].kind,
+          name: transfers[0].name,
+          others: transfers.length - 1 + queuedTransfers,
+          done: transfers.reduce((sum, t) => sum + t.done, 0),
+          total: transfers.reduce((sum, t) => sum + t.total, 0)
+        }
+  );
 
   const localMarkedFiles = $derived(view ? markedEntries(view.local).filter((e) => !e.isDir) : []);
   const remoteMarked = $derived(view ? markedEntries(view.remote) : []);
@@ -248,13 +266,18 @@
     }
   });
 
-  // Dispatch the next queued mutation once the previous one is acked (pending empty),
-  // so at most one command is outstanding and the bounded core channel never overflows.
+  // Start every queued mutation that may run now; re-runs as ops finish (pending
+  // shrinks) or new batches arrive.
   $effect(() => {
-    if (!view || view.pending.length > 0 || outbox.length === 0) return;
-    const [next, ...rest] = outbox;
-    outbox = rest;
-    next();
+    const id = backendId;
+    if (id == null || !view || outbox.length === 0) return;
+    const ready = readyOps(outbox, view.pending);
+    if (ready.length === 0) return;
+    outbox = outbox.filter((op) => !ready.includes(op));
+    for (const { send, ...op } of ready) {
+      sftp.pushOp(id, op);
+      void send(op.id).catch(onDispatchError(id, op.id));
+    }
   });
 
   // Re-list the affected pane once every queued mutation has drained — the FS changed
@@ -308,61 +331,79 @@
   }
 
   // If a mutating invoke itself rejects (it never does for a normal enqueue, but an IPC
-  // failure could), pop its pending op so the dispatch pump does not wedge.
-  function onDispatchError(id: number): (err: unknown) => void {
+  // failure could), finish its pending op so the batch doesn't wait on it forever.
+  function onDispatchError(id: number, opId: number): (err: unknown) => void {
     return (err) => {
       lastError.set(errMsg(err));
-      sftp.opDone(id, false, errMsg(err));
+      sftp.opDone(id, false, errMsg(err), opId);
     };
   }
 
-  function enqueue(...actions: Array<() => void>): void {
-    if (!actions.length) return;
+  /** One op of a batch: what it is, the path it writes (its conflict key), and how to
+   *  send it once the queue lets it start. */
+  type BatchOp = Pick<PendingOp, 'kind' | 'name' | 'refresh' | 'key'> & {
+    send: (sessionId: number, opId: number) => Promise<void>;
+  };
+
+  /** Queues `ops` as one batch — the unit that runs side by side (stores/sftpQueue.ts). */
+  function enqueue(...ops: BatchOp[]): void {
+    const id = backendId;
+    if (id == null || !ops.length) return;
     // Clear the prior batch's lingering error only when starting from idle. Piling onto a
     // batch that is still draining must not wipe a failure it already recorded (that error
     // stays visible until the next fresh action — see applyOpDone).
     const draining = outbox.length > 0 || (view?.pending.length ?? 0) > 0;
-    if (backendId != null && !draining) sftp.clearError(backendId);
-    outbox = [...outbox, ...actions];
+    if (!draining) sftp.clearError(id);
+    const batch = nextBatch++;
+    outbox = [
+      ...outbox,
+      ...ops.map(({ send, ...op }) => ({ ...op, id: nextOpId++, batch, send: (opId: number) => send(id, opId) }))
+    ];
+  }
+
+  function uploadOp(localPath: string, remoteDir: string, name: string): BatchOp {
+    const dest = joinRemote(remoteDir, name);
+    return {
+      kind: 'upload',
+      name,
+      refresh: 'remote',
+      key: opKey('remote', dest),
+      send: (sid, opId) => sftpUpload(sid, localPath, dest, opId)
+    };
+  }
+
+  function downloadOp(remotePath: string, localDir: string, name: string): BatchOp {
+    const dest = joinLocal(localDir, name);
+    return {
+      kind: 'download',
+      name,
+      refresh: 'local',
+      key: opKey('local', dest),
+      send: (sid, opId) => sftpDownload(sid, dest, remotePath, opId)
+    };
   }
 
   function upload(): void {
-    const id = backendId;
-    if (id == null || !view) return;
+    if (!view) return;
     const dir = view.remote.path;
-    enqueue(
-      ...localMarkedFiles.map((file) => () => {
-        sftp.pushOp(id, { kind: 'upload', name: file.name, refresh: 'remote' });
-        void sftpUpload(id, file.path, joinRemote(dir, file.name)).catch(onDispatchError(id));
-      })
-    );
+    enqueue(...localMarkedFiles.map((file) => uploadOp(file.path, dir, file.name)));
   }
 
   function uploadExternal(paths: string[]): void {
-    const id = backendId;
-    if (id == null || !view) return;
+    if (!view) return;
     const remoteDir = view.remote.path;
     enqueue(
       ...paths
         .map((path) => ({ path, name: path.split(/[\\/]/).pop() ?? '' }))
         .filter((file) => file.name && file.name !== '.' && file.name !== '..')
-        .map((file) => () => {
-          sftp.pushOp(id, { kind: 'upload', name: file.name, refresh: 'remote' });
-          void sftpUpload(id, file.path, joinRemote(remoteDir, file.name)).catch(onDispatchError(id));
-        })
+        .map((file) => uploadOp(file.path, remoteDir, file.name))
     );
   }
 
   function download(): void {
-    const id = backendId;
-    if (id == null || !view) return;
+    if (!view) return;
     const dir = view.local.path;
-    enqueue(
-      ...remoteMarkedFiles.map((file) => () => {
-        sftp.pushOp(id, { kind: 'download', name: file.name, refresh: 'local' });
-        void sftpDownload(id, joinLocal(dir, file.name), file.path).catch(onDispatchError(id));
-      })
-    );
+    enqueue(...remoteMarkedFiles.map((file) => downloadOp(file.path, dir, file.name)));
   }
 
   function startDrag(side: PaneSide, entry: FileEntryDto): void {
@@ -377,32 +418,23 @@
     if (id == null || !view || !source || source.side === side || source.entry.isDir) return;
 
     if (source.side === 'local' && side === 'remote') {
-      const remoteDir = view.remote.path;
-      enqueue(() => {
-        sftp.pushOp(id, { kind: 'upload', name: source.entry.name, refresh: 'remote' });
-        void sftpUpload(id, source.entry.path, joinRemote(remoteDir, source.entry.name)).catch(
-          onDispatchError(id)
-        );
-      });
+      enqueue(uploadOp(source.entry.path, view.remote.path, source.entry.name));
     } else if (source.side === 'remote' && side === 'local') {
-      const localDir = view.local.path;
-      enqueue(() => {
-        sftp.pushOp(id, { kind: 'download', name: source.entry.name, refresh: 'local' });
-        void sftpDownload(id, joinLocal(localDir, source.entry.name), source.entry.path).catch(
-          onDispatchError(id)
-        );
-      });
+      enqueue(downloadOp(source.entry.path, view.local.path, source.entry.name));
     }
   }
 
   function remove(): void {
-    const id = backendId;
-    if (id == null) return;
     enqueue(
-      ...remoteMarked.map((entry) => () => {
-        sftp.pushOp(id, { kind: 'delete', name: entry.name, refresh: 'remote' });
-        void sftpDelete(id, entry.path).catch(onDispatchError(id));
-      })
+      ...remoteMarked.map(
+        (entry): BatchOp => ({
+          kind: 'delete',
+          name: entry.name,
+          refresh: 'remote',
+          key: opKey('remote', entry.path),
+          send: (sid, opId) => sftpDelete(sid, entry.path, opId)
+        })
+      )
     );
   }
 
@@ -621,16 +653,21 @@
     const value = prompt.value.trim();
     if (!value) return;
     const dir = view.remote.path;
+    const dest = joinRemote(dir, value);
     if (prompt.kind === 'mkdir') {
-      enqueue(() => {
-        sftp.pushOp(id, { kind: 'mkdir', refresh: 'remote' });
-        void sftpMkdir(id, joinRemote(dir, value)).catch(onDispatchError(id));
+      enqueue({
+        kind: 'mkdir',
+        refresh: 'remote',
+        key: opKey('remote', dest),
+        send: (sid, opId) => sftpMkdir(sid, dest, opId)
       });
     } else if (prompt.target) {
       const from = prompt.target.path;
-      enqueue(() => {
-        sftp.pushOp(id, { kind: 'rename', refresh: 'remote' });
-        void sftpRename(id, from, joinRemote(dir, value)).catch(onDispatchError(id));
+      enqueue({
+        kind: 'rename',
+        refresh: 'remote',
+        key: opKey('remote', from),
+        send: (sid, opId) => sftpRename(sid, from, dest, opId)
       });
     }
     prompt = null;
@@ -795,6 +832,9 @@
           <span class="min-w-0 truncate">
             {transfer.kind === 'upload' ? 'Uploading' : 'Downloading'}
             <span class="font-mono text-fg">{transfer.name}</span>
+            {#if transfer.others > 0}
+              <span>and {transfer.others} more</span>
+            {/if}
           </span>
           <span class="shrink-0 tabular-nums">
             {formatBytes(transfer.done)}{transfer.total > 0

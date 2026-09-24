@@ -51,20 +51,20 @@ export const commands = {
   async sftpList(sessionId: number, path: string): Promise<Result<null, CommandError>> {
     return call('sftp_list', sessionId, path);
   },
-  async sftpUpload(sessionId: number, local: string, remote: string): Promise<Result<null, CommandError>> {
-    return call('sftp_upload', sessionId, local, remote);
+  async sftpUpload(sessionId: number, local: string, remote: string, opId?: number): Promise<Result<null, CommandError>> {
+    return call('sftp_upload', sessionId, local, remote, opId);
   },
-  async sftpDownload(sessionId: number, local: string, remote: string): Promise<Result<null, CommandError>> {
-    return call('sftp_download', sessionId, local, remote);
+  async sftpDownload(sessionId: number, local: string, remote: string, opId?: number): Promise<Result<null, CommandError>> {
+    return call('sftp_download', sessionId, local, remote, opId);
   },
-  async sftpMkdir(sessionId: number, path: string): Promise<Result<null, CommandError>> {
-    return call('sftp_mkdir', sessionId, path);
+  async sftpMkdir(sessionId: number, path: string, opId?: number): Promise<Result<null, CommandError>> {
+    return call('sftp_mkdir', sessionId, path, opId);
   },
-  async sftpRename(sessionId: number, from: string, to: string): Promise<Result<null, CommandError>> {
-    return call('sftp_rename', sessionId, from, to);
+  async sftpRename(sessionId: number, from: string, to: string, opId?: number): Promise<Result<null, CommandError>> {
+    return call('sftp_rename', sessionId, from, to, opId);
   },
-  async sftpDelete(sessionId: number, path: string): Promise<Result<null, CommandError>> {
-    return call('sftp_delete', sessionId, path);
+  async sftpDelete(sessionId: number, path: string, opId?: number): Promise<Result<null, CommandError>> {
+    return call('sftp_delete', sessionId, path, opId);
   },
   async sftpPreview(sessionId: number, path: string): Promise<Result<null, CommandError>> {
     return call('sftp_preview', sessionId, path);
@@ -427,7 +427,7 @@ export type SftpDirListed = { sessionId: number; path: string; entries: FileEntr
 /** An SFTP operation reported a failure. */
 export type SftpDisconnected = { sessionId: number; reason: string };
 /** A mutating SFTP op (upload/download/mkdir/rename/delete) finished. */
-export type SftpOpDone = { sessionId: number; ok: boolean; error?: string | null };
+export type SftpOpDone = { sessionId: number; opId?: number; ok: boolean; error?: string | null };
 /** Raw PTY output bytes for a terminal session. */
 export type TerminalBytes = number[];
 /** A terminal session's remote shell exited or its connection dropped. */
@@ -435,7 +435,7 @@ export type TerminalExited = { sessionId: number };
 /** Live transfer progress, routed to its owning session. */
 export type TransferProgress = TransferProgressDto;
 /** Live progress for one SFTP upload/download. */
-export type TransferProgressDto = { sessionId: number; transferId: number; done: number; total: number };
+export type TransferProgressDto = { sessionId: number; transferId: number; opId?: number; done: number; total: number };
 /** A newer release was found by the startup check. */
 export type UpdateAvailable = { info: UpdateInfoDto };
 /** Update-checker preferences. */
