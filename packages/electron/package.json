@@ -4,6 +4,7 @@
   "version": "1.1.2",
   "description": "BetterSshClient Desktop — SSH dashboard, terminal, and SFTP file manager.",
   "author": "BetterSshClient contributors",
+  "homepage": "https://github.com/Sniphs98/BetterSshClient",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",

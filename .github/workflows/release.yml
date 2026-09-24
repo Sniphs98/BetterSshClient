@@ -100,6 +100,11 @@ jobs:
 
       - run: npm ci
 
+      # The .rpm target shells out to rpmbuild, which Ubuntu runners don't ship.
+      - name: Install rpm tooling
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
       # electron-builder names the installers, the update manifests and the release
       # it uploads into after this version, and the app reports it as its own.
       - name: Stamp the release version

@@ -64,6 +64,10 @@ linux:
   target: [AppImage, deb, rpm]
   icon: build/icons
   category: Utility
+  # The .deb and .rpm formats require a maintainer with an email address (the
+  # package.json author has none); a GitHub noreply address keeps a personal one
+  # out of every package.
+  maintainer: Sniphs98 <56806984+Sniphs98@users.noreply.github.com>
   desktop:
     entry:
       Comment: SSH dashboard, terminal, and SFTP file manager
