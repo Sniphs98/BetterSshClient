@@ -140,7 +140,7 @@ export class PtyManager {
     let sshSession: SshSession;
     let channel: ClientChannel;
     try {
-      sshSession = await SshSession.connect(host);
+      sshSession = await SshSession.shared(host);
       channel = await sshSession.openShell(cols, rows, processLocaleEnv(), host.defaultPath);
     } catch (e) {
       emit({ type: 'error', message: `Terminal: ${(e as Error).message}` });

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Client, type AnyAuthMethod, type ClientChannel, type ConnectConfig } from 'ssh2';
 
 import type { Host } from './client.js';
+import { ConnectionPool, type Lease } from './connectionPool.js';
 import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
@@ -53,13 +54,59 @@ class SshConnection {
     this.client.end();
     for (const jump of this.jumps) jump.end();
   }
+
+  onClose(cb: () => void): void {
+    this.client.once('close', cb);
+  }
+}
+
+/** The settings that decide what a connection to `host` authenticates as, so
+ *  two hosts differing only in name, tags or notes share a connection, and an
+ *  edited password or key never reuses one made with the old value. */
+function connectionKey(host: Host): string {
+  return JSON.stringify([host.hostname, host.port, host.user, host.identityFile, host.password, jumpValue(host)]);
+}
+
+const sharedConnections = new ConnectionPool<Host, SshConnection>(connectionKey, connectAndAuth);
+
+/** Stops handing out the current shared connections — call when the host
+ *  configuration changed. Connections in use stay up until released. */
+export function invalidateSharedConnections(): void {
+  sharedConnections.invalidateAll();
+}
+
+/** Whether `err` is the server refusing to open a channel. */
+function isChannelOpenFailure(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { reason?: unknown }).reason !== undefined;
 }
 
 export class SshSession {
-  private constructor(private readonly connection: SshConnection) {}
+  /** Set while this session switches from its shared connection to one of its own. */
+  private goingDedicated: Promise<void> | undefined;
 
+  private constructor(
+    private connection: SshConnection,
+    private lease?: Lease<SshConnection>,
+    private readonly host?: Host
+  ) {}
+
+  /** A session over a connection of its own — for when the connection itself
+   *  is the point, e.g. proving that a freshly installed key authenticates. */
   static async connect(host: Host): Promise<SshSession> {
     return new SshSession(await connectAndAuth(host));
+  }
+
+  /** A session over the connection shared by everything else talking to the
+   *  same host (see `connectionPool.ts`), dialled only if there is none yet. */
+  static async shared(host: Host): Promise<SshSession> {
+    const lease = await sharedConnections.acquire(host);
+    return new SshSession(lease.connection, lease, host);
+  }
+
+  /** Marks a shared connection as suspect, so the next `shared()` for this
+   *  host dials afresh rather than reusing it. No-op for an own connection. */
+  invalidate(): void {
+    this.lease?.invalidate();
   }
 
   /** Runs a shell command and returns its stdout. stderr is discarded (to
@@ -90,12 +137,15 @@ export class SshSession {
    *  `runLocalCommand`'s local-node output exactly regardless of node kind. A missing
    *  exit code is treated as success, same leniency as `runCommandChecked`. */
   async runShell(cmd: string, timeoutMs: number = EXEC_TIMEOUT_MS): Promise<{ output: string; ok: boolean; error?: string }> {
-    const channel = await new Promise<ClientChannel>((resolve, reject) => {
-      this.connection.client.exec(cmd, (err, ch) => {
-        if (err) reject(err);
-        else resolve(ch);
-      });
-    });
+    const channel = await this.openChannel(
+      (client) =>
+        new Promise<ClientChannel>((resolve, reject) => {
+          client.exec(cmd, (err, ch) => {
+            if (err) reject(err);
+            else resolve(ch);
+          });
+        })
+    );
 
     return new Promise((resolve) => {
       const chunks: Buffer[] = [];
@@ -138,43 +188,77 @@ export class SshSession {
    *  than landing on the login default and having a visible `cd` typed at it. */
   async openShell(cols: number, rows: number, env?: Record<string, string>, cwd?: string): Promise<ClientChannel> {
     const pty = { term: 'xterm-256color', cols, rows };
-    if (cwd === undefined || cwd.trim() === '') {
-      return new Promise((resolve, reject) => {
-        this.connection.client.shell(pty, { env }, (err, channel) => {
-          if (err) reject(err);
-          else resolve(channel);
-        });
-      });
-    }
-    return new Promise((resolve, reject) => {
-      this.connection.client.exec(buildCdShellCommand(cwd), { pty, env }, (err, channel) => {
-        if (err) reject(err);
-        else resolve(channel);
-      });
-    });
+    return this.openChannel(
+      (client) =>
+        new Promise<ClientChannel>((resolve, reject) => {
+          const done = (err: Error | undefined, channel: ClientChannel): void => {
+            if (err) reject(err);
+            else resolve(channel);
+          };
+          if (cwd === undefined || cwd.trim() === '') client.shell(pty, { env }, done);
+          else client.exec(buildCdShellCommand(cwd), { pty, env }, done);
+        })
+    );
   }
 
   /** Opens the SFTP subsystem (Phase 3). */
   async openSftp(): Promise<import('ssh2').SFTPWrapper> {
-    return new Promise((resolve, reject) => {
-      this.connection.client.sftp((err, sftp) => {
-        if (err) reject(err);
-        else resolve(sftp);
-      });
-    });
+    return this.openChannel(
+      (client) =>
+        new Promise((resolve, reject) => {
+          client.sftp((err, sftp) => {
+            if (err) reject(err);
+            else resolve(sftp);
+          });
+        })
+    );
   }
 
+  /** Closes an own connection; gives a shared one back to the pool, which
+   *  closes it once nothing else uses it. */
   disconnect(): void {
-    this.connection.disconnect();
+    if (this.lease !== undefined) this.lease.release();
+    else this.connection.disconnect();
+  }
+
+  /**
+   * Opens a channel via `open`. On a shared connection whose server refuses
+   * the channel — a `MaxSessions` lower than sharing assumes — the session
+   * moves to a connection of its own and tries once more there, so a
+   * restrictive server costs the connection that sharing saved, never the
+   * feature.
+   */
+  private async openChannel<T>(open: (client: Client) => Promise<T>): Promise<T> {
+    try {
+      return await open(this.connection.client);
+    } catch (e) {
+      if (this.lease === undefined || !isChannelOpenFailure(e)) throw e;
+      this.goingDedicated ??= this.goDedicated().finally(() => (this.goingDedicated = undefined));
+      await this.goingDedicated;
+      return open(this.connection.client);
+    }
+  }
+
+  private async goDedicated(): Promise<void> {
+    const lease = this.lease;
+    if (lease === undefined || this.host === undefined) return;
+    this.connection = await connectAndAuth(this.host);
+    this.lease = undefined;
+    // That connection is full: later sessions should not queue up on it either.
+    lease.invalidate();
+    lease.release();
   }
 
   private async exec(cmd: string): Promise<{ output: string; exitCode: number | undefined }> {
-    const channel = await new Promise<ClientChannel>((resolve, reject) => {
-      this.connection.client.exec(cmd, (err, ch) => {
-        if (err) reject(err);
-        else resolve(ch);
-      });
-    });
+    const channel = await this.openChannel(
+      (client) =>
+        new Promise<ClientChannel>((resolve, reject) => {
+          client.exec(cmd, (err, ch) => {
+            if (err) reject(err);
+            else resolve(ch);
+          });
+        })
+    );
 
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];

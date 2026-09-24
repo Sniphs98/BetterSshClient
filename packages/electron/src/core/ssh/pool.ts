@@ -285,7 +285,7 @@ async function runSshPoller(
     if (session === undefined) {
       emit({ type: 'hostStatusChanged', hostName: host.name, status: { kind: 'connecting' } });
       try {
-        session = await SshSession.connect(host);
+        session = await SshSession.shared(host);
         emit({ type: 'hostStatusChanged', hostName: host.name, status: { kind: 'connected' } });
         discoveryDone = false;
       } catch (e) {
@@ -311,6 +311,9 @@ async function runSshPoller(
       backoff.reset();
       emit({ type: 'metricsUpdate', hostName: host.name, metrics });
     } catch (e) {
+      // The connection may be dead without having noticed yet (keepalive
+      // takes up to 45 s): make sure the reconnect dials afresh.
+      session.invalidate();
       session.disconnect();
       session = undefined;
       emit({ type: 'hostStatusChanged', hostName: host.name, status: { kind: 'failed', message: (e as Error).message } });
@@ -384,7 +387,7 @@ export function splitMetricSections(output: string): Record<MetricSection, strin
 /** Runs the metric script and returns a `Metrics` snapshot. Throws when the
  *  script itself fails — that indicates a dead session and should prompt the
  *  caller to reconnect. */
-async function collectMetrics(session: SshSession): Promise<Metrics> {
+export async function collectMetrics(session: SshSession): Promise<Metrics> {
   let output: string;
   try {
     output = await session.runCommand(METRICS_SCRIPT);

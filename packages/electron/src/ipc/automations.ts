@@ -248,7 +248,7 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
       connectHost: async (hostName) => {
         const host = state.hostByName(hostName);
         if (host === undefined) throw new Error(`unknown host '${hostName}'`);
-        const session = await SshSession.connect(host);
+        const session = await SshSession.shared(host);
         return {
           runShell: (cmd, timeoutMs) => session.runShell(cmd, timeoutMs),
           disconnect: () => session.disconnect()

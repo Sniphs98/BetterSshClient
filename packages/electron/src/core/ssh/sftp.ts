@@ -87,7 +87,7 @@ export class SftpManager {
   ) {}
 
   static async connect(host: Host): Promise<SftpManager> {
-    const sshSession = await SshSession.connect(host);
+    const sshSession = await SshSession.shared(host);
     let sftp: SFTPWrapper;
     try {
       sftp = await sshSession.openSftp();
@@ -188,7 +188,10 @@ export class SftpManager {
     );
   }
 
+  /** Closes the SFTP channel and gives the connection back — which stays up
+   *  while a terminal or the poller still uses it. */
   disconnect(): void {
+    this.sftp.end();
     this.sshSession.disconnect();
   }
 }
