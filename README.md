@@ -4,7 +4,7 @@
 
 **An SSH client built around my daily workflow: dashboard, terminals, SFTP and automations in one window.**
 
-<img src="assets/gui.webp" alt="The Better Ssh Client dashboard: a card per server with live CPU, RAM and disk" width="900">
+<img src="assets/dashboard.png" alt="The Better Ssh Client dashboard: a card per server with live CPU, RAM, disk, top processes and detected services" width="900">
 
 [![Latest release](https://img.shields.io/github/v/release/Sniphs98/better-ssh-client?label=latest)](https://github.com/Sniphs98/better-ssh-client/releases/latest)
 [![Release](https://img.shields.io/github/actions/workflow/status/Sniphs98/better-ssh-client/release.yml?branch=main&label=build)](https://github.com/Sniphs98/better-ssh-client/actions/workflows/release.yml)
@@ -61,8 +61,6 @@ for what works, what's in progress, and what's still planned.
 ---
 
 ## Screenshots
-
-<!-- Screenshot placeholders: save the images under these names in assets/ and they show up here. -->
 
 | Terminal | SFTP |
 |:-:|:-:|
