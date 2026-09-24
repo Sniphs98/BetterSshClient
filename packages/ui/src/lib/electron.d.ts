@@ -11,6 +11,8 @@ export interface BsshClientBridge {
   };
   openExternal(url: string): Promise<void>;
   homeDir(): Promise<string>;
+  /** The running app's version, e.g. `1.2.0`. */
+  appVersion(): Promise<string>;
   getPathForFile(file: File): string;
 }
 

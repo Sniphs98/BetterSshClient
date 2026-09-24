@@ -4,6 +4,7 @@
   // open sessions), the sessions list, and the footer (palette + theme toggle, §5.1). The active
   // highlight is the brand's accent inversion, so exactly one filled row — a
   // selector or a session — is visible at any moment (the §2 invariant, made legible).
+  import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import Logo from './Logo.svelte';
   import ThemeToggle from './ThemeToggle.svelte';
@@ -21,6 +22,16 @@
   import { automationsTab } from '$lib/stores/automations';
   import { spawnSession, closeSession } from '$lib/stores/navigation';
   import { palette } from '$lib/stores/palette';
+
+  // The running version, shown beside the Settings gear (or in its tooltip when the
+  // sidebar is collapsed). Absent outside Electron (tests, `vite preview`).
+  let appVersion = $state<string | null>(null);
+  onMount(() => {
+    window.bsshClient
+      ?.appVersion?.()
+      .then((v) => (appVersion = v))
+      .catch(() => {});
+  });
 
   // Flipping the top switch swaps which selector/spawner rows show below it; an open
   // session (terminal/sftp) is never affected — only a currently-active selector
@@ -249,12 +260,20 @@
       'settings'
         ? 'bg-accent text-accent-fg'
         : 'text-muted hover:bg-surface-inset hover:text-fg'}"
-      title="Settings"
+      title={$sidebarCollapsed && appVersion ? `Settings · v${appVersion}` : 'Settings'}
       aria-label="Settings"
       aria-current={$activeEntity.kind === 'settings' ? 'page' : undefined}
       onclick={() => activeEntity.selectSettings()}
     >
       <Icon name="settings" />
     </button>
+    {#if appVersion && !$sidebarCollapsed}
+      <span
+        class="ml-1 rounded-full border border-default px-2 py-0.5 font-mono text-[11px] text-faint"
+        title="BetterSshClient v{appVersion}"
+      >
+        v{appVersion}
+      </span>
+    {/if}
   </footer>
 </aside>
