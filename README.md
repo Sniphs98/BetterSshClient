@@ -48,15 +48,20 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **In-place file editor** | Double-click a text file to edit it with Monaco, the editor from VS Code, local or remote. |
 | ✅ | **One-click SSH key setup** | Generates an Ed25519 key, installs it, verifies it, and optionally turns off password login, with automatic rollback if anything fails. |
 | ✅ | **ProxyJump** | Hosts behind one or more bastions work everywhere: dashboard, terminal, SFTP. |
-| ✅ | **Shared connections** | Dashboard, terminals and SFTP share one connection per host, so a new tab opens instantly. |
 | ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
-| ✅ | **Command palette** | `Ctrl+K` / `⌘K` finds any host or open session. |
-| ✅ | **Streamer mode** | Replaces every real address on screen with a fake one for demos and screen sharing. |
 | ✅ | **Light & dark theme** | |
 | 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps. Usable, but still changing. |
 | 📋 | **Remote desktop (RDP)** *(to do)* | RDP profiles next to your SSH hosts, launched through the OS's own client. Not ready yet. |
 
 ✅ done · 🚧 in progress · 📋 planned
+
+### Maybe later
+
+Ideas I'd like to explore. No promises on if or when:
+
+- 🤖 **AI integration**: help with commands, explain output or errors, right in the terminal.
+- 🧩 **Plugin system**: extend the app with your own features without touching the core.
+- 🔑 **1Password integration**: use SSH keys and passwords straight from your 1Password vault.
 
 ---
 
