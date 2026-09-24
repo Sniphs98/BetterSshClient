@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 import { app, type IpcMain } from 'electron';
 import { autoUpdater, type ProgressInfo } from 'electron-updater';
@@ -24,13 +24,24 @@ import type { GuiState } from '../state/guiState.js';
  * the banner links to the release page instead.
  */
 
+/** Whether the NSIS installer put this copy here: it leaves `Uninstall <product>.exe`
+ *  next to the executable. Matched by pattern — the packaged `app.getName()` is the
+ *  package.json name, not the product name the installer uses. */
+function hasNsisUninstaller(): boolean {
+  try {
+    return readdirSync(dirname(process.execPath)).some((f) => /^Uninstall .+\.exe$/i.test(f));
+  } catch {
+    return false;
+  }
+}
+
 /** Whether the running app can install updates itself, and if not, why. */
 export function currentSelfUpdateSupport(): SelfUpdateSupport {
   return selfUpdateSupport({
     platform: process.platform,
     isPackaged: app.isPackaged,
     env: process.env,
-    hasNsisUninstaller: existsSync(join(dirname(process.execPath), `Uninstall ${app.getName()}.exe`))
+    hasNsisUninstaller: process.platform === 'win32' && hasNsisUninstaller()
   });
 }
 
