@@ -6,8 +6,8 @@
 
 <img src="assets/dashboard.png" alt="The Better Ssh Client dashboard: a card per server with live CPU, RAM, disk, top processes and detected services" width="900">
 
-[![Latest release](https://img.shields.io/github/v/release/Sniphs98/better-ssh-client?label=latest)](https://github.com/Sniphs98/better-ssh-client/releases/latest)
-[![Release](https://img.shields.io/github/actions/workflow/status/Sniphs98/better-ssh-client/release.yml?branch=main&label=build)](https://github.com/Sniphs98/better-ssh-client/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/Sniphs98/BetterSshClient?label=latest)](https://github.com/Sniphs98/BetterSshClient/releases/latest)
+[![Release](https://img.shields.io/github/actions/workflow/status/Sniphs98/BetterSshClient/release.yml?branch=main&label=build)](https://github.com/Sniphs98/BetterSshClient/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **[Why this exists](#why-this-exists)** •
@@ -72,7 +72,7 @@ for what works, what's in progress, and what's still planned.
 
 ## Install
 
-Download the file for your system from the [**latest release**](https://github.com/Sniphs98/better-ssh-client/releases/latest):
+Download the file for your system from the [**latest release**](https://github.com/Sniphs98/BetterSshClient/releases/latest):
 
 | System | File |
 |---|---|
@@ -99,7 +99,7 @@ own data in `%APPDATA%\better-ssh-client\` (Windows), `~/Library/Application Sup
 
 ## Feedback and contributing
 
-Found a bug or have an idea? **[Open an issue](https://github.com/Sniphs98/better-ssh-client/issues/new/choose)**
+Found a bug or have an idea? **[Open an issue](https://github.com/Sniphs98/BetterSshClient/issues/new/choose)**
 and describe it there. Feedback on macOS and Linux is especially welcome.
 
 If you've fixed something yourself, feel free to open a **pull request**. I'll look at it
@@ -114,8 +114,8 @@ opening a public issue.
 You need **Node.js 22+** and npm. Docker is optional (for the integration tests).
 
 ```bash
-git clone https://github.com/Sniphs98/better-ssh-client.git
-cd better-ssh-client
+git clone https://github.com/Sniphs98/BetterSshClient.git
+cd BetterSshClient
 npm ci
 npm run dev:electron     # build and start the app
 ```

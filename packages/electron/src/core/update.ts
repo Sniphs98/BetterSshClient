@@ -8,7 +8,7 @@
  * the Tauri build's own unconfigured updater.
  */
 
-const REPO = 'Sniphs98/better-ssh-client';
+const REPO = 'Sniphs98/BetterSshClient';
 const HTTP_TIMEOUT_MS = 8000;
 
 export interface UpdateInfo {
