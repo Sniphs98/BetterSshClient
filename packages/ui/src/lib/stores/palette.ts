@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { SnippetDto, ConnectionStatusDto, HostDto } from '$lib/bindings';
+import type { SnippetDto, ConnectionStatusDto, HostDto, PluginCommandDto } from '$lib/bindings';
 import type { Status } from '$lib/theme';
 import type { Session } from './sessions';
 
@@ -18,7 +18,8 @@ export type PaletteItem =
   | { kind: 'session'; session: Session }
   | { kind: 'host'; host: HostDto }
   | { kind: 'snippet'; snippet: SnippetDto }
-  | { kind: 'newSnippet' };
+  | { kind: 'newSnippet' }
+  | { kind: 'pluginCommand'; command: PluginCommandDto };
 
 function hostHaystack(h: HostDto): string {
   return `${h.name} ${h.hostname} ${h.user} ${h.tags.join(' ')}`.toLowerCase();
@@ -26,6 +27,10 @@ function hostHaystack(h: HostDto): string {
 
 function sessionHaystack(s: Session): string {
   return `${s.hostName} ${s.kind}`.toLowerCase();
+}
+
+function pluginCommandHaystack(c: PluginCommandDto): string {
+  return `${c.title} ${c.pluginName}`.toLowerCase();
 }
 
 function snippetHaystack(a: SnippetDto): string {
@@ -50,7 +55,8 @@ export function paletteItems(
   hosts: HostDto[],
   sessions: Session[],
   snippets: SnippetDto[],
-  query: string
+  query: string,
+  pluginCommands: PluginCommandDto[] = []
 ): PaletteItem[] {
   if (mode === 'pickSnippet') {
     const snippetRows: PaletteItem[] = snippets
@@ -65,7 +71,11 @@ export function paletteItems(
   const sessionRows: PaletteItem[] = sessions
     .filter((s) => matches(sessionHaystack(s), query))
     .map((session) => ({ kind: 'session', session }));
-  return [...sessionRows, ...hostRows];
+  // Plugin commands come last, so typing a host name still lands on the host first.
+  const commandRows: PaletteItem[] = pluginCommands
+    .filter((c) => matches(pluginCommandHaystack(c), query))
+    .map((command) => ({ kind: 'pluginCommand', command }));
+  return [...sessionRows, ...hostRows, ...commandRows];
 }
 
 /** A stable key for the current result set — its rows' identity and order, but not
@@ -84,6 +94,8 @@ export function paletteSignature(items: PaletteItem[]): string {
           return `a:${it.snippet.id}`;
         case 'newSnippet':
           return 'new-snippet';
+        case 'pluginCommand':
+          return `p:${it.command.pluginId}/${it.command.commandId}`;
       }
     })
     .join('\u0000');

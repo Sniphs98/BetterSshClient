@@ -105,6 +105,24 @@ export const commands = {
   async restartToUpdate(): Promise<Result<null, CommandError>> {
     return call('restart_to_update');
   },
+  async listPlugins(): Promise<Result<PluginDto[], CommandError>> {
+    return call('list_plugins');
+  },
+  async reloadPlugins(): Promise<Result<PluginDto[], CommandError>> {
+    return call('reload_plugins');
+  },
+  async setPluginEnabled(id: string, enabled: boolean): Promise<Result<PluginDto[], CommandError>> {
+    return call('set_plugin_enabled', id, enabled);
+  },
+  async openPluginsFolder(): Promise<Result<null, CommandError>> {
+    return call('open_plugins_folder');
+  },
+  async listPluginCommands(): Promise<Result<PluginCommandDto[], CommandError>> {
+    return call('list_plugin_commands');
+  },
+  async runPluginCommand(pluginId: string, commandId: string, host?: string): Promise<Result<null, CommandError>> {
+    return call('run_plugin_command', pluginId, commandId, host);
+  },
   async loadUpdateConfig(): Promise<Result<UpdateConfigDto, CommandError>> {
     return call('load_update_config');
   },
@@ -182,7 +200,9 @@ const EVENT_CHANNELS = {
   transferProgress: 'transfer-progress',
   updateAvailable: 'update-available',
   updateDownloadProgress: 'update-download-progress',
-  updateDownloaded: 'update-downloaded'
+  updateDownloaded: 'update-downloaded',
+  pluginCommandsChanged: 'plugin-commands-changed',
+  pluginShowText: 'plugin-show-text'
 } as const;
 
 type EventMap = {
@@ -211,6 +231,8 @@ type EventMap = {
   updateAvailable: UpdateAvailable;
   updateDownloadProgress: UpdateDownloadProgress;
   updateDownloaded: UpdateDownloaded;
+  pluginCommandsChanged: PluginCommandsChanged;
+  pluginShowText: PluginShowText;
 };
 
 type EventCallback<T> = (event: { payload: T }) => void;
@@ -456,6 +478,23 @@ export type UpdateInfoDto = { version: string; url: string; tag: string; canSelf
 export type UpdateDownloadProgress = { percent: number; transferred: number; total: number };
 /** The update is downloaded; `restart_to_update` installs it. */
 export type UpdateDownloaded = { version: string };
+/** An installed plugin, whether usable or not (`error`). */
+export type PluginDto = {
+  id: string;
+  name: string;
+  version?: string;
+  description?: string;
+  /** What it asks for; switching it on grants exactly these. */
+  permissions: { id: string; description: string }[];
+  enabled: boolean;
+  running: boolean;
+  error?: string;
+};
+/** A command a running plugin added to the command palette. */
+export type PluginCommandDto = { pluginId: string; pluginName: string; commandId: string; title: string; needsHost: boolean };
+export type PluginCommandsChanged = { commands: PluginCommandDto[] };
+/** A plugin asked to show text (`bssh.ui.showText`). */
+export type PluginShowText = { pluginName: string; title: string; text: string };
 
 export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
 

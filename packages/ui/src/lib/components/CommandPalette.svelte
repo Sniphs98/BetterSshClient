@@ -14,18 +14,41 @@
   import { spawnSession } from '$lib/stores/navigation';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import { isPaletteChord } from '$lib/stores/ui';
+  import { pluginCommands } from '$lib/stores/plugins';
+  import { runPluginCommand } from '$lib/ipc/commands';
+  import { lastError } from '$lib/stores/notifications';
+  import type { PluginCommandDto } from '$lib/bindings';
 
   let inputEl = $state<HTMLInputElement>();
   let listEl = $state<HTMLUListElement>();
   let query = $state('');
   let selected = $state(0);
 
-  const items = $derived(paletteItems($palette.mode, $hosts, $sessions, $snippets, query));
+  const items = $derived(paletteItems($palette.mode, $hosts, $sessions, $snippets, query, $pluginCommands));
   // A value-stable key over the result set: unchanged by a background status flip (same
   // ids, new objects), so the reset effect below can ignore those (see the effect).
   const itemsSignature = $derived(paletteSignature(items));
   const firstSession = $derived(items.findIndex((it) => it.kind === 'session'));
   const firstHost = $derived(items.findIndex((it) => it.kind === 'host'));
+  const firstCommand = $derived(items.findIndex((it) => it.kind === 'pluginCommand'));
+
+  // A plugin command: pick a host first if it asks for one, then hand it to the plugin.
+  // Its result (text, a failure) comes back as its own event or as an error here.
+  async function runCommand(command: PluginCommandDto): Promise<void> {
+    let host: string | undefined;
+    if (command.needsHost) {
+      const picked = await palette.pickHost();
+      if (!picked) return;
+      host = picked.name;
+    } else {
+      palette.close();
+    }
+    try {
+      await runPluginCommand(command.pluginId, command.commandId, host);
+    } catch (e) {
+      lastError.set(`${command.pluginName}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   const placeholder = $derived(
     $palette.mode === 'pickHost'
@@ -104,6 +127,9 @@
         break;
       case 'newSnippet':
         palette.chooseSnippet('new');
+        break;
+      case 'pluginCommand':
+        void runCommand(item.command);
         break;
     }
   }
@@ -208,6 +234,9 @@
             {#if $palette.mode === 'navigate' && i === firstHost}
               <li class={sectionHead}>Hosts</li>
             {/if}
+            {#if $palette.mode === 'navigate' && i === firstCommand}
+              <li class={sectionHead}>Plugin commands</li>
+            {/if}
             <li>
               <button
                 type="button"
@@ -230,6 +259,12 @@
                 {:else if item.kind === 'snippet'}
                   <Icon name="automations" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">{item.snippet.name}</span>
+                {:else if item.kind === 'pluginCommand'}
+                  <Icon name="play" size={16} />
+                  <span class="min-w-0 flex-1 truncate font-medium">{item.command.title}</span>
+                  <span class="shrink-0 truncate text-xs {selected === i ? '' : 'text-faint'}">
+                    {item.command.pluginName}
+                  </span>
                 {:else}
                   <Icon name="plus" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">New snippet…</span>

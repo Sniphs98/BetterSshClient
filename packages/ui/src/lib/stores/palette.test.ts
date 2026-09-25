@@ -198,3 +198,35 @@ describe('palette store — modes & picker resolution', () => {
     await expect(pendingHost).resolves.toBeNull();
   });
 });
+
+describe('paletteItems — plugin commands', () => {
+  const command = (commandId: string, title: string, pluginName = 'Docker containers') => ({
+    pluginId: 'docker-containers',
+    pluginName,
+    commandId,
+    title,
+    needsHost: true
+  });
+  const commands = [command('containers', 'Docker: containers on host…'), command('prune', 'Docker: prune images')];
+
+  it('lists plugin commands after sessions and hosts in the navigator', () => {
+    const items = paletteItems('navigate', [host('web-1')], [session(1, 'web-1')], [], '', commands);
+    expect(items.map((i) => i.kind)).toEqual(['session', 'host', 'pluginCommand', 'pluginCommand']);
+  });
+
+  it('filters them by title or plugin name', () => {
+    const byTitle = paletteItems('navigate', [], [], [], 'prune', commands);
+    expect(byTitle.map((i) => i.kind === 'pluginCommand' && i.command.commandId)).toEqual(['prune']);
+    expect(paletteItems('navigate', [], [], [], 'docker containers', commands)).toHaveLength(2);
+  });
+
+  it('keeps them out of the pickers', () => {
+    expect(paletteItems('pickHost', [host('web-1')], [], [], '', commands).every((i) => i.kind === 'host')).toBe(true);
+    expect(paletteItems('pickSnippet', [], [], [snippet('s')], '', commands).some((i) => i.kind === 'pluginCommand')).toBe(false);
+  });
+
+  it('gives each command a stable signature', () => {
+    const items = paletteItems('navigate', [], [], [], '', commands);
+    expect(paletteSignature(items)).toBe(paletteSignature(paletteItems('navigate', [], [], [], '', commands.map((c) => ({ ...c })))));
+  });
+});

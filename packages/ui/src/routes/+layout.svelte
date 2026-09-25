@@ -2,7 +2,8 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { startEventBridge } from '$lib/ipc/subscribe';
-  import { reloadHosts, refreshMetrics } from '$lib/ipc/commands';
+  import { reloadHosts, refreshMetrics, listPluginCommands } from '$lib/ipc/commands';
+  import { pluginCommands } from '$lib/stores/plugins';
   import { theme } from '$lib/stores/theme';
   import { sidebarCollapsed } from '$lib/stores/ui';
   import { sidebarMode } from '$lib/stores/sidebarMode';
@@ -37,6 +38,10 @@
       .then((off) => {
         if (disposed) return off();
         stop = off;
+        // Plugins may have registered their commands before we were listening.
+        listPluginCommands()
+          .then((commands) => pluginCommands.set(commands ?? []))
+          .catch(() => {});
         reloadHosts().catch((err) => lastError.set(err instanceof Error ? err.message : String(err)));
       })
       .catch(() => {});

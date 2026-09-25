@@ -46,7 +46,8 @@ import {
   reduceRollback
 } from '$lib/stores/keySetup';
 import { offerUpdate, updateDownloaded, updateDownloadProgress } from '$lib/stores/update';
-import type { UpdateAvailable, UpdateDownloadProgress, UpdateDownloaded } from '$lib/bindings';
+import type { UpdateAvailable, UpdateDownloadProgress, UpdateDownloaded, PluginCommandsChanged, PluginShowText } from '$lib/bindings';
+import { pluginCommands, pluginText } from '$lib/stores/plugins';
 
 export function applyHostsLoaded(payload: HostDto[]): void {
   hosts.set(payload);
@@ -218,6 +219,14 @@ export function applyAutomationFailed(payload: AutomationFailed): void {
 // A newer release found by the startup check (tech-gui.md §4.3) → the update banner.
 export function applyUpdateAvailable(payload: UpdateAvailable): void {
   offerUpdate(payload.info);
+}
+
+export function applyPluginCommandsChanged(payload: PluginCommandsChanged): void {
+  pluginCommands.set(payload.commands);
+}
+
+export function applyPluginShowText(payload: PluginShowText): void {
+  pluginText.set(payload);
 }
 
 export function applyUpdateDownloadProgress(payload: UpdateDownloadProgress): void {

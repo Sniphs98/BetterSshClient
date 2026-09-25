@@ -10,6 +10,7 @@
   import KeySetupProgress from '$lib/screens/KeySetupProgress.svelte';
   import AutomationRunProgress from '$lib/screens/AutomationRunProgress.svelte';
   import UpdateBanner from './UpdateBanner.svelte';
+  import PluginTextDialog from './PluginTextDialog.svelte';
   import { sidebarCollapsed, isCollapseChord } from '$lib/stores/ui';
 
   let { children }: { children: Snippet } = $props();
@@ -41,4 +42,5 @@
   <KeySetupProgress />
   <AutomationRunProgress />
   <UpdateBanner />
+  <PluginTextDialog />
 </div>

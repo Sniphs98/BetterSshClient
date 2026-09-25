@@ -1,6 +1,7 @@
 # Plugin-System: Überlegungen und Vorschlag
 
-> Stand: Idee / Entwurf auf dem Branch `feat/plugin-system`. Noch nichts davon ist gebaut.
+> Stand: Auf dem Branch `feat/plugin-system` gibt es einen **Prototyp für Weg B** (Code-Plugins im
+> Sandkasten), siehe Abschnitt 10. Abschnitte 1–9 sind die ursprüngliche Überlegung.
 
 ## 1. Worum geht es?
 
@@ -154,6 +155,120 @@ Meldung statt eines Absturzes.
 - Gibt es einen konkreten Anwendungsfall, der zuerst kommen soll? Davon hängt ab, welche Andockstellen Phase 1 bekommt.
 - Sollen Plugins nur manuell in den Ordner kopiert werden, oder braucht es einen „Plugin installieren“-Knopf (z. B. aus einer ZIP-Datei)?
 - Sollen die eingebauten fünf Dienste langfristig selbst als Plugins ausgeliefert werden? Das wäre sauber, ist aber für Phase 1 nicht nötig.
+
+## 10. Prototyp: Code-Plugins im Sandkasten (Weg B)
+
+Gebaut, um auszuprobieren, wie sich Weg B anfühlt. In den Settings als **experimental**
+markiert.
+
+### Wie es funktioniert
+
+```
+ plugins/<id>/plugin.json  ──►  Loader prüft Manifest  ──►  Settings: Liste + Schalter
+                                                                     │ einschalten = Zustimmung
+                                                                     ▼
+                     unsichtbares Fenster pro Plugin (Sandkasten)
+                     ┌───────────────────────────────────────────┐
+                     │ main.js des Plugins                        │
+                     │   └─ sieht nur `bssh` ──── Nachricht ────┐ │
+                     └──────────────────────────────────────────┼─┘
+                                                                ▼
+                     Hauptprozess: Recht erteilt? ──► ja: ausführen / nein: Fehler
+```
+
+- **Sandkasten:** Jedes eingeschaltete Plugin läuft in einem eigenen, unsichtbaren
+  Electron-Fenster: Chromium-Sandbox, kein Node.js, eigener Speicherbereich (keine
+  gemeinsamen Cookies oder Speicher mit der App oder anderen Plugins).
+- **Netzwerk:** Jede Anfrage wird abgebrochen, außer HTTPS zu einem Hostnamen, den das
+  Plugin angemeldet hat (`network:<hostname>`). Zusätzlich verbietet eine
+  Content-Security-Policy `eval` und nachgeladene Skripte.
+- **Kein Ausbruch:** Navigation, neue Fenster und alle Browser-Berechtigungen (Kamera,
+  Mikrofon, Benachrichtigungen …) sind gesperrt.
+- **Rechte:** Jeder `bssh`-Aufruf wird im Hauptprozess gegen die Rechte geprüft, die der
+  Nutzer beim Einschalten erteilt hat. Verlangt ein Plugin nach einem Update neue Rechte,
+  ist es wieder aus, bis man es erneut einschaltet.
+- **Kaputte Plugins** (falsches JSON, unbekannte API-Version, fehlende Datei) erscheinen
+  in den Settings mit ihrer Fehlermeldung und stören den Rest nicht.
+
+### Ein Plugin schreiben
+
+Ein Ordner im Plugin-Verzeichnis (Settings → Plugins → *Open folder*), Ordnername = `id`:
+
+```
+plugins/
+  docker-containers/
+    plugin.json
+    main.js
+```
+
+**`plugin.json`:**
+
+```json
+{
+  "id": "docker-containers",
+  "name": "Docker containers",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "main": "main.js",
+  "description": "Lists the Docker containers on a host, from the command palette.",
+  "permissions": ["hosts:exec"]
+}
+```
+
+**`main.js`** läuft einmal beim Start des Plugins; `await` auf oberster Ebene ist erlaubt.
+Ein vollständiges Beispiel liegt in `examples/plugins/docker-containers/`.
+
+### Rechte
+
+| Recht | Erlaubt |
+|---|---|
+| `hosts:read` | Host-Liste lesen: Name, Adresse, Benutzer, Port, Tags. **Nie** Passwörter oder Keys. |
+| `hosts:exec` | Befehle auf den Hosts ausführen. Sehr mächtig: damit kann ein Plugin *alles* auf deinen Servern tun. |
+| `network:<hostname>` | HTTPS-Anfragen an genau diesen Hostnamen, z. B. `network:api.github.com` |
+
+Befehle registrieren und Text anzeigen brauchen kein Recht: Sie tun erst etwas, wenn du
+den Befehl selbst auswählst.
+
+### Die Schnittstelle `bssh` (API-Version 1)
+
+| Funktion | Was sie tut | Recht |
+|---|---|---|
+| `bssh.commands.register(id, title, { needsHost }, handler)` | Befehl in der Befehlspalette (Ctrl+K). Mit `needsHost: true` wählt der Nutzer vorher einen Host; der Handler bekommt `{ host }`. | – |
+| `bssh.hosts.list()` | Liste der Hosts (ohne Geheimnisse) | `hosts:read` |
+| `bssh.hosts.exec(host, command)` | Befehl ausführen; Ergebnis `{ output, ok, error? }` (stdout+stderr, 60 s Timeout) | `hosts:exec` |
+| `bssh.ui.showText(title, text)` | Text in einem Dialog anzeigen, immer mit dem Plugin-Namen beschriftet | – |
+| `bssh.log(...)` | Ausgabe ins Log der App (Terminal, aus dem die App gestartet wurde) | – |
+| `fetch(url)` | Normales Browser-`fetch`, nur zu erlaubten Hosts | `network:…` |
+
+### Was geprüft ist
+
+Mit einem Test-Plugin, das absichtlich auszubrechen versucht, in der echten App gegen
+einen echten SSH-Server:
+
+| Versuch | Ergebnis |
+|---|---|
+| `require`, `process` (Node.js) | nicht vorhanden |
+| `eval`, `new Function` | blockiert (CSP) |
+| `fetch` zu nicht angemeldeten Hosts | blockiert |
+| `fetch` zu angemeldetem Host (`api.github.com`) | erlaubt (200) |
+| lokale Datei per `file://` lesen | blockiert |
+| `hosts.list` ohne `hosts:read` | abgelehnt |
+| `window.open`, Seite wechseln | verhindert |
+| `hosts.exec` mit `hosts:exec` | funktioniert |
+
+Dazu Unit-Tests für Manifest-Prüfung, Rechte, Netzwerk-Regeln und den Loader.
+
+### Grenzen des Prototyps
+
+- **Keine eigene Oberfläche:** Plugins können nur Befehle anbieten und Text anzeigen.
+  Eigene Panels (z. B. eine Container-Liste mit Knöpfen) wären der nächste große Schritt.
+- **`hosts:exec` ist alles oder nichts:** Feiner wäre „nur diese Befehle“ oder „nur diese Hosts“.
+- **Kein Schutz gegen Endlosschleifen:** Ein Plugin, das seinen Prozess auslastet, bremst
+  nur sich selbst (eigener Renderer-Prozess), wird aber nicht automatisch beendet.
+- **Keine Installation per Klick, keine Updates, keine Signaturen:** Plugins werden von
+  Hand in den Ordner kopiert.
+- **API noch nicht stabil:** Version 1 ist ein Entwurf; sie kann sich ändern, solange das
+  Feature „experimental“ ist.
 
 ## Begriffe
 

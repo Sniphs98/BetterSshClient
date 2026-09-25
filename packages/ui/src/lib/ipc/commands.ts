@@ -9,6 +9,8 @@ import type {
   HostDto,
   HostInputDto,
   ImportResultDto,
+  PluginCommandDto,
+  PluginDto,
   RemoteDesktopConnectionDto,
   RemoteDesktopConnectionInputDto,
   TerminalBytes,
@@ -330,5 +332,44 @@ export async function deleteRemoteDesktopConnection(id: string): Promise<void> {
  *  client process has been asked to start, not once the user is actually connected. */
 export async function rdpLaunch(connectionId: string): Promise<void> {
   const res = await commands.rdpLaunch(connectionId);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+// --- Plugins -----------------------------------------------------------------
+
+export async function listPlugins(): Promise<PluginDto[]> {
+  const res = await commands.listPlugins();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Re-read the plugins folder and restart the enabled ones. */
+export async function reloadPlugins(): Promise<PluginDto[]> {
+  const res = await commands.reloadPlugins();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Switch a plugin on (granting the permissions it lists) or off. */
+export async function setPluginEnabled(id: string, enabled: boolean): Promise<PluginDto[]> {
+  const res = await commands.setPluginEnabled(id, enabled);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+export async function openPluginsFolder(): Promise<void> {
+  const res = await commands.openPluginsFolder();
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+export async function listPluginCommands(): Promise<PluginCommandDto[]> {
+  const res = await commands.listPluginCommands();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Run a plugin's command; resolves once its handler finished, rejects with its error. */
+export async function runPluginCommand(pluginId: string, commandId: string, host?: string): Promise<void> {
+  const res = await commands.runPluginCommand(pluginId, commandId, host);
   if (res.status === 'error') throw new Error(res.error.message);
 }

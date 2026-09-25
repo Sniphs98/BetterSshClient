@@ -38,6 +38,8 @@ vi.mock('$lib/bindings', () => {
       keySetupFailed: channel('keySetupFailed'),
       keySetupRollback: channel('keySetupRollback'),
       updateAvailable: channel('updateAvailable'),
+      pluginCommandsChanged: channel('pluginCommandsChanged'),
+      pluginShowText: channel('pluginShowText'),
       updateDownloadProgress: channel('updateDownloadProgress'),
       updateDownloaded: channel('updateDownloaded'),
       error: channel('error')

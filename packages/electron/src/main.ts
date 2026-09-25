@@ -13,6 +13,7 @@ import { registerSftpIpc } from './ipc/sftp.js';
 import { registerSystemIpc } from './ipc/system.js';
 import { registerTerminalIpc } from './ipc/terminal.js';
 import { registerUpdateIpc } from './ipc/update.js';
+import { PluginManager, registerPluginsIpc } from './ipc/plugins.js';
 import { loadAllHosts } from './core/config/hosts.js';
 import { setSecretCipher } from './core/config/secretCipher.js';
 import { GuiState } from './state/guiState.js';
@@ -128,6 +129,8 @@ app.whenReady().then(async () => {
   registerAutomationsIpc(ipcMain, state);
   registerRemoteDesktopIpc(ipcMain);
   registerRdpIpc(ipcMain);
+  const plugins = new PluginManager(state);
+  registerPluginsIpc(ipcMain, plugins);
 
   // Pre-load the shared host config so the first `list_hosts` paints
   // immediately, before the renderer's own `reload_hosts` call. A load
@@ -139,6 +142,11 @@ app.whenReady().then(async () => {
   }
 
   mainWindow = createWindow();
+
+  // Plugins start once the window exists, so the commands they register reach it.
+  // A broken plugin is reported in Settings, never allowed to stop the app.
+  void plugins.reload().catch((e) => console.error('plugins failed to load:', e));
+  app.on('before-quit', () => plugins.host.stopAll());
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();

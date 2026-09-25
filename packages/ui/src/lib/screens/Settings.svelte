@@ -13,6 +13,7 @@
   import { offerUpdate } from '$lib/stores/update';
   import { lastError } from '$lib/stores/notifications';
   import { checkUpdate, loadUpdateConfig, saveUpdateConfig } from '$lib/ipc/commands';
+  import PluginSettings from './PluginSettings.svelte';
 
   const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
   const formatInterval = (secs: number): string => (secs < 60 ? `${secs}s` : `${secs / 60}m`);
@@ -294,5 +295,7 @@
         </div>
       </div>
     </Surface>
+
+    <PluginSettings />
   </div>
 </section>

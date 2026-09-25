@@ -1,0 +1,9 @@
+{
+  "id": "docker-containers",
+  "name": "Docker containers",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "main": "main.js",
+  "description": "Lists the Docker containers on a host, from the command palette.",
+  "permissions": ["hosts:exec"]
+}
