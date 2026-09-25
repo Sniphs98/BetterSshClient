@@ -1,6 +1,6 @@
 import { clipboard, shell, type IpcMain } from 'electron';
 
-import { loadRemoteDesktopConnections, type RemoteDesktopConnection } from '../core/config/remoteDesktop.js';
+import { loadRemoteDesktopConnections, type RdpSettings, type RemoteDesktopConnection } from '../core/config/remoteDesktop.js';
 import { launchRdp, pendingCredentialHosts, type RdpLaunchResult } from '../core/rdp/launch.js';
 import { openTunnel, tunnelAddress, type RdpTunnel } from '../core/rdp/tunnel.js';
 import { removeCredentialsOnQuit, sweepStagedCredentials } from '../core/rdp/windowsCredentials.js';
@@ -26,14 +26,24 @@ export function offerPasswordOnClipboard(password: string, board: TextClipboard 
 }
 
 /** What the user should know about a launch that went through, if anything. */
-export function launchNotice(result: Pick<RdpLaunchResult, 'credential' | 'opened'>, passwordOnClipboard = false): string | undefined {
+export function launchNotice(
+  result: Pick<RdpLaunchResult, 'credential' | 'opened' | 'redirectionPrompt'>,
+  settings: Pick<RdpSettings, 'drives' | 'clipboard'> = {},
+  passwordOnClipboard = false
+): string | undefined {
+  const notes: string[] = [];
   if (result.credential === 'kept-existing') {
-    return 'Windows already has a saved password for this host, so Remote Desktop uses that one instead of the one stored here.';
+    notes.push('Windows already has a saved password for this host, so Remote Desktop uses that one instead of the one stored here.');
+  }
+  // Windows switches everything off in its prompt for .rdp files; say what to tick.
+  const toTick = [settings.drives && 'Drives', settings.clipboard !== false && 'Clipboard'].filter(Boolean);
+  if (result.redirectionPrompt && settings.drives) {
+    notes.push(`Windows asks before sharing anything: tick ${toTick.join(' and ')} in its security prompt before you connect.`);
   }
   if (passwordOnClipboard) {
-    return `The password is on the clipboard for ${CLIPBOARD_CLEAR_MS / 1000} seconds — paste it when Remote Desktop asks for it. Installing FreeRDP lets the app sign in for you.`;
+    notes.push(`The password is on the clipboard for ${CLIPBOARD_CLEAR_MS / 1000} seconds — paste it when Remote Desktop asks for it. Installing FreeRDP lets the app sign in for you.`);
   }
-  return undefined;
+  return notes.length > 0 ? notes.join(' ') : undefined;
 }
 
 /** Tunnels still open, for `before-quit`. */
@@ -85,7 +95,7 @@ export function registerRdpIpc(ipcMain: IpcMain, state: GuiState): void {
         }
         // With a client to watch, the tunnel goes with it; otherwise it closes once idle.
         if (tunnel) result.child?.once('exit', () => tunnel.close());
-        return { notice: launchNotice(result, result.opened === 'file' && Boolean(connection.password)) };
+        return { notice: launchNotice(result, connection, result.opened === 'file' && Boolean(connection.password)) };
       } catch (err) {
         tunnel?.close();
         throw err;

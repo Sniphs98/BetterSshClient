@@ -44,7 +44,18 @@ describe('launchNotice', () => {
   });
 
   it('says where the password went when it had to go on the clipboard', () => {
-    expect(launchNotice({ opened: 'file' }, true)).toContain('on the clipboard for 45 seconds');
+    expect(launchNotice({ opened: 'file' }, {}, true)).toContain('on the clipboard for 45 seconds');
+  });
+
+  it("says what to tick in Windows' prompt for .rdp files, which shares nothing by default", () => {
+    expect(launchNotice({ opened: 'mstsc', redirectionPrompt: true }, { drives: true, clipboard: true })).toContain(
+      'tick Drives and Clipboard in its security prompt'
+    );
+    expect(launchNotice({ opened: 'mstsc', redirectionPrompt: true }, { drives: true, clipboard: false })).toContain(
+      'tick Drives in its security prompt'
+    );
+    // Without drives there's nothing to tick: the clipboard off or sound elsewhere need no consent.
+    expect(launchNotice({ opened: 'mstsc', redirectionPrompt: true }, { clipboard: false })).toBeUndefined();
   });
 
   it('has nothing to say about an ordinary launch', () => {

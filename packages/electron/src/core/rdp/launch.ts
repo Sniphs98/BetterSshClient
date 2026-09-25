@@ -29,6 +29,45 @@ export interface RdpLaunchResult {
   /** The started client, for a caller that ties something (an SSH tunnel) to its
    *  lifetime. Absent for `'file'`. */
   child?: ChildProcess;
+  /** Windows only: mstsc opened a `.rdp` file, so Windows shows its security prompt,
+   *  where drives and clipboard must be ticked to be shared (see `needsRdpFile`). */
+  redirectionPrompt?: boolean;
+}
+
+/**
+ * Whether mstsc has to be given a `.rdp` file rather than just an address.
+ *
+ * Since Windows' April 2026 update (CVE-2026-26151), every unsigned `.rdp` file opens a
+ * security prompt in which drives, clipboard and the like are all switched off until
+ * ticked, each time — whatever the file asks for. A connection started with
+ * `mstsc /v:` counts as typed in by hand and gets neither the prompt nor the
+ * restriction; it uses mstsc's own defaults (clipboard on, drives off, sound here).
+ * So the file is only used for what `/v:` can't express: local drives, the clipboard
+ * off, sound elsewhere — and a username to prefill when there's no password to
+ * stage with it. Verified against a real Windows, see docker/windows-rdp-target.
+ */
+export function needsRdpFile(connection: Pick<RemoteDesktopConnection, 'username' | 'password'> & RdpSettings): boolean {
+  return (
+    Boolean(connection.drives) ||
+    connection.clipboard === false ||
+    (connection.audio !== undefined && connection.audio !== 'local') ||
+    Boolean(connection.username && !connection.password)
+  );
+}
+
+/** `mstsc` arguments for a connection without a `.rdp` file. */
+export function mstscArgs(connection: Pick<RemoteDesktopConnection, 'hostname' | 'port'> & RdpSettings): string[] {
+  // mstsc splits its own command line: a hostname must not carry further switches.
+  if (!/^[A-Za-z0-9.\-:[\]]+$/.test(connection.hostname)) {
+    throw new Error(`'${connection.hostname}' is not a valid hostname or IP address`);
+  }
+  const args = [`/v:${connection.hostname}:${connection.port}`];
+  if (connection.display === 'fullscreen') args.push('/f');
+  if (connection.display === 'window' && connection.width && connection.height) {
+    args.push(`/w:${connection.width}`, `/h:${connection.height}`);
+  }
+  if (connection.multiMonitor) args.push('/multimon');
+  return args;
 }
 
 /**
@@ -263,20 +302,21 @@ async function launchWindows(connection: RemoteDesktopConnection): Promise<RdpLa
 
   let filePath: string | undefined;
   try {
-    filePath = await writeRdpFile(connection);
+    const viaFile = needsRdpFile(connection);
+    if (viaFile) filePath = await writeRdpFile(connection);
     // Never `windowsHide`: Windows hands that on as SW_HIDE to mstsc's first window,
     // and without a screen mode in the profile mstsc keeps it — a session that runs,
     // connected, with no window anywhere.
-    const child = spawn('mstsc.exe', [filePath], { detached: true, stdio: 'ignore' });
+    const child = spawn('mstsc.exe', filePath ? [filePath] : mstscArgs(connection), { detached: true, stdio: 'ignore' });
     await started(child, 'Remote Desktop (mstsc.exe)');
     child.unref();
     const file = filePath;
     child.once('exit', () => {
       dropCredential();
-      void rm(dirname(file), { recursive: true, force: true }).catch(() => {});
+      if (file) void rm(dirname(file), { recursive: true, force: true }).catch(() => {});
     });
     if (!dropped && child.pid !== undefined) watchForConnection(child.pid);
-    return { opened: 'mstsc', filePath, credential, child };
+    return { opened: 'mstsc', filePath, credential, child, redirectionPrompt: viaFile };
   } catch (err) {
     dropCredential();
     if (filePath) void rm(dirname(filePath), { recursive: true, force: true }).catch(() => {});

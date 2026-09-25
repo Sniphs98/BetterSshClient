@@ -29,6 +29,8 @@ const {
   freerdpSettingArgs,
   freerdpStdin,
   launchRdp,
+  mstscArgs,
+  needsRdpFile,
   pendingCredentialHosts,
   rdpSettingLines,
   selectRdpStrategy,
@@ -158,6 +160,34 @@ describe('hasConnection', () => {
   });
 });
 
+describe('starting mstsc without a .rdp file', () => {
+  it('is how every connection goes that does not need one', () => {
+    expect(needsRdpFile({ username: 'a', password: 'p' })).toBe(false);
+    expect(needsRdpFile({ username: 'a', password: 'p', clipboard: true, audio: 'local', multiMonitor: true })).toBe(false);
+  });
+
+  it('is not possible for drives, the clipboard off, sound elsewhere, or a username to prefill', () => {
+    expect(needsRdpFile({ drives: true })).toBe(true);
+    expect(needsRdpFile({ clipboard: false })).toBe(true);
+    expect(needsRdpFile({ audio: 'remote' })).toBe(true);
+    expect(needsRdpFile({ username: 'a' })).toBe(true);
+  });
+
+  it('passes display settings as mstsc switches', () => {
+    expect(mstscArgs({ hostname: 'pc.local', port: 3389 })).toEqual(['/v:pc.local:3389']);
+    expect(mstscArgs({ hostname: '10.0.0.5', port: 13389, display: 'window', width: 1280, height: 720, multiMonitor: true })).toEqual([
+      '/v:10.0.0.5:13389',
+      '/w:1280',
+      '/h:720',
+      '/multimon'
+    ]);
+  });
+
+  it('refuses a hostname that would smuggle in more switches', () => {
+    expect(() => mstscArgs({ hostname: 'pc /admin', port: 3389 })).toThrow('not a valid hostname');
+  });
+});
+
 describe('selectRdpStrategy', () => {
   it('always chooses mstsc on Windows, regardless of xfreerdp', () => {
     expect(selectRdpStrategy('win32', false)).toBe('mstsc');
@@ -238,16 +268,18 @@ describe('launchRdp', () => {
     vi.useRealTimers();
   });
 
-  it('on Windows: stages the password, spawns mstsc with a .rdp file, and drops it again on exit', async () => {
+  it('on Windows: stages the password, starts mstsc on the address alone, and drops it again on exit', async () => {
     setPlatform('win32');
     const child = fakeChild();
 
-    const result = await launchRdp(connection({ username: 'admin', password: 'secret' }));
+    const result = await launchRdp(connection({ username: 'admin', password: 'secret', display: 'fullscreen' }));
 
     expect(result.opened).toBe('mstsc');
     expect(result.credential).toBe('staged');
+    expect(result.filePath).toBeUndefined();
+    expect(result.redirectionPrompt).toBe(false);
     expect(stageMock).toHaveBeenCalledWith('10.0.0.5', 'admin', 'secret');
-    expect(spawnMock).toHaveBeenCalledWith('mstsc.exe', [result.filePath], expect.objectContaining({ detached: true }));
+    expect(spawnMock).toHaveBeenCalledWith('mstsc.exe', ['/v:10.0.0.5:3389', '/f'], expect.objectContaining({ detached: true }));
     // Hidden, mstsc's window may never show up (found against a real Windows).
     expect(spawnMock.mock.calls[0][2]).not.toHaveProperty('windowsHide');
     // Nothing spawned carries the password.
@@ -259,6 +291,17 @@ describe('launchRdp', () => {
     expect(removeMock).toHaveBeenCalledTimes(1);
     expect(removeMock).toHaveBeenCalledWith('10.0.0.5');
     expect(pendingCredentialHosts.has('10.0.0.5')).toBe(false);
+  });
+
+  it('on Windows: opens a .rdp file only for what an address alone cannot say — local drives', async () => {
+    setPlatform('win32');
+    fakeChild();
+
+    const result = await launchRdp(connection({ username: 'admin', password: 'secret', drives: true }));
+
+    expect(result.redirectionPrompt).toBe(true);
+    expect(spawnMock).toHaveBeenCalledWith('mstsc.exe', [result.filePath], expect.anything());
+    expect(result.filePath).toMatch(/\.rdp$/);
   });
 
   it('on Windows: keeps the credential while mstsc waits on its warnings, drops it once mstsc has connected', async () => {
