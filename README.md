@@ -65,8 +65,8 @@ for what works, what's in progress, and what's still planned.
 | Terminal | SFTP |
 |:-:|:-:|
 | <img src="assets/terminal.png" alt="Terminal tabs" width="440"> | <img src="assets/sftp.png" alt="Two-panel SFTP browser" width="440"> |
-| **Automations** | **Settings** |
-| <img src="assets/automations.png" alt="Automation canvas" width="440"> | <img src="assets/settings.png" alt="Settings screen" width="440"> |
+| **Automations** | **Remote desktop** |
+| <img src="assets/automations.png" alt="Automation canvas" width="440"> | <img src="assets/remote-desktop.png" alt="A Windows remote desktop open in a tab inside the app" width="440"> |
 
 ---
 
