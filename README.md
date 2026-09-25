@@ -55,6 +55,7 @@ for what works, what's in progress, and what's still planned.
 | 💡 | **AI integration** *(maybe in the future)* | Help with commands, explain output or errors, right in the terminal. |
 | 💡 | **Plugin system** *(maybe in the future)* | Extend the app with your own features without touching the core. |
 | 💡 | **1Password integration** *(maybe in the future)* | Use SSH keys and passwords straight from your 1Password vault. |
+| 💡 | **Local terminals** *(maybe in the future)* | Open WSL distros, PowerShell or cmd right in the app, like Windows Terminal — no SSH needed. |
 
 ✅ done · 🚧 in progress · 📋 planned · 💡 maybe in the future
 
