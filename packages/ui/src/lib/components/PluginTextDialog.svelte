@@ -8,9 +8,11 @@
 {#if $pluginText}
   {@const shown = $pluginText}
   <Modal label="{shown.pluginName}: {shown.title}" size="large" onClose={() => pluginText.set(null)}>
-    <h2 class="text-sm font-semibold">{shown.title}</h2>
-    <p class="mb-3 text-xs text-faint">From the plugin “{shown.pluginName}”</p>
-    <pre
-      class="max-h-[60vh] overflow-auto whitespace-pre rounded-lg bg-surface-inset p-3 font-mono text-xs text-fg select-text">{shown.text}</pre>
+    <div class="flex min-h-0 flex-col p-6">
+      <h2 class="text-sm font-semibold">{shown.title}</h2>
+      <p class="mb-4 text-xs text-faint">From the plugin “{shown.pluginName}”</p>
+      <pre
+        class="min-h-0 overflow-auto whitespace-pre rounded-lg bg-surface-inset p-4 font-mono text-xs text-fg select-text">{shown.text}</pre>
+    </div>
   </Modal>
 {/if}

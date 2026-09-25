@@ -237,10 +237,12 @@
 
 {#if docs}
   <Modal label="{docs.name} documentation" size="large" onClose={() => (docs = null)}>
-    <p class="mb-3 text-xs text-faint">Documentation from the plugin “{docs.name}”</p>
+    <p class="shrink-0 border-b border-default px-8 py-3 text-xs text-faint">
+      Documentation from the plugin “{docs.name}”
+    </p>
     <!-- Sanitised by renderUntrustedMarkdown: no scripts, handlers, frames or images. -->
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div class="plugin-docs max-h-[65vh] overflow-auto select-text" onclick={onDocsClick}>
+    <div class="plugin-docs min-h-0 flex-1 overflow-auto px-8 pb-8 pt-6 select-text" onclick={onDocsClick}>
       {@html docs.html}
     </div>
   </Modal>
