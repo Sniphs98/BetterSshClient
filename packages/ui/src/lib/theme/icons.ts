@@ -29,4 +29,5 @@ export type IconName =
   | 'arrow-left'
   | 'eye'
   | 'eye-off'
-  | 'monitor';
+  | 'monitor'
+  | 'plugin';

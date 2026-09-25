@@ -158,13 +158,13 @@ Meldung statt eines Absturzes.
 
 ## 10. Prototyp: Code-Plugins im Sandkasten (Weg B)
 
-Gebaut, um auszuprobieren, wie sich Weg B anfühlt. In den Settings als **experimental**
-markiert.
+Gebaut, um auszuprobieren, wie sich Weg B anfühlt. Eigene Seite **Plugins** (Puzzle-Knopf
+unten in der Sidebar, links neben dem Zahnrad), als **experimental** markiert.
 
 ### Wie es funktioniert
 
 ```
- plugins/<id>/plugin.json  ──►  Loader prüft Manifest  ──►  Settings: Liste + Schalter
+ plugins/<id>/plugin.json  ──►  Loader prüft Manifest  ──►  Seite Plugins: Karten + Schalter
                                                                      │ einschalten = Zustimmung
                                                                      ▼
                      unsichtbares Fenster pro Plugin (Sandkasten)
@@ -188,11 +188,11 @@ markiert.
   Nutzer beim Einschalten erteilt hat. Verlangt ein Plugin nach einem Update neue Rechte,
   ist es wieder aus, bis man es erneut einschaltet.
 - **Kaputte Plugins** (falsches JSON, unbekannte API-Version, fehlende Datei) erscheinen
-  in den Settings mit ihrer Fehlermeldung und stören den Rest nicht.
+  auf der Plugins-Seite mit ihrer Fehlermeldung und stören den Rest nicht.
 
 ### Ein Plugin schreiben
 
-Ein Ordner im Plugin-Verzeichnis (Settings → Plugins → *Open folder*), Ordnername = `id`:
+Ein Ordner im Plugin-Verzeichnis (Seite Plugins → Ordner-Knopf oben rechts), Ordnername = `id`:
 
 ```
 plugins/
@@ -233,7 +233,7 @@ den Befehl selbst auswählst.
 
 | Funktion | Was sie tut | Recht |
 |---|---|---|
-| `bssh.commands.register(id, title, { needsHost }, handler)` | Befehl in der Befehlspalette (Ctrl+K). Mit `needsHost: true` wählt der Nutzer vorher einen Host; der Handler bekommt `{ host }`. | – |
+| `bssh.commands.register(id, title, { needsHost }, handler)` | Befehl in der Befehlspalette (Ctrl+K) und als Knopf auf der Karte des Plugins. Mit `needsHost: true` wählt der Nutzer vorher einen Host; der Handler bekommt `{ host }`. | – |
 | `bssh.hosts.list()` | Liste der Hosts (ohne Geheimnisse) | `hosts:read` |
 | `bssh.hosts.exec(host, command)` | Befehl ausführen; Ergebnis `{ output, ok, error? }` (stdout+stderr, 60 s Timeout) | `hosts:exec` |
 | `bssh.ui.showText(title, text)` | Text in einem Dialog anzeigen, immer mit dem Plugin-Namen beschriftet | – |

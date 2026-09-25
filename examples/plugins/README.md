@@ -3,9 +3,10 @@
 Plugins are **experimental**. They run sandboxed (no Node.js, no network unless declared)
 and can only do what their `plugin.json` lists, after you switch them on.
 
-To try one, copy its folder into the app's plugins folder (Settings → Plugins →
-**Open folder**), click **Reload**, and switch it on. Its commands then show up in the
-command palette (`Ctrl+K`).
+To try one, open the **Plugins** page (the puzzle button next to Settings), click the
+folder button to open the plugins folder, copy the plugin's folder into it, click reload,
+and switch the plugin on. Its commands show up on its card and in the command palette
+(`Ctrl+K`).
 
 | Plugin | What it does | Permissions |
 |---|---|---|

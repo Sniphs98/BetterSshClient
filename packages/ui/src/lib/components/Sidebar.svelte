@@ -252,6 +252,19 @@
       <Icon name="command" />
     </Button>
     <ThemeToggle />
+    <!-- Plugins, like Settings below, is a selector-like screen with an icon-only button. -->
+    <button
+      type="button"
+      class="grid h-9 w-9 place-items-center rounded-full transition {focusRing} {$activeEntity.kind === 'plugins'
+        ? 'bg-accent text-accent-fg'
+        : 'text-muted hover:bg-surface-inset hover:text-fg'}"
+      title="Plugins"
+      aria-label="Plugins"
+      aria-current={$activeEntity.kind === 'plugins' ? 'page' : undefined}
+      onclick={() => activeEntity.selectPlugins()}
+    >
+      <Icon name="plugin" />
+    </button>
     <!-- Settings is a selector-like screen; the gear holds the active highlight like
          Dashboard/Snippets do, and stays icon-only so it survives collapse (§5.1). -->
     <button

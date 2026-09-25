@@ -15,6 +15,7 @@
   import AutomationEditor from '$lib/screens/AutomationEditor.svelte';
   import RemoteDesktop from '$lib/screens/RemoteDesktop.svelte';
   import Settings from '$lib/screens/Settings.svelte';
+  import Plugins from '$lib/screens/Plugins.svelte';
   import TerminalView from '$lib/screens/TerminalView.svelte';
   import SftpView from '$lib/screens/SftpView.svelte';
 
@@ -34,6 +35,7 @@
       $activeEntity.kind === 'automations' ||
       $activeEntity.kind === 'remoteDesktop' ||
       $activeEntity.kind === 'settings' ||
+      $activeEntity.kind === 'plugins' ||
       $activeEntity.kind === 'automation'
   );
 </script>
@@ -68,6 +70,8 @@
             {/key}
           {:else if $activeEntity.kind === 'settings'}
             <Settings />
+          {:else if $activeEntity.kind === 'plugins'}
+            <Plugins />
           {/if}
         </div>
       </div>
