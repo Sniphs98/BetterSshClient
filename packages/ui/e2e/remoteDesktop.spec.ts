@@ -258,3 +258,12 @@ test('Connect opens the remote desktop in a tab, with the external app as the wa
   await page.getByRole('button', { name: 'Connect to office-pc' }).click();
   await expect(page.getByRole('button', { name: 'office-pc · rdp' })).toHaveCount(1);
 });
+
+test('reopened in Remote Desktop mode, the app shows Remote Desktop, not the SSH dashboard', async ({ page }) => {
+  // What the switch remembers from the last run.
+  await page.addInitScript(() => localStorage.setItem('better-ssh-client-sidebar-mode', 'remoteDesktop'));
+  await boot(page);
+  await expect(page.getByRole('heading', { name: 'Remote Desktop' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Switch to SSH' })).toBeVisible();
+});
