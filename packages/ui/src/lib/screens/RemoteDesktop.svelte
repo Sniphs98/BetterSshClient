@@ -14,7 +14,8 @@
   } from '$lib/ipc/commands';
   import { remoteDesktopConnections } from '$lib/stores/remoteDesktop';
   import { lastError } from '$lib/stores/notifications';
-  import { filterConnections, emptyForm, formFromConnection } from './remoteDesktopForm';
+  import { describeSettings, filterConnections, emptyForm, formFromConnection } from './remoteDesktopForm';
+  import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import RemoteDesktopEditor from './RemoteDesktopEditor.svelte';
   import Modal from '$lib/components/Modal.svelte';
 
@@ -84,11 +85,11 @@
     'font-medium text-muted transition hover:border-strong hover:bg-accent hover:text-accent-fg ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
   const iconBtn =
-    'grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-inset ' +
+    'grid h-7 w-7 place-items-center rounded-lg text-muted transition hover:bg-surface-inset ' +
     'hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
 </script>
 
-<section class="flex h-full flex-col px-6 pb-6 pt-3">
+<section class="min-h-full px-6 pb-8 pt-3">
   <div class="mb-5 flex items-center gap-3">
     <h1 class="text-lg font-semibold tracking-tight">Remote Desktop</h1>
     <div class="ml-auto w-full max-w-xs">
@@ -118,21 +119,42 @@
       {/if}
     </div>
   {:else}
-    <ul class="min-h-0 flex-1 space-y-2 overflow-y-auto">
+    <!-- Tiles like the dashboard's server cards: identity, actions on their own row,
+         then what connecting will do. -->
+    <div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
       {#each filtered as connection (connection.id)}
-        <li>
-          <Surface class="flex items-center gap-4 p-4">
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="truncate font-medium" title={connection.name}>{connection.name}</span>
-                <Chip>{connection.protocol}</Chip>
-              </div>
-              <div class="mt-1 truncate font-mono text-xs text-muted">
-                {connection.username ? `${connection.username}@` : ''}{connection.hostname}:{connection.port}
-                {#if connection.viaHost}<span class="font-sans"> · via {connection.viaHost}</span>{/if}
+        <Surface class="flex flex-col gap-4 p-5">
+          <div class="flex flex-col gap-3">
+            <div class="flex min-w-0 items-start gap-3">
+              <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted">
+                <Icon name="monitor" size={16} />
+              </span>
+              <div class="min-w-0">
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="truncate font-medium" title={connection.name}>{connection.name}</span>
+                  <span
+                    class="shrink-0 rounded-full border border-default px-1.5 py-0.5 text-[10px] uppercase text-faint"
+                    >{connection.protocol}</span
+                  >
+                  {#if connection.hasPassword}
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
+                      title="Password saved — signs in by itself"
+                    >
+                      <Icon name="key" size={10} />
+                      saved
+                    </span>
+                  {/if}
+                </div>
+                <div class="truncate font-mono text-xs text-faint">
+                  {connection.username ? `${connection.domain ? `${connection.domain}\\` : ''}${connection.username}@` : ''}{displayHostname(
+                    connection.hostname,
+                    $streamerMode
+                  )}:{connection.port}
+                </div>
               </div>
             </div>
-            <div class="flex shrink-0 items-center gap-1.5">
+            <div class="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 class={pill}
@@ -151,7 +173,7 @@
                 aria-label="Edit {connection.name}"
                 onclick={() => (dialog = { kind: 'edit', connection })}
               >
-                <Icon name="edit" size={15} />
+                <Icon name="edit" size={14} />
               </button>
               <button
                 type="button"
@@ -160,13 +182,32 @@
                 aria-label="Delete {connection.name}"
                 onclick={() => (dialog = { kind: 'delete', connection })}
               >
-                <Icon name="trash" size={15} />
+                <Icon name="trash" size={14} />
               </button>
             </div>
-          </Surface>
-        </li>
+          </div>
+
+          <div class="rounded-lg bg-surface-inset px-3 py-2.5 text-xs">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-[11px] uppercase tracking-wider text-faint">Route</span>
+              <span class="min-w-0 truncate text-muted">
+                {#if connection.viaHost}
+                  via {connection.viaHost} <span class="text-faint">(SSH tunnel)</span>
+                {:else}
+                  direct
+                {/if}
+              </span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5">
+            {#each describeSettings(connection) as setting (setting)}
+              <Chip>{setting}</Chip>
+            {/each}
+          </div>
+        </Surface>
       {/each}
-    </ul>
+    </div>
   {/if}
 </section>
 

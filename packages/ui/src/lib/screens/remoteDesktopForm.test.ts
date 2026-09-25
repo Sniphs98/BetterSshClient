@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteDesktopConnectionDto } from '$lib/bindings';
-import { defaultPort, emptyForm, filterConnections, formFromConnection, formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
+import { defaultPort, describeSettings, emptyForm, filterConnections, formFromConnection, formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
 
 function fields(partial: Partial<RemoteDesktopFormFields>): RemoteDesktopFormFields {
   return { ...emptyForm(), ...partial };
@@ -151,5 +151,25 @@ describe('RDP settings in the form', () => {
   it('round-trip through a saved connection', () => {
     const f = formFromConnection(connection({ display: 'window', width: 1280, height: 720, clipboard: false, audio: 'off' }));
     expect(f).toMatchObject({ display: 'window', width: '1280', height: '720', clipboard: false, audio: 'off', drives: false });
+  });
+});
+
+describe('describeSettings', () => {
+  it('names what is set, in a few words each', () => {
+    expect(describeSettings({ display: 'window', width: 1280, height: 720, clipboard: true, drives: true, audio: 'off' })).toEqual([
+      'Window 1280×720',
+      'Clipboard',
+      'Drives',
+      'No sound'
+    ]);
+    expect(describeSettings({ display: 'fullscreen', multiMonitor: true, audio: 'remote' })).toEqual([
+      'Full screen',
+      'All monitors',
+      'Sound on remote'
+    ]);
+  });
+
+  it('says so when everything is left to the client', () => {
+    expect(describeSettings({ clipboard: false, audio: 'local' })).toEqual(['Client defaults']);
   });
 });

@@ -5,11 +5,12 @@
   // round (see remoteDesktopForm.ts) — no protocol picker yet.
   import { onMount } from 'svelte';
   import type { RemoteDesktopConnectionInputDto } from '$lib/bindings';
-  import { Button } from '$lib/theme';
+  import { Button, Icon } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
   import Select from '$lib/components/Select.svelte';
+  import Switch from '$lib/components/Switch.svelte';
   import { hosts } from '$lib/stores/hosts';
-  import { formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
+  import { describeSettings, formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
 
   let {
     mode,
@@ -62,12 +63,18 @@
   });
 
   // Starts open when the profile already deviates from the defaults (seeded once, like `fields`).
-  // svelte-ignore state_referenced_locally
-  const initialHasSettings =
-    initial.display !== '' || initial.multiMonitor || !initial.clipboard || initial.drives || initial.audio !== 'local';
+  let settingsOpen = $state(
+    // svelte-ignore state_referenced_locally
+    initial.display !== '' || initial.multiMonitor || !initial.clipboard || initial.drives || initial.audio !== 'local'
+  );
+  // Shown on the collapsed header, so what's set is visible without opening it.
+  const settingsSummary = $derived(describeSettings(fields).join(' · '));
+
+  // Windows asks before sharing drives from a .rdp file (see core/rdp/launch.ts).
+  const onWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
 
   const label = 'block space-y-1 text-xs font-medium text-muted';
-  const check = 'flex items-center gap-2 text-fg';
+  const row = 'flex items-center justify-between gap-4 px-3.5 py-3';
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
@@ -140,9 +147,36 @@
         />
       </label>
 
-      <details class="rounded-lg border border-default px-3 py-2" open={initialHasSettings}>
-        <summary class="cursor-pointer text-xs font-medium text-muted">Display &amp; devices</summary>
-        <div class="mt-3 space-y-3.5 pb-1">
+      <section class="rounded-xl border border-default bg-surface-inset/40">
+        <button
+          type="button"
+          class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-surface-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          aria-expanded={settingsOpen}
+          aria-controls="rdp-display-devices"
+          onclick={() => (settingsOpen = !settingsOpen)}
+        >
+          <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted">
+            <Icon name="monitor" size={15} />
+          </span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-medium">Display &amp; devices</span>
+            <span class="block truncate text-xs text-faint">{settingsSummary}</span>
+          </span>
+          <svg
+            class="h-3 w-3 shrink-0 text-faint transition-transform {settingsOpen ? 'rotate-180' : ''}"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 4.5 6 7.5 9 4.5" />
+          </svg>
+        </button>
+        {#if settingsOpen}
+        <div id="rdp-display-devices" class="space-y-4 border-t border-default px-4 pb-4 pt-4">
           <div class="grid grid-cols-[1fr,6rem,6rem] gap-3">
             <label class={label}>
               <span>Display</span>
@@ -173,22 +207,35 @@
             </Select>
           </label>
 
-          <div class="space-y-2 text-sm">
-            <label class={check}>
-              <input type="checkbox" bind:checked={fields.multiMonitor} />
-              Use all my monitors
-            </label>
-            <label class={check}>
-              <input type="checkbox" bind:checked={fields.clipboard} />
-              Share the clipboard
-            </label>
-            <label class={check}>
-              <input type="checkbox" bind:checked={fields.drives} />
-              Make my local drives available on the remote computer
-            </label>
+          <div class="divide-y divide-[var(--border)] rounded-lg bg-surface-inset/60">
+            <div class={row}>
+              <div class="min-w-0">
+                <p class="text-sm">Use all my monitors</p>
+                <p class="text-xs text-muted">The remote desktop spans every screen.</p>
+              </div>
+              <Switch bind:checked={fields.multiMonitor} label="Use all my monitors" />
+            </div>
+            <div class={row}>
+              <div class="min-w-0">
+                <p class="text-sm">Share the clipboard</p>
+                <p class="text-xs text-muted">Copy here, paste there — and back.</p>
+              </div>
+              <Switch bind:checked={fields.clipboard} label="Share the clipboard" />
+            </div>
+            <div class={row}>
+              <div class="min-w-0">
+                <p class="text-sm">Share my drives</p>
+                <p class="text-xs text-muted">
+                  Your local drives show up on the remote computer.{#if onWindows}{" "}
+                    Windows asks each time: tick <span class="text-fg">Drives</span> in its security prompt.{/if}
+                </p>
+              </div>
+              <Switch bind:checked={fields.drives} label="Share my drives" />
+            </div>
           </div>
         </div>
-      </details>
+        {/if}
+      </section>
 
       {#if error}
         <p class="text-xs text-status-crit">{error}</p>

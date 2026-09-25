@@ -157,3 +157,26 @@ export function filterConnections(list: RemoteDesktopConnectionDto[], query: str
   if (!q) return list;
   return list.filter((c) => c.name.toLowerCase().includes(q) || c.hostname.toLowerCase().includes(q));
 }
+
+/** The display & device settings of a profile, or of the form being edited, in a few
+ *  words each — for the collapsed settings header and the connection tiles. Anything
+ *  left to the client isn't mentioned. */
+export function describeSettings(s: {
+  display?: string | null;
+  width?: string | number | null;
+  height?: string | number | null;
+  multiMonitor?: boolean | null;
+  clipboard?: boolean | null;
+  drives?: boolean | null;
+  audio?: string | null;
+}): string[] {
+  const out: string[] = [];
+  if (s.display === 'fullscreen') out.push('Full screen');
+  if (s.display === 'window') out.push(s.width && s.height ? `Window ${s.width}×${s.height}` : 'Window');
+  if (s.multiMonitor) out.push('All monitors');
+  if (s.clipboard) out.push('Clipboard');
+  if (s.drives) out.push('Drives');
+  if (s.audio === 'remote') out.push('Sound on remote');
+  if (s.audio === 'off') out.push('No sound');
+  return out.length > 0 ? out : ['Client defaults'];
+}

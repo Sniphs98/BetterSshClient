@@ -158,8 +158,10 @@ test('a connection through an SSH host, with display and device settings', async
   await editor.getByLabel('Width').fill('1600');
   await editor.getByLabel('Height').fill('90');
   await editor.getByLabel('Sound').selectOption('off');
-  await editor.getByLabel('Share the clipboard').uncheck();
-  await editor.getByLabel('Make my local drives available on the remote computer').check();
+  await editor.getByRole('switch', { name: 'Share the clipboard' }).click();
+  await expect(editor.getByRole('switch', { name: 'Share the clipboard' })).toHaveAttribute('aria-checked', 'false');
+  await editor.getByRole('switch', { name: 'Share my drives' }).click();
+  await expect(editor.getByText('Window 1600×90 · Drives · No sound')).toBeVisible();
   await editor.screenshot({ path: 'test-results/rdp-editor-settings.png' });
 
   await editor.getByRole('button', { name: 'Add connection' }).click();
@@ -181,7 +183,9 @@ test('a connection through an SSH host, with display and device settings', async
     drives: true,
     multiMonitor: false
   });
-  await expect(page.getByText('· via bastion')).toBeVisible();
+  await expect(page.getByText('via bastion')).toBeVisible();
+  await expect(page.getByText('Window 1600×900', { exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/rdp-tiles.png' });
 
   // What the launch had to say is shown.
   await page.getByRole('button', { name: 'Connect to behind-bastion' }).click();
