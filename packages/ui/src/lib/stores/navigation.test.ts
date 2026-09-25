@@ -44,3 +44,41 @@ describe('navigation actions', () => {
     expect(get(activeEntity)).toEqual({ kind: 'session', id: b.id });
   });
 });
+
+describe('followSidebarMode', () => {
+  it('starts on the Remote Desktop screen when the app was left in Remote Desktop mode', async () => {
+    const { followSidebarMode, activeEntity } = await fresh();
+    const { sidebarMode } = await import('./sidebarMode');
+    sidebarMode.set('remoteDesktop');
+    const stop = followSidebarMode();
+    expect(get(activeEntity)).toEqual({ kind: 'remoteDesktop' });
+    stop();
+  });
+
+  it('follows the saved mode arriving after startup, back to SSH too', async () => {
+    const { followSidebarMode, activeEntity } = await fresh();
+    const { sidebarMode } = await import('./sidebarMode');
+    sidebarMode.set('ssh');
+    const stop = followSidebarMode();
+    expect(get(activeEntity)).toEqual({ kind: 'dashboard' });
+    sidebarMode.set('remoteDesktop');
+    expect(get(activeEntity)).toEqual({ kind: 'remoteDesktop' });
+    sidebarMode.set('ssh');
+    expect(get(activeEntity)).toEqual({ kind: 'dashboard' });
+    stop();
+  });
+
+  it('leaves open sessions and Settings alone', async () => {
+    const { followSidebarMode, spawnSession, activeEntity } = await fresh();
+    const { sidebarMode } = await import('./sidebarMode');
+    sidebarMode.set('ssh');
+    const stop = followSidebarMode();
+    const s = spawnSession('terminal', 'web-1');
+    sidebarMode.set('remoteDesktop');
+    expect(get(activeEntity)).toEqual({ kind: 'session', id: s.id });
+    activeEntity.selectSettings();
+    sidebarMode.set('ssh');
+    expect(get(activeEntity)).toEqual({ kind: 'settings' });
+    stop();
+  });
+});
