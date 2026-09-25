@@ -51,7 +51,7 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
 | ✅ | **Light & dark theme** | |
 | 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps. Usable, but still changing. |
-| 📋 | **Remote desktop (RDP)** *(to do)* | RDP profiles next to your SSH hosts, launched through the OS's own client. Not ready yet. |
+| 🚧 | **Remote desktop (RDP)** *(in progress)* | RDP profiles next to your SSH hosts, opened in the OS's own client (Remote Desktop on Windows, FreeRDP on Linux and macOS) and signed in automatically. Can tunnel through any SSH host, so machines behind a bastion work without exposing port 3389. Display, monitor, clipboard, drive and sound settings per profile. |
 | 💡 | **AI integration** *(maybe in the future)* | Help with commands, explain output or errors, right in the terminal. |
 | 💡 | **Plugin system** *(maybe in the future)* | Extend the app with your own features without touching the core. |
 | 💡 | **1Password integration** *(maybe in the future)* | Use SSH keys and passwords straight from your 1Password vault. |
@@ -132,6 +132,9 @@ npm run dev:electron     # build and start the app
 | `npm run test:e2e` | End-to-end UI tests (Playwright) |
 | `npm run test:integration` | Tests against a real SSH server (`docker compose up -d --build` first) |
 | `npm run package:dir` | An unpacked app for your system, in `release/` |
+
+To try Remote Desktop against a real Windows, there is an optional Windows 11 test
+machine in a container: see [docker/windows-rdp-target](docker/windows-rdp-target/README.md).
 
 ```
 packages/electron   Electron main process: SSH/SFTP engine, config, IPC
