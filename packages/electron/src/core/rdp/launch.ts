@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -31,10 +31,44 @@ export interface RdpLaunchResult {
   child?: ChildProcess;
 }
 
-/** How long a staged credential stays in the store when `mstsc` keeps running. It
- *  reads it when it connects, which is within a few seconds of starting — this only
- *  leaves room for a slow machine. Exit removes it sooner. */
-export const CREDENTIAL_HOLD_MS = 30_000;
+/**
+ * When a staged credential is taken out again. mstsc reads it when it connects —
+ * not when it starts: first Windows shows its own warnings about `.rdp` files, and
+ * the user may take a while over those (seen against a real Windows, see
+ * docker/windows-rdp-target). So the app watches for mstsc's connection to the
+ * server and removes the credential `CREDENTIAL_AFTER_CONNECT_MS` after it shows up;
+ * mstsc exiting removes it at once, and it never stays longer than
+ * `CREDENTIAL_HOLD_MS` in any case.
+ */
+export const CREDENTIAL_HOLD_MS = 5 * 60_000;
+export const CREDENTIAL_AFTER_CONNECT_MS = 5_000;
+const CONNECTION_POLL_MS = 1_000;
+
+/** Whether `netstat -ano -p TCP` output shows process `pid` connected (or
+ *  connecting) to remote port `port`. Only the columns are read, never the
+ *  state, whose name is localised ("ESTABLISHED", "HERGESTELLT", …). */
+export function hasConnection(netstat: string, pid: number, port: number): boolean {
+  return netstat.split(/\r?\n/).some((line) => {
+    const cols = line.trim().split(/\s+/);
+    return cols[0] === 'TCP' && cols.length >= 5 && cols[cols.length - 1] === String(pid) && cols[2].endsWith(`:${port}`);
+  });
+}
+
+export type ConnectionProbe = (pid: number, port: number) => Promise<boolean>;
+
+const netstatProbe: ConnectionProbe = (pid, port) =>
+  new Promise((resolve) => {
+    execFile('netstat', ['-ano', '-p', 'TCP'], { windowsHide: true, encoding: 'latin1' }, (err, stdout) =>
+      resolve(!err && hasConnection(stdout, pid, port))
+    );
+  });
+
+let connectionProbe: ConnectionProbe = netstatProbe;
+
+/** Swaps the netstat probe out, for tests. */
+export function setConnectionProbe(next: ConnectionProbe | null): void {
+  connectionProbe = next ?? netstatProbe;
+}
 
 /** Hostnames with a staged credential not yet removed, for `before-quit`. */
 export const pendingCredentialHosts = new Set<string>();
@@ -198,18 +232,34 @@ async function launchWindows(connection: RemoteDesktopConnection): Promise<RdpLa
     if (credential === 'staged') pendingCredentialHosts.add(hostname);
   }
 
-  // Whichever comes first — mstsc exiting or the hold running out — drops the credential.
+  // Whichever comes first — mstsc having connected, mstsc exiting, or the hold
+  // running out — drops the credential.
   let dropped = credential !== 'staged';
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
   const dropCredential = (): void => {
     if (dropped) return;
     dropped = true;
     clearTimeout(holdTimer);
+    clearTimeout(pollTimer);
     void removeCredential(hostname)
       .then(() => pendingCredentialHosts.delete(hostname))
       .catch(() => {});
   };
   const holdTimer = setTimeout(dropCredential, CREDENTIAL_HOLD_MS);
   holdTimer.unref?.();
+
+  const watchForConnection = (pid: number): void => {
+    const poll = async (): Promise<void> => {
+      if (dropped) return;
+      if (await connectionProbe(pid, connection.port)) {
+        pollTimer = setTimeout(dropCredential, CREDENTIAL_AFTER_CONNECT_MS);
+      } else if (!dropped) {
+        pollTimer = setTimeout(() => void poll(), CONNECTION_POLL_MS);
+      }
+      pollTimer?.unref?.();
+    };
+    void poll();
+  };
 
   let filePath: string | undefined;
   try {
@@ -222,6 +272,7 @@ async function launchWindows(connection: RemoteDesktopConnection): Promise<RdpLa
       dropCredential();
       void rm(file, { force: true }).catch(() => {});
     });
+    if (!dropped && child.pid !== undefined) watchForConnection(child.pid);
     return { opened: 'mstsc', filePath, credential, child };
   } catch (err) {
     dropCredential();

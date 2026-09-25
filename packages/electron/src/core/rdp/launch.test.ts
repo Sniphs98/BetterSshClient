@@ -21,7 +21,9 @@ vi.mock('./windowsCredentials.js', () => ({
 const {
   buildFreerdpArgs,
   buildRdpFileContent,
+  CREDENTIAL_AFTER_CONNECT_MS,
   CREDENTIAL_HOLD_MS,
+  hasConnection,
   freerdpCommands,
   freerdpSearchPath,
   freerdpSettingArgs,
@@ -29,8 +31,11 @@ const {
   launchRdp,
   pendingCredentialHosts,
   rdpSettingLines,
-  selectRdpStrategy
+  selectRdpStrategy,
+  setConnectionProbe
 } = await import('./launch.js');
+
+const probeMock = vi.fn<(pid: number, port: number) => Promise<boolean>>();
 
 function connection(overrides: Partial<RemoteDesktopConnection> = {}): RemoteDesktopConnection {
   return { id: 'c1', name: 'office-pc', protocol: 'rdp', hostname: '10.0.0.5', port: 3389, ...overrides };
@@ -43,6 +48,7 @@ type FakeChild = EventEmitter & { unref: () => void; stdin: { end: (s: string) =
 function fakeChild(error?: NodeJS.ErrnoException): FakeChild {
   const child = new EventEmitter() as FakeChild;
   child.unref = vi.fn();
+  (child as unknown as { pid: number }).pid = 4242;
   child.written = '';
   child.stdin = { end: (s) => (child.written += s), on: () => {} };
   spawnMock.mockImplementation(() => {
@@ -130,6 +136,28 @@ describe('RDP settings', () => {
   });
 });
 
+describe('hasConnection', () => {
+  const netstat = [
+    'Aktive Verbindungen',
+    '',
+    '  Proto  Lokale Adresse         Remoteadresse          Status           PID',
+    '  TCP    0.0.0.0:135            0.0.0.0:0              ABHÖREN         1908',
+    '  TCP    127.0.0.1:52011        127.0.0.1:13389        HERGESTELLT     4242',
+    '  TCP    10.0.0.2:52012         10.0.0.5:3389          ESTABLISHED     777'
+  ].join('\r\n');
+
+  it("finds a process's connection to the RDP port, whatever the state is called", () => {
+    expect(hasConnection(netstat, 4242, 13389)).toBe(true);
+    expect(hasConnection(netstat, 777, 3389)).toBe(true);
+  });
+
+  it("does not mistake another process's connection, or a local port, for it", () => {
+    expect(hasConnection(netstat, 4242, 3389)).toBe(false);
+    expect(hasConnection(netstat, 1908, 135)).toBe(false);
+    expect(hasConnection(netstat, 777, 52012)).toBe(false);
+  });
+});
+
 describe('selectRdpStrategy', () => {
   it('always chooses mstsc on Windows, regardless of xfreerdp', () => {
     expect(selectRdpStrategy('win32', false)).toBe('mstsc');
@@ -200,6 +228,8 @@ describe('launchRdp', () => {
     stageMock.mockReset().mockResolvedValue('staged');
     removeMock.mockReset().mockResolvedValue(undefined);
     pendingCredentialHosts.clear();
+    probeMock.mockReset().mockResolvedValue(false);
+    setConnectionProbe(probeMock);
   });
 
   afterEach(() => {
@@ -227,6 +257,30 @@ describe('launchRdp', () => {
     expect(removeMock).toHaveBeenCalledTimes(1);
     expect(removeMock).toHaveBeenCalledWith('10.0.0.5');
     expect(pendingCredentialHosts.has('10.0.0.5')).toBe(false);
+  });
+
+  it('on Windows: keeps the credential while mstsc waits on its warnings, drops it once mstsc has connected', async () => {
+    setPlatform('win32');
+    fakeChild();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+    await launchRdp(connection({ username: 'admin', password: 'secret' }));
+    // The user reads Windows' .rdp warnings for a minute: no connection yet.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(probeMock).toHaveBeenCalledWith(4242, 3389);
+
+    // They click Connect.
+    probeMock.mockResolvedValue(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(removeMock).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(CREDENTIAL_AFTER_CONNECT_MS);
+    expect(removeMock).toHaveBeenCalledTimes(1);
+
+    // And it stops watching.
+    const calls = probeMock.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(probeMock.mock.calls.length).toBe(calls);
   });
 
   it('on Windows: drops the credential after the hold time even while mstsc keeps running — once', async () => {
