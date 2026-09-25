@@ -220,3 +220,21 @@ describe('formToInput — monitoring mode', () => {
     expect(fields.monitorPort).toBe('8443');
   });
 });
+
+describe('1Password reference', () => {
+  it('passes a well-formed reference through, trimmed; blank means none', () => {
+    const set = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: ' op://Servers/web-1/password ' }));
+    expect(set.ok && set.input.passwordRef).toBe('op://Servers/web-1/password');
+    const blank = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: '  ' }));
+    expect(blank.ok && blank.input.passwordRef).toBeUndefined();
+  });
+
+  it('refuses something that is not a reference', () => {
+    const r = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: 'hunter2' }));
+    expect(r).toEqual({ ok: false, error: '1Password reference must look like op://vault/item/field' });
+  });
+
+  it('seeds the edit form with the stored reference', () => {
+    expect(formFromHost(host({ passwordRef: 'op://a/b/c' })).passwordRef).toBe('op://a/b/c');
+  });
+});

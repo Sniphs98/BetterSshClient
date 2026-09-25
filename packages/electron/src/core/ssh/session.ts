@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +9,7 @@ import { ConnectionPool, type Lease } from './connectionPool.js';
 import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
+import { readSecret } from '../secrets/onePassword.js';
 
 /**
  * SSH session management via `ssh2`. Ported from
@@ -64,7 +66,7 @@ class SshConnection {
  *  two hosts differing only in name, tags or notes share a connection, and an
  *  edited password or key never reuses one made with the old value. */
 function connectionKey(host: Host): string {
-  return JSON.stringify([host.hostname, host.port, host.user, host.identityFile, host.password, jumpValue(host)]);
+  return JSON.stringify([host.hostname, host.port, host.user, host.identityFile, host.password, host.passwordRef, jumpValue(host)]);
 }
 
 const sharedConnections = new ConnectionPool<Host, SshConnection>(connectionKey, connectAndAuth);
@@ -366,11 +368,30 @@ async function connectTunnelled(via: Client, host: Host): Promise<Client> {
   return authenticate(host, { sock: stream });
 }
 
+/** How long a password read from 1Password is kept in memory, so new tabs and
+ *  reconnects within that window don't prompt again. The same trade-off as a
+ *  stored password, which is held decrypted in memory for the whole session. */
+const SECRET_CACHE_MS = 10 * 60_000;
+const secretCache = new Map<string, { value: string; expires: number }>();
+
+/** The password for `host`: resolved from its 1Password reference if it has one,
+ *  else the stored one. Resolved before connecting — a Windows Hello or Touch ID
+ *  prompt can take longer than the connect timeout allows mid-handshake. */
+async function hostPassword(host: Host): Promise<string | undefined> {
+  if (host.passwordRef === undefined) return host.password;
+  const cached = secretCache.get(host.passwordRef);
+  if (cached && cached.expires > Date.now()) return cached.value;
+  const value = await readSecret(host.passwordRef);
+  secretCache.set(host.passwordRef, { value, expires: Date.now() + SECRET_CACHE_MS });
+  return value;
+}
+
 /** The auth methods to offer `host`, in priority order: agent → explicit
  *  identity file → default key files → password. Unreadable key files are
  *  left out; an unparseable (e.g. passphrase-protected) one is skipped by
- *  `ssh2` itself. */
-async function authMethods(host: Host): Promise<AnyAuthMethod[]> {
+ *  `ssh2` itself. A 1Password reference that can't be read drops the password
+ *  and says why in `problems`, so the keys still get their turn. */
+async function authMethods(host: Host, problems: string[]): Promise<AnyAuthMethod[]> {
   const username = host.user;
   const methods: AnyAuthMethod[] = [];
 
@@ -382,7 +403,13 @@ async function authMethods(host: Host): Promise<AnyAuthMethod[]> {
   const keys = await Promise.all(keyPaths.map(tryReadKey));
   for (const key of keys) if (key !== undefined) methods.push({ type: 'publickey', username, key });
 
-  if (host.password !== undefined) methods.push({ type: 'password', username, password: host.password });
+  let password: string | undefined;
+  try {
+    password = await hostPassword(host);
+  } catch (e) {
+    problems.push((e as Error).message);
+  }
+  if (password !== undefined) methods.push({ type: 'password', username, password });
   return methods;
 }
 
@@ -407,7 +434,8 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
     ...extra
   };
 
-  const methods = await authMethods(host);
+  const problems: string[] = [];
+  const methods = await authMethods(host, problems);
   if (methods.length > 0) {
     const attempt = await tryConnect({ ...base, authHandler: methods });
     if (attempt.client) return attempt.client;
@@ -423,7 +451,8 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
     }
   }
 
-  throw new SshAuthError(`SSH authentication failed for ${host.name}`);
+  const why = problems.length > 0 ? ` (${problems.join('; ')})` : '';
+  throw new SshAuthError(`SSH authentication failed for ${host.name}${why}`);
 }
 
 interface ConnectAttempt {
@@ -492,9 +521,18 @@ function makeHostVerifier(hostname: string, port: number): NonNullable<ConnectCo
   };
 }
 
+/** The SSH agent to ask for keys. On Windows that is the OpenSSH agent pipe,
+ *  which is also where 1Password's SSH agent listens once enabled. Elsewhere
+ *  `SSH_AUTH_SOCK`; failing that — a GUI app on macOS usually doesn't get it
+ *  from a shell profile — 1Password's own agent socket, if it is running. */
 function defaultAgentPath(): string | undefined {
   if (process.platform === 'win32') return '\\\\.\\pipe\\openssh-ssh-agent';
-  return process.env.SSH_AUTH_SOCK;
+  if (process.env.SSH_AUTH_SOCK) return process.env.SSH_AUTH_SOCK;
+  const onePasswordSockets =
+    process.platform === 'darwin'
+      ? [join(homedir(), 'Library', 'Group Containers', '2BUA8C4S2C.com.1password', 't', 'agent.sock')]
+      : [join(homedir(), '.1password', 'agent.sock')];
+  return onePasswordSockets.find((p) => existsSync(p));
 }
 
 /** Returns the standard default SSH private key paths, in priority order. */

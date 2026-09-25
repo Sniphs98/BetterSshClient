@@ -49,12 +49,12 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **One-click SSH key setup** | Generates an Ed25519 key, installs it, verifies it, and optionally turns off password login, with automatic rollback if anything fails. |
 | ✅ | **ProxyJump** | Hosts behind one or more bastions work everywhere: dashboard, terminal, SFTP. |
 | ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
+| ✅ | **1Password** | Read a host's password from 1Password when connecting instead of storing it, and use SSH keys from the 1Password SSH agent. [How](#using-1password) |
 | ✅ | **Light & dark theme** | |
 | 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps. Usable, but still changing. |
 | 📋 | **Remote desktop (RDP)** *(to do)* | RDP profiles next to your SSH hosts, launched through the OS's own client. Not ready yet. |
 | 💡 | **AI integration** *(maybe in the future)* | Help with commands, explain output or errors, right in the terminal. |
 | 💡 | **Plugin system** *(maybe in the future)* | Extend the app with your own features without touching the core. |
-| 💡 | **1Password integration** *(maybe in the future)* | Use SSH keys and passwords straight from your 1Password vault. |
 
 ✅ done · 🚧 in progress · 📋 planned · 💡 maybe in the future
 
@@ -98,6 +98,20 @@ builds link to the release page to download it.
 The app reads the hosts from your `~/.ssh/config` (it never writes to it) and stores its
 own data in `%APPDATA%\better-ssh-client\` (Windows), `~/Library/Application Support/better-ssh-client/`
 (macOS) or `~/.config/better-ssh-client/` (Linux).
+
+### Using 1Password
+
+**Passwords:** install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/)
+and turn on *Settings → Developer → Integrate with 1Password CLI* in the 1Password app. Then, in
+a host's settings, put the item's secret reference into **1Password reference** (in 1Password:
+right-click the password → *Copy Secret Reference*, e.g. `op://Servers/web-1/password`). The app
+reads the password when it connects — 1Password may ask for Windows Hello or Touch ID — keeps it
+in memory for 10 minutes, and never writes it to disk.
+
+**SSH keys:** turn on *Settings → Developer → Use the SSH agent* in the 1Password app. The app
+asks the SSH agent for keys before anything else, so your 1Password keys just work. On Windows,
+stop and disable the *OpenSSH Authentication Agent* service first, since 1Password's agent
+takes over its place.
 
 ---
 

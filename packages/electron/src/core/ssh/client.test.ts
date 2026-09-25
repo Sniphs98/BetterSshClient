@@ -70,4 +70,12 @@ describe('hostFromToml / hostToToml round trip', () => {
     expect(withoutCommand.startupCommand).toBeUndefined();
     expect(hostToToml(withoutCommand)).not.toHaveProperty('startup_command');
   });
+
+  it('round-trips a 1Password reference, and omits it when unset', () => {
+    const withRef = { ...defaultHost(), name: 'a', hostname: 'a', passwordRef: 'op://Servers/a/password' };
+    const written = hostToToml(withRef);
+    expect(written.password_ref).toBe('op://Servers/a/password');
+    expect(hostFromToml(written).passwordRef).toBe('op://Servers/a/password');
+    expect(hostToToml(hostFromToml({ name: 'b', hostname: 'b' }))).not.toHaveProperty('password_ref');
+  });
 });
