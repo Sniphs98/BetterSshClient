@@ -6,6 +6,7 @@
   import { theme } from '$lib/stores/theme';
   import { sidebarCollapsed } from '$lib/stores/ui';
   import { sidebarMode } from '$lib/stores/sidebarMode';
+  import { followSidebarMode } from '$lib/stores/navigation';
   import { terminalCopyOnSelect, terminalGpu, terminalRightClick } from '$lib/stores/terminalPrefs';
   import { streamerMode } from '$lib/stores/streamer';
   import { refreshInterval, driveMetricsRefresh } from '$lib/stores/settings';
@@ -20,6 +21,7 @@
     // the synchronous localStorage mirrors already seeded the first paint (§5.1, §2).
     void theme.hydrate();
     void sidebarCollapsed.hydrate();
+    const stopFollowingMode = followSidebarMode();
     void sidebarMode.hydrate();
     void terminalRightClick.hydrate();
     void terminalCopyOnSelect.hydrate();
@@ -44,6 +46,7 @@
       disposed = true;
       stop?.();
       stopRefresh();
+      stopFollowingMode();
     };
   });
 </script>
