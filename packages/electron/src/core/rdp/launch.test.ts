@@ -16,6 +16,10 @@ vi.mock('./windowsCredentials.js', () => ({
   stageCredential: (...args: unknown[]) => stageMock(...args),
   removeCredential: (...args: unknown[]) => removeMock(...args)
 }));
+const maximizeMock = vi.fn(() => Promise.resolve());
+vi.mock('./windowsWindow.js', () => ({
+  maximizeWhenConnected: (pid: number) => maximizeMock(pid)
+}));
 
 // Imported after the mocks so `launch.ts` picks up the mocked modules.
 const {
@@ -24,6 +28,7 @@ const {
   CREDENTIAL_AFTER_CONNECT_MS,
   CREDENTIAL_HOLD_MS,
   hasConnection,
+  fitToWorkArea,
   freerdpCommands,
   freerdpSearchPath,
   freerdpSettingArgs,
@@ -97,7 +102,16 @@ describe('RDP settings', () => {
 
   it('become .rdp lines for mstsc', () => {
     expect(
-      rdpSettingLines({ display: 'window', width: 1600, height: 900, multiMonitor: false, clipboard: true, drives: true, audio: 'remote' })
+      rdpSettingLines({
+        display: 'window',
+        width: 1600,
+        height: 900,
+        dynamicResolution: true,
+        multiMonitor: false,
+        clipboard: true,
+        drives: true,
+        audio: 'remote'
+      })
     ).toEqual([
       'screen mode id:i:1',
       'desktopwidth:i:1600',
@@ -117,7 +131,9 @@ describe('RDP settings', () => {
   });
 
   it('become FreeRDP arguments', () => {
-    expect(freerdpSettingArgs({ display: 'window', width: 1600, height: 900, clipboard: true, drives: true, audio: 'local' })).toEqual([
+    expect(
+      freerdpSettingArgs({ display: 'window', width: 1600, height: 900, dynamicResolution: true, clipboard: true, drives: true, audio: 'local' })
+    ).toEqual([
       '/size:1600x900',
       '/dynamic-resolution',
       '+clipboard',
@@ -129,6 +145,36 @@ describe('RDP settings', () => {
       '/multimon',
       '-clipboard',
       '/audio-mode:2'
+    ]);
+  });
+
+  it("resizing a window: the session starts at the screen's size, the window at its own", () => {
+    const screen = { width: 2560, height: 1440, scaleFactor: 1 };
+    expect(rdpSettingLines({ display: 'window', width: 1280, height: 720, dynamicResolution: true }, screen)).toEqual([
+      'screen mode id:i:1',
+      'desktopwidth:i:2560',
+      'desktopheight:i:1440',
+      'winposstr:s:0,1,80,80,1376,839',
+      'dynamic resolution:i:1'
+    ]);
+    // Without the screen (FreeRDP's side never builds one) it stays as asked.
+    expect(rdpSettingLines({ display: 'window', width: 1280, height: 720, dynamicResolution: true })).toContain('desktopwidth:i:1280');
+    // Fit to screen is already as big as the window can get.
+    expect(rdpSettingLines({ display: 'fit', width: 2560, height: 1369, dynamicResolution: true }, screen)).toContain('desktopheight:i:1369');
+    // No display mode set: still room to grow.
+    expect(rdpSettingLines({ dynamicResolution: true }, screen)).toEqual([
+      'desktopwidth:i:2560',
+      'desktopheight:i:1440',
+      'dynamic resolution:i:1'
+    ]);
+  });
+
+  it("fit the screen: FreeRDP measures the work area itself, a .rdp file gets the size worked out", () => {
+    expect(freerdpSettingArgs({ display: 'fit' })).toEqual(['/workarea']);
+    expect(rdpSettingLines({ display: 'fit', width: 2560, height: 1369 })).toEqual([
+      'screen mode id:i:1',
+      'desktopwidth:i:2560',
+      'desktopheight:i:1369'
     ]);
   });
 
@@ -160,6 +206,18 @@ describe('hasConnection', () => {
   });
 });
 
+describe('fitToWorkArea', () => {
+  it("is the maximised window's client area: the work area less the title bar", () => {
+    // Measured: 2560x1440 screen, taskbar 48 px, 100 % — no scrollbars when maximised.
+    expect(fitToWorkArea({ width: 2560, height: 1392 }, 1)).toEqual({ width: 2560, height: 1369 });
+  });
+
+  it('counts physical pixels, rounding the title bar up at odd scalings', () => {
+    expect(fitToWorkArea({ width: 1536, height: 816 }, 1.25)).toEqual({ width: 1920, height: 1020 - 29 });
+    expect(fitToWorkArea({ width: 1280, height: 672 }, 1.5)).toEqual({ width: 1920, height: 1008 - 35 });
+  });
+});
+
 describe('starting mstsc without a .rdp file', () => {
   it('is how every connection goes that does not need one', () => {
     expect(needsRdpFile({ username: 'a', password: 'p' })).toBe(false);
@@ -170,6 +228,7 @@ describe('starting mstsc without a .rdp file', () => {
     expect(needsRdpFile({ drives: true })).toBe(true);
     expect(needsRdpFile({ clipboard: false })).toBe(true);
     expect(needsRdpFile({ audio: 'remote' })).toBe(true);
+    expect(needsRdpFile({ username: 'a', password: 'p', dynamicResolution: true })).toBe(true);
     expect(needsRdpFile({ username: 'a' })).toBe(true);
   });
 
@@ -181,6 +240,7 @@ describe('starting mstsc without a .rdp file', () => {
       '/h:720',
       '/multimon'
     ]);
+    expect(mstscArgs({ hostname: 'pc', port: 3389, display: 'fit', width: 2560, height: 1369 })).toEqual(['/v:pc:3389', '/w:2560', '/h:1369']);
   });
 
   it('refuses a hostname that would smuggle in more switches', () => {
@@ -291,6 +351,19 @@ describe('launchRdp', () => {
     expect(removeMock).toHaveBeenCalledTimes(1);
     expect(removeMock).toHaveBeenCalledWith('10.0.0.5');
     expect(pendingCredentialHosts.has('10.0.0.5')).toBe(false);
+  });
+
+  it("on Windows: maximises the session window for 'fit to screen', and only then", async () => {
+    setPlatform('win32');
+    maximizeMock.mockClear();
+    fakeChild();
+    await launchRdp(connection({ username: 'admin', password: 'secret', display: 'fit', width: 2560, height: 1369 }));
+    expect(maximizeMock).toHaveBeenCalledWith(4242);
+
+    maximizeMock.mockClear();
+    fakeChild();
+    await launchRdp(connection({ username: 'admin', password: 'secret', display: 'window' }));
+    expect(maximizeMock).not.toHaveBeenCalled();
   });
 
   it('on Windows: opens a .rdp file only for what an address alone cannot say — local drives', async () => {

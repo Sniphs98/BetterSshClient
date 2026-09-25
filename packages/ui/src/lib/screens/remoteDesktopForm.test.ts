@@ -148,6 +148,12 @@ describe('RDP settings in the form', () => {
     expect(ignored.ok && ignored.input.width).toBeUndefined();
   });
 
+  it('carry "fit to screen" and resizing with the window through', () => {
+    const r = formToInput(fields({ name: 'n', hostname: 'h', display: 'fit', dynamicResolution: true, width: 'ignored' }));
+    expect(r.ok && [r.input.display, r.input.dynamicResolution, r.input.width]).toEqual(['fit', true, undefined]);
+    expect(formFromConnection(connection({ display: 'fit', dynamicResolution: true }))).toMatchObject({ display: 'fit', dynamicResolution: true });
+  });
+
   it('round-trip through a saved connection', () => {
     const f = formFromConnection(connection({ display: 'window', width: 1280, height: 720, clipboard: false, audio: 'off' }));
     expect(f).toMatchObject({ display: 'window', width: '1280', height: '720', clipboard: false, audio: 'off', drives: false });
@@ -167,6 +173,10 @@ describe('describeSettings', () => {
       'All monitors',
       'Sound on remote'
     ]);
+  });
+
+  it('names fitting the screen and resizing with the window', () => {
+    expect(describeSettings({ display: 'fit', dynamicResolution: true })).toEqual(['Fit to screen', 'Resizes']);
   });
 
   it('says so when everything is left to the client', () => {

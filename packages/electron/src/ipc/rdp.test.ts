@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('electron', () => ({ clipboard: {}, shell: {} }));
+vi.mock('electron', () => ({ clipboard: {}, screen: {}, shell: {} }));
 
 const { CLIPBOARD_CLEAR_MS, launchNotice, offerPasswordOnClipboard } = await import('./rdp.js');
 
@@ -53,6 +53,9 @@ describe('launchNotice', () => {
     );
     expect(launchNotice({ opened: 'mstsc', redirectionPrompt: true }, { drives: true, clipboard: false })).toContain(
       'tick Drives in its security prompt'
+    );
+    expect(launchNotice({ opened: 'mstsc', redirectionPrompt: true }, { dynamicResolution: true, clipboard: true })).toContain(
+      'click Connect there, and tick Clipboard to share it'
     );
     // Without drives there's nothing to tick: the clipboard off or sound elsewhere need no consent.
     expect(launchNotice({ opened: 'mstsc', redirectionPrompt: true }, { clipboard: false })).toBeUndefined();

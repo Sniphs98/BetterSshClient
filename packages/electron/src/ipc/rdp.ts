@@ -1,7 +1,7 @@
-import { clipboard, shell, type IpcMain } from 'electron';
+import { clipboard, screen, shell, type IpcMain } from 'electron';
 
 import { loadRemoteDesktopConnections, type RdpSettings, type RemoteDesktopConnection } from '../core/config/remoteDesktop.js';
-import { launchRdp, pendingCredentialHosts, type RdpLaunchResult } from '../core/rdp/launch.js';
+import { fitToWorkArea, launchRdp, pendingCredentialHosts, type LaunchTarget, type RdpLaunchResult } from '../core/rdp/launch.js';
 import { openTunnel, tunnelAddress, type RdpTunnel } from '../core/rdp/tunnel.js';
 import { removeCredentialsOnQuit, sweepStagedCredentials } from '../core/rdp/windowsCredentials.js';
 import { SshSession } from '../core/ssh/session.js';
@@ -28,7 +28,7 @@ export function offerPasswordOnClipboard(password: string, board: TextClipboard 
 /** What the user should know about a launch that went through, if anything. */
 export function launchNotice(
   result: Pick<RdpLaunchResult, 'credential' | 'opened' | 'redirectionPrompt'>,
-  settings: Pick<RdpSettings, 'drives' | 'clipboard'> = {},
+  settings: Pick<RdpSettings, 'drives' | 'clipboard' | 'dynamicResolution'> = {},
   passwordOnClipboard = false
 ): string | undefined {
   const notes: string[] = [];
@@ -39,11 +39,33 @@ export function launchNotice(
   const toTick = [settings.drives && 'Drives', settings.clipboard !== false && 'Clipboard'].filter(Boolean);
   if (result.redirectionPrompt && settings.drives) {
     notes.push(`Windows asks before sharing anything: tick ${toTick.join(' and ')} in its security prompt before you connect.`);
+  } else if (result.redirectionPrompt && settings.dynamicResolution) {
+    notes.push(
+      'Resizing with the window makes Windows show its security prompt: click Connect there' +
+        (settings.clipboard !== false ? ', and tick Clipboard to share it.' : '.')
+    );
   }
   if (passwordOnClipboard) {
     notes.push(`The password is on the clipboard for ${CLIPBOARD_CLEAR_MS / 1000} seconds — paste it when Remote Desktop asks for it. Installing FreeRDP lets the app sign in for you.`);
   }
   return notes.length > 0 ? notes.join(' ') : undefined;
+}
+
+/** On Windows, what mstsc needs to know about the primary screen, where it opens: for
+ *  'fit to screen', the size its maximised window shows; for resizing with the
+ *  window, the screen itself (see `rdpSettingLines`). FreeRDP works both out itself. */
+function withScreen(connection: RemoteDesktopConnection): LaunchTarget {
+  if (process.platform !== 'win32') return connection;
+  const display = screen.getPrimaryDisplay();
+  const target: LaunchTarget = {
+    ...connection,
+    screen: {
+      width: Math.round(display.size.width * display.scaleFactor),
+      height: Math.round(display.size.height * display.scaleFactor),
+      scaleFactor: display.scaleFactor
+    }
+  };
+  return connection.display === 'fit' ? { ...target, ...fitToWorkArea(display.workAreaSize, display.scaleFactor) } : target;
 }
 
 /** Tunnels still open, for `before-quit`. */
@@ -79,7 +101,7 @@ export function registerRdpIpc(ipcMain: IpcMain, state: GuiState): void {
 
       const tunnel = await tunnelFor(state, connection);
       try {
-        const target = tunnel ? { ...connection, hostname: tunnel.address, port: tunnel.port } : connection;
+        const target = withScreen(tunnel ? { ...connection, hostname: tunnel.address, port: tunnel.port } : connection);
         const result = await launchRdp(target);
         if (result.opened === 'file' && result.filePath) {
           // Only the fallback path needs Electron's `shell` (an OS-native handler for

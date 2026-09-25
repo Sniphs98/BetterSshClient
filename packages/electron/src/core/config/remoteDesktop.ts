@@ -17,8 +17,9 @@ export type RemoteDesktopProtocol = 'rdp' | 'vnc';
 
 /** rdp-only settings; each left out means "whatever the client does by default". */
 export interface RdpSettings {
-  /** Full screen, or a window of `width`×`height`. */
-  display?: 'fullscreen' | 'window';
+  /** Full screen, a window of `width`×`height`, or a window sized to fill the screen
+   *  above the taskbar when maximised (`width`/`height` worked out at launch). */
+  display?: 'fullscreen' | 'window' | 'fit';
   width?: number;
   height?: number;
   /** Span all local monitors. */
@@ -29,20 +30,31 @@ export interface RdpSettings {
   drives?: boolean;
   /** Where sound plays: here, on the remote machine, or nowhere. */
   audio?: 'local' | 'remote' | 'off';
+  /** Change the remote resolution whenever the window is resized. */
+  dynamicResolution?: boolean;
 }
 
-export const RDP_SETTING_KEYS = ['display', 'width', 'height', 'multiMonitor', 'clipboard', 'drives', 'audio'] as const;
+export const RDP_SETTING_KEYS = [
+  'display',
+  'width',
+  'height',
+  'multiMonitor',
+  'clipboard',
+  'drives',
+  'audio',
+  'dynamicResolution'
+] as const;
 
 /** Picks the valid RDP settings out of a parsed TOML table or a DTO, dropping anything
  *  malformed rather than failing the whole file over a hand edit. */
 export function rdpSettingsFrom(raw: Record<string, unknown>): RdpSettings {
   const out: RdpSettings = {};
-  if (raw.display === 'fullscreen' || raw.display === 'window') out.display = raw.display;
+  if (raw.display === 'fullscreen' || raw.display === 'window' || raw.display === 'fit') out.display = raw.display;
   for (const key of ['width', 'height'] as const) {
     const v = raw[key];
     if (typeof v === 'number' && Number.isInteger(v) && v >= 200 && v <= 8192) out[key] = v;
   }
-  for (const key of ['multiMonitor', 'clipboard', 'drives'] as const) {
+  for (const key of ['multiMonitor', 'clipboard', 'drives', 'dynamicResolution'] as const) {
     if (typeof raw[key] === 'boolean') out[key] = raw[key] as boolean;
   }
   if (raw.audio === 'local' || raw.audio === 'remote' || raw.audio === 'off') out.audio = raw.audio;

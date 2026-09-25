@@ -400,13 +400,14 @@ export type RdpLaunchResultDto = {
 
 /** rdp-only settings; each left out means "whatever the client does by default". */
 export type RdpSettingsDto = {
-  display?: 'fullscreen' | 'window' | null;
+  display?: 'fullscreen' | 'window' | 'fit' | null;
   width?: number | null;
   height?: number | null;
   multiMonitor?: boolean | null;
   clipboard?: boolean | null;
   drives?: boolean | null;
   audio?: 'local' | 'remote' | 'off' | null;
+  dynamicResolution?: boolean | null;
 };
 
 export type RemoteDesktopConnectionDto = RdpSettingsDto & {

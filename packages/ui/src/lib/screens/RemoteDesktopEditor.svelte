@@ -65,7 +65,12 @@
   // Starts open when the profile already deviates from the defaults (seeded once, like `fields`).
   let settingsOpen = $state(
     // svelte-ignore state_referenced_locally
-    initial.display !== '' || initial.multiMonitor || !initial.clipboard || initial.drives || initial.audio !== 'local'
+    initial.display !== '' ||
+      initial.multiMonitor ||
+      !initial.clipboard ||
+      initial.drives ||
+      initial.dynamicResolution ||
+      initial.audio !== 'local'
   );
   // Shown on the collapsed header, so what's set is visible without opening it.
   const settingsSummary = $derived(describeSettings(fields).join(' · '));
@@ -183,6 +188,7 @@
               <Select bind:value={fields.display} class={field}>
                 <option value="">Client default</option>
                 <option value="fullscreen">Full screen</option>
+                <option value="fit">Fit to screen</option>
                 <option value="window">Window</option>
               </Select>
             </label>
@@ -208,6 +214,16 @@
           </label>
 
           <div class="divide-y divide-[var(--border)] rounded-lg bg-surface-inset/60">
+            <div class={row}>
+              <div class="min-w-0">
+                <p class="text-sm">Resize with the window</p>
+                <p class="text-xs text-muted">
+                  The remote resolution follows the window, so there are never scrollbars.{#if onWindows}{" "}
+                    Windows then shows its security prompt each time.{/if}
+                </p>
+              </div>
+              <Switch bind:checked={fields.dynamicResolution} label="Resize with the window" />
+            </div>
             <div class={row}>
               <div class="min-w-0">
                 <p class="text-sm">Use all my monitors</p>

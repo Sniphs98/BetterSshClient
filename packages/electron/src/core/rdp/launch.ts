@@ -6,6 +6,7 @@ import { delimiter, dirname, join } from 'node:path';
 
 import type { RdpSettings, RemoteDesktopConnection } from '../config/remoteDesktop.js';
 import { removeCredential, stageCredential, type StageOutcome } from './windowsCredentials.js';
+import { maximizeWhenConnected } from './windowsWindow.js';
 
 /**
  * Launches an RDP connection via the OS's native client, as its own external window —
@@ -43,14 +44,15 @@ export interface RdpLaunchResult {
  * `mstsc /v:` counts as typed in by hand and gets neither the prompt nor the
  * restriction; it uses mstsc's own defaults (clipboard on, drives off, sound here).
  * So the file is only used for what `/v:` can't express: local drives, the clipboard
- * off, sound elsewhere — and a username to prefill when there's no password to
- * stage with it. Verified against a real Windows, see docker/windows-rdp-target.
+ * off, sound elsewhere, resizing with the window — and a username to prefill when
+ * there's no password to stage with it. Verified against a real Windows, see docker/windows-rdp-target.
  */
 export function needsRdpFile(connection: Pick<RemoteDesktopConnection, 'username' | 'password'> & RdpSettings): boolean {
   return (
     Boolean(connection.drives) ||
     connection.clipboard === false ||
     (connection.audio !== undefined && connection.audio !== 'local') ||
+    Boolean(connection.dynamicResolution) ||
     Boolean(connection.username && !connection.password)
   );
 }
@@ -63,11 +65,29 @@ export function mstscArgs(connection: Pick<RemoteDesktopConnection, 'hostname' |
   }
   const args = [`/v:${connection.hostname}:${connection.port}`];
   if (connection.display === 'fullscreen') args.push('/f');
-  if (connection.display === 'window' && connection.width && connection.height) {
+  if ((connection.display === 'window' || connection.display === 'fit') && connection.width && connection.height) {
     args.push(`/w:${connection.width}`, `/h:${connection.height}`);
   }
   if (connection.multiMonitor) args.push('/multimon');
   return args;
+}
+
+/** Height of a window's title bar at 96 dpi (`SM_CYCAPTION`). A maximised window
+ *  pushes its borders off screen, so its client area is the work area less this. */
+const CAPTION_PX = 23;
+
+/**
+ * The remote resolution for `display: 'fit'` on Windows: exactly what mstsc's window
+ * shows when maximised above the taskbar — measured against a real Windows at 100 %.
+ * `workArea` is in device-independent pixels, as Electron reports it; mstsc counts
+ * physical ones. The title bar is rounded up, so at odd scalings the picture is at
+ * worst a pixel short of the window rather than a pixel too big for it (scrollbars).
+ */
+export function fitToWorkArea(workArea: { width: number; height: number }, scaleFactor: number): { width: number; height: number } {
+  return {
+    width: Math.floor(workArea.width * scaleFactor),
+    height: Math.floor(workArea.height * scaleFactor) - Math.ceil(CAPTION_PX * scaleFactor)
+  };
 }
 
 /**
@@ -122,30 +142,63 @@ function rdpValue(value: string): string {
  *  credential store instead (see `launchWindows`); everywhere else there is no safe
  *  place to put it in this file, so a fallback-opened `.rdp` prompts for it. */
 export function buildRdpFileContent(
-  connection: Pick<RemoteDesktopConnection, 'hostname' | 'port' | 'username' | 'domain'> & RdpSettings
+  connection: Pick<RemoteDesktopConnection, 'hostname' | 'port' | 'username' | 'domain'> & RdpSettings & { screen?: ScreenSize }
 ): string {
   const lines = [`full address:s:${rdpValue(connection.hostname)}:${connection.port}`];
   if (connection.username) {
     const user = connection.domain ? `${connection.domain}\\${connection.username}` : connection.username;
     lines.push(`username:s:${rdpValue(user)}`);
   }
-  return [...lines, ...rdpSettingLines(connection)].join('\n') + '\n';
+  return [...lines, ...rdpSettingLines(connection, connection.screen)].join('\n') + '\n';
 }
 
 const flag = (on: boolean): number => (on ? 1 : 0);
 
-/** The `.rdp` lines for the settings that are set; the rest stay the client's default. */
-export function rdpSettingLines(settings: RdpSettings): string[] {
+/** A window around a `width`×`height` picture, a little in from the top left:
+ *  `winposstr:s:0,<SW_SHOWNORMAL>,left,top,right,bottom`. The frame is Windows 11's at
+ *  100 % (8 px each side, 31 px title bar with its top border), scaled. */
+function windowPosition(width: number, height: number, scaleFactor: number): string {
+  const at = Math.round(80 * scaleFactor);
+  const right = at + width + Math.round(16 * scaleFactor);
+  const bottom = at + height + Math.round(39 * scaleFactor);
+  return `winposstr:s:0,1,${at},${at},${right},${bottom}`;
+}
+
+/** The screen mstsc will show on, in physical pixels — known to the caller (Electron's
+ *  `screen`), needed for resizing with the window. */
+export interface ScreenSize {
+  width: number;
+  height: number;
+  scaleFactor: number;
+}
+
+/**
+ * The `.rdp` lines for the settings that are set; the rest stay the client's default.
+ *
+ * Resizing with the window has a catch, found against a real Windows: mstsc never
+ * lets its window grow past the resolution the session *started* with. So with a
+ * `screen`, a resizing window starts the session at the full screen size, and the
+ * window's own starting size goes into `winposstr` instead; mstsc then shrinks the
+ * session to the window, grows it back up to the screen, and its maximise button
+ * becomes full screen.
+ */
+export function rdpSettingLines(settings: RdpSettings, screen?: ScreenSize): string[] {
   const lines: string[] = [];
+  const resizing = Boolean(settings.dynamicResolution && screen);
   if (settings.display === 'fullscreen') lines.push('screen mode id:i:2');
-  if (settings.display === 'window') {
+  if (settings.display === 'window' || settings.display === 'fit') {
     lines.push('screen mode id:i:1');
-    if (settings.width && settings.height) {
+    if (resizing && screen && settings.display === 'window') {
+      lines.push(`desktopwidth:i:${screen.width}`, `desktopheight:i:${screen.height}`);
+      if (settings.width && settings.height) lines.push(windowPosition(settings.width, settings.height, screen.scaleFactor));
+    } else if (settings.width && settings.height) {
       lines.push(`desktopwidth:i:${settings.width}`, `desktopheight:i:${settings.height}`);
     }
-    // Follow the window when it's resized, instead of scrollbars.
-    lines.push('dynamic resolution:i:1');
+  } else if (resizing && screen && settings.display === undefined) {
+    lines.push(`desktopwidth:i:${screen.width}`, `desktopheight:i:${screen.height}`);
   }
+  // Follow the window when it's resized, instead of scrollbars.
+  if (settings.dynamicResolution !== undefined) lines.push(`dynamic resolution:i:${flag(settings.dynamicResolution)}`);
   if (settings.multiMonitor !== undefined) lines.push(`use multimon:i:${flag(settings.multiMonitor)}`);
   if (settings.clipboard !== undefined) lines.push(`redirectclipboard:i:${flag(settings.clipboard)}`);
   if (settings.drives !== undefined) lines.push(`drivestoredirect:s:${settings.drives ? '*' : ''}`);
@@ -203,10 +256,12 @@ export function buildFreerdpArgs(connection: RemoteDesktopConnection): string[] 
 export function freerdpSettingArgs(settings: RdpSettings): string[] {
   const args: string[] = [];
   if (settings.display === 'fullscreen') args.push('/f');
-  if (settings.display === 'window') {
-    if (settings.width && settings.height) args.push(`/size:${settings.width}x${settings.height}`);
-    args.push('/dynamic-resolution');
+  if (settings.display === 'window' && settings.width && settings.height) {
+    args.push(`/size:${settings.width}x${settings.height}`);
   }
+  // FreeRDP knows the screen's work area itself.
+  if (settings.display === 'fit') args.push('/workarea');
+  if (settings.dynamicResolution) args.push('/dynamic-resolution');
   if (settings.multiMonitor) args.push('/multimon');
   if (settings.clipboard !== undefined) args.push(settings.clipboard ? '+clipboard' : '-clipboard');
   if (settings.drives) args.push('/drives');
@@ -240,7 +295,7 @@ function safeFileName(name: string): string {
   return name.replace(/[/\\:*?"<>|]/g, '_').trim() || 'connection';
 }
 
-async function writeRdpFile(connection: RemoteDesktopConnection): Promise<string> {
+async function writeRdpFile(connection: LaunchTarget): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'better-ssh-client-rdp-'));
   const path = join(dir, `${safeFileName(connection.name)}.rdp`);
   await writeFile(path, buildRdpFileContent(connection), 'utf-8');
@@ -258,7 +313,7 @@ function started(child: ChildProcess, what: string): Promise<void> {
   });
 }
 
-async function launchWindows(connection: RemoteDesktopConnection): Promise<RdpLaunchResult> {
+async function launchWindows(connection: LaunchTarget): Promise<RdpLaunchResult> {
   const { hostname } = connection;
   let credential: StageOutcome | undefined;
   if (connection.username && connection.password) {
@@ -316,6 +371,8 @@ async function launchWindows(connection: RemoteDesktopConnection): Promise<RdpLa
       if (file) void rm(dirname(file), { recursive: true, force: true }).catch(() => {});
     });
     if (!dropped && child.pid !== undefined) watchForConnection(child.pid);
+    // mstsc opens its window at the size it last had; 'fit' means filling the screen.
+    if (connection.display === 'fit' && child.pid !== undefined) void maximizeWhenConnected(child.pid).catch(() => {});
     return { opened: 'mstsc', filePath, credential, child, redirectionPrompt: viaFile };
   } catch (err) {
     dropCredential();
@@ -349,7 +406,10 @@ async function launchUnix(connection: RemoteDesktopConnection): Promise<RdpLaunc
   return { opened: 'file', filePath };
 }
 
-export async function launchRdp(connection: RemoteDesktopConnection): Promise<RdpLaunchResult> {
+/** A connection as launched: plus the screen, where the caller knows it (Windows). */
+export type LaunchTarget = RemoteDesktopConnection & { screen?: ScreenSize };
+
+export async function launchRdp(connection: LaunchTarget): Promise<RdpLaunchResult> {
   if (process.platform === 'win32') return launchWindows(connection);
   return launchUnix(connection);
 }

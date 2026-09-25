@@ -25,13 +25,15 @@ export interface RemoteDesktopFormFields {
   /** Name of the SSH host to tunnel through; blank connects directly. */
   viaHost: string;
   /** Blank leaves it to the client. */
-  display: '' | 'fullscreen' | 'window';
+  display: '' | 'fullscreen' | 'window' | 'fit';
   /** Window size; both blank leaves it to the client. */
   width: string;
   height: string;
   multiMonitor: boolean;
   clipboard: boolean;
   drives: boolean;
+  /** Change the remote resolution when the window is resized. */
+  dynamicResolution: boolean;
   audio: 'local' | 'remote' | 'off';
 }
 
@@ -43,6 +45,7 @@ const SETTING_DEFAULTS = {
   multiMonitor: false,
   clipboard: true,
   drives: false,
+  dynamicResolution: false,
   audio: 'local'
 } as const;
 
@@ -82,6 +85,7 @@ export function formFromConnection(c: RemoteDesktopConnectionDto): RemoteDesktop
     multiMonitor: c.multiMonitor ?? SETTING_DEFAULTS.multiMonitor,
     clipboard: c.clipboard ?? SETTING_DEFAULTS.clipboard,
     drives: c.drives ?? SETTING_DEFAULTS.drives,
+    dynamicResolution: c.dynamicResolution ?? SETTING_DEFAULTS.dynamicResolution,
     audio: c.audio ?? SETTING_DEFAULTS.audio
   };
 }
@@ -145,6 +149,7 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       multiMonitor: f.multiMonitor,
       clipboard: f.clipboard,
       drives: f.drives,
+      dynamicResolution: f.dynamicResolution,
       audio: f.audio
     }
   };
@@ -168,11 +173,14 @@ export function describeSettings(s: {
   multiMonitor?: boolean | null;
   clipboard?: boolean | null;
   drives?: boolean | null;
+  dynamicResolution?: boolean | null;
   audio?: string | null;
 }): string[] {
   const out: string[] = [];
   if (s.display === 'fullscreen') out.push('Full screen');
   if (s.display === 'window') out.push(s.width && s.height ? `Window ${s.width}×${s.height}` : 'Window');
+  if (s.display === 'fit') out.push('Fit to screen');
+  if (s.dynamicResolution) out.push('Resizes');
   if (s.multiMonitor) out.push('All monitors');
   if (s.clipboard) out.push('Clipboard');
   if (s.drives) out.push('Drives');
