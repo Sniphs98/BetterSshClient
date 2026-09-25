@@ -154,9 +154,13 @@ describe('FreeRDP arguments', () => {
     expect(args).toEqual(['/v:10.0.0.5:3389', '/u:admin', '/from-stdin:force']);
   });
 
-  it('answer the domain prompt blank when there is no domain, then give the password', () => {
-    expect(freerdpStdin(connection({ password: 'secret' }))).toBe('\nsecret\n');
-    expect(freerdpStdin(connection({ domain: 'CORP', password: 'secret' }))).toBe('secret\n');
+  it('answer the password prompt, the only one with a username on the command line', () => {
+    expect(freerdpStdin(connection({ username: 'admin', password: 'secret' }))).toBe('secret\n');
+    expect(freerdpStdin(connection({ username: 'admin', domain: 'CORP', password: 'secret' }))).toBe('secret\n');
+  });
+
+  it('leave the prompts to the user without a username', () => {
+    expect(buildFreerdpArgs(connection({ password: 'secret' }))).not.toContain('/from-stdin:force');
   });
 
   it('do not ask for anything on stdin without a saved password', () => {
@@ -313,7 +317,7 @@ describe('launchRdp', () => {
       expect(result.opened).toBe('xfreerdp');
       expect(result.filePath).toBeUndefined();
       expect(spawnMock).toHaveBeenCalledWith(bin, ['/v:10.0.0.5:3389', '/u:admin', '/from-stdin:force'], expect.anything());
-      expect(child.written).toBe('\nsecret\n');
+      expect(child.written).toBe('secret\n');
     });
 
     it("prefers FreeRDP 3's xfreerdp3 when both are installed", async () => {

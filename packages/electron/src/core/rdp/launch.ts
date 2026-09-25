@@ -109,6 +109,12 @@ export function selectRdpStrategy(platform: NodeJS.Platform, xfreerdpAvailable: 
   return xfreerdpAvailable ? 'xfreerdp' : 'file';
 }
 
+/** Whether FreeRDP gets the password on stdin: only with a username too — without
+ *  one it would ask for that first, and the user types both anyway. */
+export function passesPasswordOnStdin(connection: RemoteDesktopConnection): boolean {
+  return Boolean(connection.username && connection.password);
+}
+
 /** The FreeRDP arguments for `connection`. The password is not among them: with
  *  `/from-stdin:force` FreeRDP asks for what's missing on stdin before connecting,
  *  and `freerdpStdin` answers. */
@@ -116,7 +122,7 @@ export function buildFreerdpArgs(connection: RemoteDesktopConnection): string[] 
   const args = [`/v:${connection.hostname}:${connection.port}`];
   if (connection.username) args.push(`/u:${connection.username}`);
   if (connection.domain) args.push(`/d:${connection.domain}`);
-  if (connection.password) args.push('/from-stdin:force');
+  if (passesPasswordOnStdin(connection)) args.push('/from-stdin:force');
   return [...args, ...freerdpSettingArgs(connection)];
 }
 
@@ -137,10 +143,11 @@ export function freerdpSettingArgs(settings: RdpSettings): string[] {
   return args;
 }
 
-/** What to type into FreeRDP's prompts: it asks for the domain when none was given
- *  (answered blank), then the password. */
+/** What to type into FreeRDP's prompt. With the username (and domain, if any) on
+ *  the command line, the password is all FreeRDP 2 and 3 ask for — checked against a
+ *  real Windows, see docker/windows-rdp-target. */
 export function freerdpStdin(connection: RemoteDesktopConnection): string {
-  return (connection.domain ? '' : '\n') + `${connection.password ?? ''}\n`;
+  return `${connection.password ?? ''}\n`;
 }
 
 async function findIn(dirs: string[], cmd: string): Promise<string | undefined> {
@@ -234,10 +241,10 @@ async function launchUnix(connection: RemoteDesktopConnection): Promise<RdpLaunc
   if (strategy === 'xfreerdp' && freerdp) {
     const child = spawn(freerdp, buildFreerdpArgs(connection), {
       detached: true,
-      stdio: [connection.password ? 'pipe' : 'ignore', 'ignore', 'ignore']
+      stdio: [passesPasswordOnStdin(connection) ? 'pipe' : 'ignore', 'ignore', 'ignore']
     });
     await started(child, 'FreeRDP');
-    if (connection.password) {
+    if (passesPasswordOnStdin(connection)) {
       child.stdin?.on('error', () => {}); // exited before reading: nothing to do
       child.stdin?.end(freerdpStdin(connection));
     }
