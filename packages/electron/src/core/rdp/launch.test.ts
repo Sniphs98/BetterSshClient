@@ -22,6 +22,8 @@ const {
   buildFreerdpArgs,
   buildRdpFileContent,
   CREDENTIAL_HOLD_MS,
+  freerdpCommands,
+  freerdpSearchPath,
   freerdpSettingArgs,
   freerdpStdin,
   launchRdp,
@@ -159,6 +161,25 @@ describe('FreeRDP arguments', () => {
 
   it('do not ask for anything on stdin without a saved password', () => {
     expect(buildFreerdpArgs(connection({ username: 'admin' }))).not.toContain('/from-stdin:force');
+  });
+});
+
+describe('finding FreeRDP', () => {
+  it('prefers the native SDL client on macOS, the X11 one elsewhere', () => {
+    expect(freerdpCommands('darwin')[0]).toBe('sdl-freerdp3');
+    expect(freerdpCommands('linux')[0]).toBe('xfreerdp3');
+    expect(freerdpCommands('linux')).toContain('sdl-freerdp');
+  });
+
+  it("also looks where Homebrew installs on macOS, which a Finder-started app's PATH lacks", () => {
+    expect(freerdpSearchPath('darwin', '/usr/bin:/bin', ':')).toEqual([
+      '/usr/bin',
+      '/bin',
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
+      '/opt/local/bin'
+    ]);
+    expect(freerdpSearchPath('linux', '/usr/bin:/bin', ':')).toEqual(['/usr/bin', '/bin']);
   });
 });
 

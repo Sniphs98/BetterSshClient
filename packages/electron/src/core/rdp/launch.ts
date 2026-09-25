@@ -80,8 +80,27 @@ export function rdpSettingLines(settings: RdpSettings): string[] {
   return lines;
 }
 
-/** FreeRDP's X11 client, newest first: FreeRDP 3 packages install it as `xfreerdp3`. */
-export const FREERDP_COMMANDS = ['xfreerdp3', 'xfreerdp'] as const;
+/** FreeRDP's clients to look for, best first. FreeRDP 3 packages add a `3` to the
+ *  name. On macOS the SDL client comes first: it runs natively, where the X11 one
+ *  needs XQuartz. Every one takes the same arguments. */
+export function freerdpCommands(platform: NodeJS.Platform): string[] {
+  const x11 = ['xfreerdp3', 'xfreerdp'];
+  const sdl = ['sdl-freerdp3', 'sdl-freerdp'];
+  return platform === 'darwin' ? [...sdl, ...x11] : [...x11, ...sdl];
+}
+
+/** Where to look for them: `PATH`, plus — on macOS — where Homebrew and MacPorts
+ *  install, since an app started from the Finder or Dock gets a `PATH` without
+ *  them and would never find a FreeRDP installed the usual way. */
+export function freerdpSearchPath(platform: NodeJS.Platform, path: string | undefined, separator = delimiter): string[] {
+  const dirs = (path ?? '').split(separator).filter(Boolean);
+  if (platform === 'darwin') {
+    for (const dir of ['/opt/homebrew/bin', '/usr/local/bin', '/opt/local/bin']) {
+      if (!dirs.includes(dir)) dirs.push(dir);
+    }
+  }
+  return dirs;
+}
 
 /** Pure OS-branch selection, factored out of `launchRdp` so it's testable without
  *  mocking `child_process` or the real `process.platform`. */
@@ -124,9 +143,8 @@ export function freerdpStdin(connection: RemoteDesktopConnection): string {
   return (connection.domain ? '' : '\n') + `${connection.password ?? ''}\n`;
 }
 
-async function findOnPath(cmd: string): Promise<string | undefined> {
-  for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-    if (!dir) continue;
+async function findIn(dirs: string[], cmd: string): Promise<string | undefined> {
+  for (const dir of dirs) {
     const candidate = join(dir, cmd);
     try {
       await access(candidate, constants.X_OK);
@@ -206,9 +224,10 @@ async function launchWindows(connection: RemoteDesktopConnection): Promise<RdpLa
 }
 
 async function launchUnix(connection: RemoteDesktopConnection): Promise<RdpLaunchResult> {
+  const dirs = freerdpSearchPath(process.platform, process.env.PATH);
   let freerdp: string | undefined;
-  for (const cmd of FREERDP_COMMANDS) {
-    freerdp = await findOnPath(cmd);
+  for (const cmd of freerdpCommands(process.platform)) {
+    freerdp = await findIn(dirs, cmd);
     if (freerdp) break;
   }
   const strategy = selectRdpStrategy(process.platform, freerdp !== undefined);

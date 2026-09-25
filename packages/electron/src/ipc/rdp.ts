@@ -1,4 +1,4 @@
-import { shell, type IpcMain } from 'electron';
+import { clipboard, shell, type IpcMain } from 'electron';
 
 import { loadRemoteDesktopConnections, type RemoteDesktopConnection } from '../core/config/remoteDesktop.js';
 import { launchRdp, pendingCredentialHosts, type RdpLaunchResult } from '../core/rdp/launch.js';
@@ -8,10 +8,30 @@ import { SshSession } from '../core/ssh/session.js';
 import { toCommandError, type RdpLaunchResultDto } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
 
+/** How long a password handed over on the clipboard stays there. */
+export const CLIPBOARD_CLEAR_MS = 45_000;
+
+type TextClipboard = Pick<typeof clipboard, 'writeText' | 'readText' | 'clear'>;
+
+/** For a `.rdp` file opened by whatever app handles it (macOS's Windows App, say),
+ *  which can't be given a password: puts it on the clipboard to paste at the prompt,
+ *  and takes it off again after `CLIPBOARD_CLEAR_MS` — unless something else has been
+ *  copied since, which is left alone. */
+export function offerPasswordOnClipboard(password: string, board: TextClipboard = clipboard): void {
+  board.writeText(password);
+  const timer = setTimeout(() => {
+    if (board.readText() === password) board.clear();
+  }, CLIPBOARD_CLEAR_MS);
+  timer.unref?.();
+}
+
 /** What the user should know about a launch that went through, if anything. */
-export function launchNotice(result: Pick<RdpLaunchResult, 'credential'>): string | undefined {
+export function launchNotice(result: Pick<RdpLaunchResult, 'credential' | 'opened'>, passwordOnClipboard = false): string | undefined {
   if (result.credential === 'kept-existing') {
     return 'Windows already has a saved password for this host, so Remote Desktop uses that one instead of the one stored here.';
+  }
+  if (passwordOnClipboard) {
+    return `The password is on the clipboard for ${CLIPBOARD_CLEAR_MS / 1000} seconds — paste it when Remote Desktop asks for it. Installing FreeRDP lets the app sign in for you.`;
   }
   return undefined;
 }
@@ -56,11 +76,16 @@ export function registerRdpIpc(ipcMain: IpcMain, state: GuiState): void {
           // the .rdp file) — `core/rdp/launch.ts` stays Electron-free by leaving this
           // one step to the caller instead of doing it itself.
           const failure = await shell.openPath(result.filePath);
-          if (failure) throw new Error(`No app could open the .rdp file: ${failure}`);
+          if (failure) {
+            throw new Error(
+              `No app could open the .rdp file (${failure}). Install FreeRDP, or on macOS Microsoft's "Windows App".`
+            );
+          }
+          if (connection.password) offerPasswordOnClipboard(connection.password);
         }
         // With a client to watch, the tunnel goes with it; otherwise it closes once idle.
         if (tunnel) result.child?.once('exit', () => tunnel.close());
-        return { notice: launchNotice(result) };
+        return { notice: launchNotice(result, result.opened === 'file' && Boolean(connection.password)) };
       } catch (err) {
         tunnel?.close();
         throw err;
