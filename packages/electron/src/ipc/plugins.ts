@@ -1,4 +1,6 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+
+const MAX_DOCS_LENGTH = 200_000;
 import { join } from 'node:path';
 
 import { shell, type IpcMain } from 'electron';
@@ -28,6 +30,8 @@ interface PluginDto {
   permissions: { id: Permission; description: string }[];
   enabled: boolean;
   running: boolean;
+  /** It ships a README.md (`read_plugin_docs`). */
+  hasDocs: boolean;
   error?: string;
 }
 
@@ -76,6 +80,7 @@ export class PluginManager {
         permissions: (p.manifest?.permissions ?? []).map((perm) => ({ id: perm, description: describePermission(perm) })),
         enabled: isEnabled(p),
         running: this.host.isRunning(id),
+        hasDocs: p.readme !== undefined,
         error: p.error ?? this.startErrors.get(id)
       };
     });
@@ -95,6 +100,17 @@ export class PluginManager {
       this.host.stop(id);
       this.startErrors.delete(id);
     }
+  }
+
+  /** The plugin's README.md as text — shown sanitised in the app (it is the plugin
+   *  author's content). Capped, since it is read into memory and rendered whole. */
+  async docs(id: string): Promise<string> {
+    const plugin = this.found.find((p) => (p.manifest?.id ?? p.folder) === id);
+    if (!plugin?.readme) throw new Error(`plugin "${id}" has no README.md`);
+    const text = await readFile(join(plugin.dir, plugin.readme), 'utf-8');
+    return text.length > MAX_DOCS_LENGTH ? `${text.slice(0, MAX_DOCS_LENGTH)}
+
+…(truncated)` : text;
   }
 
   private async startOne(plugin: FoundPlugin): Promise<void> {
@@ -133,6 +149,14 @@ export function registerPluginsIpc(ipcMain: IpcMain, manager: PluginManager): vo
     const dir = pluginsDir();
     await mkdir(dir, { recursive: true });
     await shell.openPath(dir);
+  });
+
+  ipcMain.handle('read_plugin_docs', async (_event, id: string) => {
+    try {
+      return await manager.docs(String(id));
+    } catch (err) {
+      throw toCommandError(err);
+    }
   });
 
   ipcMain.handle('list_plugin_commands', () => manager.host.listCommands());

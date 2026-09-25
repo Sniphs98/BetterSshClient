@@ -362,6 +362,13 @@ export async function openPluginsFolder(): Promise<void> {
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
+/** A plugin's README.md, as markdown (render it with `renderUntrustedMarkdown`). */
+export async function readPluginDocs(id: string): Promise<string> {
+  const res = await commands.readPluginDocs(id);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
 export async function listPluginCommands(): Promise<PluginCommandDto[]> {
   const res = await commands.listPluginCommands();
   if (res.status === 'error') throw new Error(res.error.message);

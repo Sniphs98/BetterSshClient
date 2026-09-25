@@ -14,3 +14,10 @@ and switch the plugin on. Its commands show up on its card and in the command pa
 
 How plugins work, the permissions and the `bssh` API: [docs/plugin-system.md](../../docs/plugin-system.md)
 (German).
+
+## Documenting a plugin
+
+Put a `README.md` next to `plugin.json`. The plugin's card then gets a **Docs** button that
+shows it. It is rendered as Markdown with everything risky taken out — no scripts, no
+images, and links open in your browser. See
+[`docker-containers/README.md`](docker-containers/README.md) for an example.

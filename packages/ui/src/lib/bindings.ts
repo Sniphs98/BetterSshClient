@@ -117,6 +117,9 @@ export const commands = {
   async openPluginsFolder(): Promise<Result<null, CommandError>> {
     return call('open_plugins_folder');
   },
+  async readPluginDocs(id: string): Promise<Result<string, CommandError>> {
+    return call('read_plugin_docs', id);
+  },
   async listPluginCommands(): Promise<Result<PluginCommandDto[], CommandError>> {
     return call('list_plugin_commands');
   },
@@ -488,6 +491,8 @@ export type PluginDto = {
   permissions: { id: string; description: string }[];
   enabled: boolean;
   running: boolean;
+  /** It ships a README.md, readable with `read_plugin_docs`. */
+  hasDocs: boolean;
   error?: string;
 };
 /** A command a running plugin added to the command palette. */

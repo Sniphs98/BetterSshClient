@@ -20,7 +20,8 @@ async function boot(page: Page): Promise<void> {
       description: 'Lists the Docker containers on a host.',
       permissions: [{ id: 'hosts:exec', description: 'Run commands on your hosts' }],
       enabled: false,
-      running: false
+      running: false,
+      hasDocs: true
     };
     const command = {
       pluginId: 'docker-containers',
@@ -39,6 +40,11 @@ async function boot(page: Page): Promise<void> {
             return Promise.resolve(null);
           case 'list_plugins':
             return Promise.resolve([{ ...plugin }]);
+          case 'read_plugin_docs':
+            return Promise.resolve(
+              '# Docker containers\n\nLists **containers**. See [the docs](https://docs.docker.com/).\n\n' +
+                '<script>window.__pwned = true</script>\n\n<img src="https://track.example/p.gif" onerror="window.__pwned = true">'
+            );
           case 'list_plugin_commands':
             return Promise.resolve(plugin.running ? [command] : []);
           case 'set_plugin_enabled':
@@ -64,7 +70,10 @@ async function boot(page: Page): Promise<void> {
         };
       },
       settings: { get: () => Promise.resolve(undefined), set: () => Promise.resolve() },
-      openExternal: () => Promise.resolve(),
+      openExternal: (url: string) => {
+        win.__opened = url;
+        return Promise.resolve();
+      },
       homeDir: () => Promise.resolve('/home/user'),
       getPathForFile: () => ''
     };
@@ -99,4 +108,22 @@ test('switching a plugin on shows its command, which runs on a picked host', asy
     'containers',
     'web-1'
   ]);
+});
+
+test("a plugin's README opens as docs, rendered but defused", async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Plugins', exact: true }).click();
+  await page.getByRole('button', { name: 'Docs for Docker containers' }).click();
+
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Docker containers' })).toBeVisible();
+  await expect(dialog.locator('strong')).toHaveText('containers');
+  // Neither the script nor the image's handler ran, and no image was put in the page.
+  expect(await page.evaluate(() => (window as unknown as { __pwned?: boolean }).__pwned)).toBeUndefined();
+  await expect(dialog.locator('img, script')).toHaveCount(0);
+
+  // A link goes to the system browser, not into the app window.
+  await dialog.getByRole('link', { name: 'the docs' }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __opened?: string }).__opened)).toBe('https://docs.docker.com/');
+  await expect(page.getByRole('heading', { name: 'Plugins' })).toBeVisible();
 });

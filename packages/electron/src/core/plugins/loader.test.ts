@@ -46,4 +46,13 @@ describe('discoverPlugins', () => {
   it('means no plugins when the directory does not exist', async () => {
     expect(await discoverPlugins(join(dir, 'missing'))).toEqual([]);
   });
+
+  it('notices a README.md in any case, and its absence', async () => {
+    await plugin('with-docs', manifest('with-docs'));
+    await writeFile(join(dir, 'with-docs', 'ReadMe.md'), '# Hi');
+    await plugin('without-docs', manifest('without-docs'));
+    const found = await discoverPlugins(dir);
+    expect(found.find((p) => p.folder === 'with-docs')?.readme).toBe('ReadMe.md');
+    expect(found.find((p) => p.folder === 'without-docs')?.readme).toBeUndefined();
+  });
 });

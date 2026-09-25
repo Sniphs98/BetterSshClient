@@ -11,8 +11,17 @@ export function pluginsDir(): string {
 
 /** One folder found in the plugins directory: its manifest, or why it can't be used. */
 export type FoundPlugin =
-  | { folder: string; dir: string; manifest: PluginManifest; error?: undefined }
-  | { folder: string; dir: string; manifest?: undefined; error: string };
+  | { folder: string; dir: string; manifest: PluginManifest; error?: undefined; readme?: string }
+  | { folder: string; dir: string; manifest?: undefined; error: string; readme?: string };
+
+/** The plugin's own documentation: a README.md next to its plugin.json, any case. */
+async function findReadme(pluginDir: string): Promise<string | undefined> {
+  try {
+    return (await readdir(pluginDir)).find((f) => f.toLowerCase() === 'readme.md');
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Reads every plugin folder. A broken plugin (unreadable or invalid
@@ -49,7 +58,7 @@ export async function discoverPlugins(dir: string = pluginsDir()): Promise<Found
       found.push({ folder, dir: pluginDir, error: `main script "${result.manifest.main}" not found` });
       continue;
     }
-    found.push({ folder, dir: pluginDir, manifest: result.manifest });
+    found.push({ folder, dir: pluginDir, manifest: result.manifest, readme: await findReadme(pluginDir) });
   }
   return found;
 }

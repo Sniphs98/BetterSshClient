@@ -11,10 +11,22 @@
   import { lastError } from '$lib/stores/notifications';
   import { pluginCommands } from '$lib/stores/plugins';
   import { palette } from '$lib/stores/palette';
-  import { listPlugins, openPluginsFolder, reloadPlugins, runPluginCommand, setPluginEnabled } from '$lib/ipc/commands';
+  import {
+    listPlugins,
+    openPluginsFolder,
+    readPluginDocs,
+    reloadPlugins,
+    runPluginCommand,
+    setPluginEnabled
+  } from '$lib/ipc/commands';
+  import { openExternal } from '$lib/ipc/openExternal';
+  import { renderUntrustedMarkdown } from '$lib/markdown';
+  import Modal from '$lib/components/Modal.svelte';
 
   let plugins = $state<PluginDto[] | null>(null);
   let busy = $state<string | null>(null);
+  // The README of the plugin whose docs are open, already sanitised (see markdown.ts).
+  let docs = $state<{ name: string; html: string } | null>(null);
 
   const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -68,6 +80,27 @@
       await runPluginCommand(command.pluginId, command.commandId, host);
     } catch (e) {
       lastError.set(`${command.pluginName}: ${message(e)}`);
+    }
+  }
+
+  async function showDocs(p: PluginDto): Promise<void> {
+    try {
+      docs = { name: p.name, html: renderUntrustedMarkdown(await readPluginDocs(p.id)) };
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
+  // A link in plugin docs never navigates the app window: it goes to the system browser.
+  function onDocsClick(event: MouseEvent): void {
+    const link = (event.target as HTMLElement).closest('a');
+    if (!link) return;
+    event.preventDefault();
+    const href = link.getAttribute('href') ?? '';
+    if (href.startsWith('#')) {
+      document.getElementById(href.slice(1))?.scrollIntoView();
+    } else if (/^(https:|mailto:)/i.test(href)) {
+      void openExternal(href).catch((e) => lastError.set(message(e)));
     }
   }
 
@@ -180,7 +213,7 @@
             <p class="text-xs text-faint">Needs no permissions.</p>
           {/if}
 
-          {#if commands.length > 0}
+          {#if commands.length > 0 || p.hasDocs}
             <div class="mt-auto flex flex-wrap gap-1.5 border-t border-default pt-3">
               {#each commands as c (c.commandId)}
                 <button type="button" class={pill} onclick={() => run(c)}>
@@ -188,6 +221,12 @@
                   {c.title}
                 </button>
               {/each}
+              {#if p.hasDocs}
+                <button type="button" class="{pill} ml-auto" aria-label="Docs for {p.name}" onclick={() => showDocs(p)}>
+                  <Icon name="file" size={12} />
+                  Docs
+                </button>
+              {/if}
             </div>
           {/if}
         </Surface>
@@ -195,3 +234,87 @@
     </div>
   {/if}
 </section>
+
+{#if docs}
+  <Modal label="{docs.name} documentation" size="large" onClose={() => (docs = null)}>
+    <p class="mb-3 text-xs text-faint">Documentation from the plugin “{docs.name}”</p>
+    <!-- Sanitised by renderUntrustedMarkdown: no scripts, handlers, frames or images. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="plugin-docs max-h-[65vh] overflow-auto select-text" onclick={onDocsClick}>
+      {@html docs.html}
+    </div>
+  </Modal>
+{/if}
+
+<style>
+  .plugin-docs {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .plugin-docs :global(h1) {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem;
+  }
+  .plugin-docs :global(h2) {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.5rem;
+  }
+  .plugin-docs :global(h3) {
+    font-weight: 600;
+    margin: 1rem 0 0.4rem;
+  }
+  .plugin-docs :global(p),
+  .plugin-docs :global(ul),
+  .plugin-docs :global(ol),
+  .plugin-docs :global(pre),
+  .plugin-docs :global(table),
+  .plugin-docs :global(blockquote) {
+    margin: 0 0 0.75rem;
+  }
+  .plugin-docs :global(ul) {
+    list-style: disc;
+    padding-left: 1.25rem;
+  }
+  .plugin-docs :global(ol) {
+    list-style: decimal;
+    padding-left: 1.25rem;
+  }
+  .plugin-docs :global(code) {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.8em;
+    background: var(--surface-inset);
+    border-radius: 0.3rem;
+    padding: 0.1rem 0.3rem;
+  }
+  .plugin-docs :global(pre) {
+    background: var(--surface-inset);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    overflow: auto;
+  }
+  .plugin-docs :global(pre code) {
+    background: none;
+    padding: 0;
+  }
+  .plugin-docs :global(a) {
+    color: var(--accent);
+    text-decoration: underline;
+  }
+  .plugin-docs :global(blockquote) {
+    border-left: 3px solid var(--border-strong, currentColor);
+    padding-left: 0.75rem;
+    color: var(--text-muted, inherit);
+  }
+  .plugin-docs :global(table) {
+    border-collapse: collapse;
+  }
+  .plugin-docs :global(th),
+  .plugin-docs :global(td) {
+    border: 1px solid var(--border, currentColor);
+    padding: 0.25rem 0.5rem;
+    text-align: left;
+  }
+</style>
