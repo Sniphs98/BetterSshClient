@@ -6,7 +6,7 @@ import { loadRemoteDesktopConnections } from '../core/config/remoteDesktop.js';
 import { RdpGateway } from '../core/rdp/gateway.js';
 import { checkCertificate, forgetCertificate } from '../core/rdp/knownCerts.js';
 import { SshSession } from '../core/ssh/session.js';
-import { toCommandError, type RdpEmbeddedSessionDto, type RdpEmbeddedStatusDto } from '../dto.js';
+import { toCommandError, type RdpCredentialsDto, type RdpEmbeddedOpenDto, type RdpEmbeddedStatusDto } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
 
 /**
@@ -36,13 +36,20 @@ function openTcp(host: string, port: number): Promise<Duplex> {
 }
 
 export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void {
-  ipcMain.handle('rdp_embedded_open', async (_event, connectionId: string): Promise<RdpEmbeddedSessionDto> => {
+  ipcMain.handle(
+    'rdp_embedded_open',
+    async (_event, connectionId: string, typed?: RdpCredentialsDto): Promise<RdpEmbeddedOpenDto> => {
     try {
       const connection = (await loadRemoteDesktopConnections()).find((c) => c.id === connectionId);
       if (!connection) throw new Error(`unknown remote desktop connection '${connectionId}'`);
       if (connection.protocol !== 'rdp') throw new Error(`connection '${connection.name}' is not an RDP connection`);
-      if (!connection.username || !connection.password) {
-        throw new Error('The built-in viewer needs a saved username and password — add them, or open it in the Remote Desktop app.');
+      // A profile without a stored password (or user) asks in the tab; what's typed
+      // there is used for this connection only.
+      const username = typed?.username || connection.username;
+      const password = typed?.password || connection.password;
+      const domain = typed ? typed.domain || undefined : connection.domain;
+      if (!username || !password) {
+        return { kind: 'credentials', username: connection.username, domain: connection.domain };
       }
 
       const session: OpenSession = {};
@@ -82,18 +89,20 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
       open.set(token, session);
 
       return {
+        kind: 'ready',
         token,
         proxyUrl: await gateway.url(),
         // What the client puts in its request; the gateway ignores it for the registered target.
         destination: `${connection.hostname}:${connection.port}`,
-        username: connection.username,
-        password: connection.password,
-        domain: connection.domain
+        username,
+        password,
+        domain
       };
     } catch (err) {
       throw toCommandError(err);
     }
-  });
+    }
+  );
 
   ipcMain.handle('rdp_embedded_status', (_event, token: string): RdpEmbeddedStatusDto => ({
     failure: gateway.failure(token),

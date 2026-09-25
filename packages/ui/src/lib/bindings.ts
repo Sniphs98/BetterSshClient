@@ -153,8 +153,11 @@ export const commands = {
   async rdpLaunch(connectionId: string): Promise<Result<RdpLaunchResultDto, CommandError>> {
     return call('rdp_launch', connectionId);
   },
-  async rdpEmbeddedOpen(connectionId: string): Promise<Result<RdpEmbeddedSessionDto, CommandError>> {
-    return call('rdp_embedded_open', connectionId);
+  async rdpEmbeddedOpen(
+    connectionId: string,
+    credentials?: RdpCredentialsDto
+  ): Promise<Result<RdpEmbeddedOpenDto, CommandError>> {
+    return call('rdp_embedded_open', connectionId, credentials);
   },
   async rdpEmbeddedStatus(token: string): Promise<Result<RdpEmbeddedStatusDto, CommandError>> {
     return call('rdp_embedded_status', token);
@@ -404,6 +407,14 @@ export type NodeStatusDto = 'success' | 'failed' | 'skipped';
 export type ProcessDto = { name: string; cpuPercent: number; memPercent: number };
 /** A saved RDP/VNC connection profile as the frontend sees it — password omitted,
  *  `hasPassword` tells the editor whether one is stored. */
+/** Credentials typed in the embedded viewer; used once, never saved. */
+export type RdpCredentialsDto = { username: string; password: string; domain?: string };
+
+/** Ready to connect, or first ask for credentials the profile doesn't store. */
+export type RdpEmbeddedOpenDto =
+  | ({ kind: 'ready' } & RdpEmbeddedSessionDto)
+  | { kind: 'credentials'; username?: string | null; domain?: string | null };
+
 /** What the embedded RDP client needs to connect (`rdp_embedded_open`). */
 export type RdpEmbeddedSessionDto = {
   token: string;

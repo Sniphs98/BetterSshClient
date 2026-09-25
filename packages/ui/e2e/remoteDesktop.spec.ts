@@ -21,6 +21,7 @@ async function boot(page: Page, opts: { launch?: Rec } = {}): Promise<void> {
     const rdpLaunchCalls: string[] = [];
     win.__rdpLaunchCalls = rdpLaunchCalls;
     win.__rdpConnections = state;
+    win.__rdpTyped = [];
 
     win.bsshClient = {
       invoke: (channel: string, ...rawArgs: unknown[]) => {
@@ -50,9 +51,14 @@ async function boot(page: Page, opts: { launch?: Rec } = {}): Promise<void> {
             state.connections = state.connections.filter((x) => x.id !== args[0]);
             return Promise.resolve(null);
           }
-          case 'rdp_embedded_open':
-            // No gateway behind the stub: the in-app viewer has to say so and offer the rest.
+          case 'rdp_embedded_open': {
+            // A profile without a stored password: the viewer asks first. With what's
+            // typed, there's no gateway behind the stub — the viewer has to say so.
+            const typed = args[1] as { username: string; password: string } | undefined;
+            if (!typed) return Promise.resolve({ kind: 'credentials', username: 'admin' });
+            (win.__rdpTyped as unknown[]).push(typed);
             return Promise.reject({ message: 'could not reach 10.0.0.5:3389: connect ECONNREFUSED' });
+          }
           case 'rdp_embedded_status':
             return Promise.resolve({});
           case 'rdp_launch': {
@@ -227,8 +233,16 @@ test('Connect opens the remote desktop in a tab, with the external app as the wa
   await editor.getByRole('button', { name: 'Add connection' }).click();
 
   await page.getByRole('button', { name: 'Connect to office-pc' }).click();
-  // A session row in the sidebar, and the tab saying what went wrong.
+  // A session row in the sidebar; no stored password, so the tab asks for one.
   await expect(page.getByRole('button', { name: 'office-pc · rdp' })).toBeVisible();
+  await expect(page.getByText('Sign in to office-pc')).toBeVisible();
+  await expect(page.getByLabel('Username')).toHaveValue('admin');
+  await page.getByLabel('Password').fill('s3cret');
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  expect(await page.evaluate(() => (window as unknown as { __rdpTyped: unknown[] }).__rdpTyped)).toEqual([
+    { username: 'admin', password: 's3cret', domain: '' }
+  ]);
+  // …and then says what went wrong.
   await expect(page.getByText('Could not connect')).toBeVisible();
   await expect(page.getByText('Could not reach 10.0.0.5:3389: connect ECONNREFUSED')).toBeVisible();
 

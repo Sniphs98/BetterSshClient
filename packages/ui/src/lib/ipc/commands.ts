@@ -9,7 +9,8 @@ import type {
   HostDto,
   HostInputDto,
   ImportResultDto,
-  RdpEmbeddedSessionDto,
+  RdpCredentialsDto,
+  RdpEmbeddedOpenDto,
   RdpEmbeddedStatusDto,
   RdpLaunchResultDto,
   RemoteDesktopConnectionDto,
@@ -339,8 +340,8 @@ export async function rdpLaunch(connectionId: string): Promise<RdpLaunchResultDt
 
 /** Registers an embedded RDP session with the local gateway and returns what the
  *  in-app client connects with. */
-export async function rdpEmbeddedOpen(connectionId: string): Promise<RdpEmbeddedSessionDto> {
-  const res = await commands.rdpEmbeddedOpen(connectionId);
+export async function rdpEmbeddedOpen(connectionId: string, credentials?: RdpCredentialsDto): Promise<RdpEmbeddedOpenDto> {
+  const res = await commands.rdpEmbeddedOpen(connectionId, credentials);
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
 }

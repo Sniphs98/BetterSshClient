@@ -16,7 +16,12 @@
   let { session, active }: { session: Session; active: boolean } = $props();
 
   let viewport = $state<HTMLDivElement>();
-  let phase = $state<'connecting' | 'connected' | 'ended' | 'failed'>('connecting');
+  let phase = $state<'connecting' | 'credentials' | 'connected' | 'ended' | 'failed'>('connecting');
+  // Asked for in the tab when the profile doesn't store them; kept only for reconnects
+  // of this tab, never saved.
+  let credentials = $state<{ username: string; password: string; domain: string } | null>(null);
+  let form = $state({ username: '', password: '', domain: '' });
+  let passwordEl = $state<HTMLInputElement>();
   let problem = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let certificateChanged = $state(false);
@@ -61,9 +66,18 @@
       ui = await ready;
       if (destroyed) return;
 
-      const dto = await rdpEmbeddedOpen(session.rdpConnectionId);
-      token = dto.token;
+      // A plain copy: a reactive proxy can't be sent over IPC.
+      const opened = await rdpEmbeddedOpen(session.rdpConnectionId, credentials ? $state.snapshot(credentials) : undefined);
       if (destroyed) return;
+      if (opened.kind === 'credentials') {
+        form = { username: opened.username ?? '', password: '', domain: opened.domain ?? '' };
+        phase = 'credentials';
+        sessions.setStatus(session.id, 'unknown');
+        requestAnimationFrame(() => passwordEl?.focus());
+        return;
+      }
+      const dto = opened;
+      token = dto.token;
       ui.setEnableClipboard(connection?.clipboard !== false);
       ui.setEnableAutoClipboard(connection?.clipboard !== false);
       const config = ui
@@ -97,6 +111,8 @@
       if (destroyed) return;
       const status = token ? await rdpEmbeddedStatus(token).catch(() => undefined) : undefined;
       problem = explainRdpError(err, status?.failure ?? undefined);
+      // Wrong typed credentials: ask again rather than keep failing with them.
+      if (credentials && /username or password/.test(problem)) credentials = null;
       certificateChanged = /certificate has changed/.test(problem);
       phase = 'failed';
       sessions.setStatus(session.id, 'failed');
@@ -120,6 +136,13 @@
       const { width, height } = viewportSize();
       ui.resize(width, height);
     }, 250);
+  }
+
+  function signIn(event: SubmitEvent): void {
+    event.preventDefault();
+    if (!form.username.trim() || !form.password) return;
+    credentials = { username: form.username.trim(), password: form.password, domain: form.domain.trim() };
+    void connect();
   }
 
   async function openExternally(): Promise<void> {
@@ -163,6 +186,8 @@
     }
   });
 
+  const field =
+    'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
   const btn =
     'inline-flex items-center gap-1.5 rounded-full border border-default px-2.5 py-1 text-xs font-medium text-muted ' +
     'transition hover:border-strong hover:bg-accent hover:text-accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
@@ -173,12 +198,20 @@
     <Icon name="monitor" size={14} />
     <span class="font-medium">{session.hostName}</span>
     <span class="text-faint">
-      {phase === 'connecting' ? 'Connecting…' : phase === 'connected' ? 'Connected' : phase === 'ended' ? 'Session ended' : 'Failed'}
+      {phase === 'connecting'
+        ? 'Connecting…'
+        : phase === 'credentials'
+          ? 'Sign in'
+          : phase === 'connected'
+            ? 'Connected'
+            : phase === 'ended'
+              ? 'Session ended'
+              : 'Failed'}
     </span>
     <div class="ml-auto flex items-center gap-1.5">
       {#if phase === 'connected'}
         <button type="button" class={btn} title="Send Ctrl+Alt+Del" onclick={() => ui?.ctrlAltDel()}>Ctrl+Alt+Del</button>
-      {:else if phase !== 'connecting'}
+      {:else if phase !== 'connecting' && phase !== 'credentials'}
         <button type="button" class={btn} onclick={() => connect()}>
           <Icon name="refresh" size={12} />
           Reconnect
@@ -210,6 +243,27 @@
         <div class="max-w-md space-y-3 text-center">
           {#if phase === 'connecting'}
             <p class="text-sm text-muted">Connecting to {session.hostName}…</p>
+          {:else if phase === 'credentials'}
+            <form class="w-80 space-y-3 text-left" onsubmit={signIn}>
+              <p class="text-center font-medium">Sign in to {session.hostName}</p>
+              <label class="block space-y-1 text-xs font-medium text-muted">
+                <span>Username</span>
+                <input bind:value={form.username} class={field} autocomplete="off" />
+              </label>
+              <label class="block space-y-1 text-xs font-medium text-muted">
+                <span>Password</span>
+                <input bind:this={passwordEl} bind:value={form.password} type="password" class={field} autocomplete="off" />
+              </label>
+              <label class="block space-y-1 text-xs font-medium text-muted">
+                <span>Domain</span>
+                <input bind:value={form.domain} class={field} placeholder="Optional" autocomplete="off" />
+              </label>
+              <p class="text-xs text-faint">Used for this connection only, not saved.</p>
+              <div class="flex justify-center gap-2 pt-1">
+                <button type="submit" class={btn} disabled={!form.username.trim() || !form.password}>Connect</button>
+                <button type="button" class={btn} onclick={openExternally}>Open in the Remote Desktop app</button>
+              </div>
+            </form>
           {:else}
             <p class="font-medium">{phase === 'ended' ? 'The session has ended' : 'Could not connect'}</p>
             {#if problem}<p class="text-sm text-muted">{problem}</p>{/if}

@@ -236,6 +236,20 @@ export interface RemoteDesktopConnectionInputDto extends RdpSettings {
   viaHost?: string;
 }
 
+/** Credentials typed in the embedded viewer for a profile that doesn't store them;
+ *  used for that one connection, never saved. */
+export interface RdpCredentialsDto {
+  username: string;
+  password: string;
+  domain?: string;
+}
+
+/** What `rdp_embedded_open` answers: ready to connect, or first ask for credentials
+ *  the profile doesn't store (the username/domain it has are there to prefill). */
+export type RdpEmbeddedOpenDto =
+  | ({ kind: 'ready' } & RdpEmbeddedSessionDto)
+  | { kind: 'credentials'; username?: string; domain?: string };
+
 /** What the renderer's embedded RDP client needs to connect (`rdp_embedded_open`). */
 export interface RdpEmbeddedSessionDto {
   /** One-time token: the client's RDCleanPath "proxy auth". */
