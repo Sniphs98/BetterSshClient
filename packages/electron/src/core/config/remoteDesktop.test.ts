@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { loadRemoteDesktopConnections, saveRemoteDesktopConnections, type RemoteDesktopConnection } from './remoteDesktop.js';
+import {
+  loadRemoteDesktopConnections,
+  rdpSettingsFrom,
+  saveRemoteDesktopConnections,
+  type RemoteDesktopConnection
+} from './remoteDesktop.js';
 import { appConfigDir, remoteDesktopConfigPath } from './platform.js';
 import { getSecretCipher, setSecretCipher, type SecretCipher } from './secretCipher.js';
 
@@ -56,7 +61,18 @@ describe('remote-desktop.toml I/O', () => {
   });
 
   it('round-trips every field', async () => {
-    const c = connection({ username: 'admin', domain: 'CORP' });
+    const c = connection({
+      username: 'admin',
+      domain: 'CORP',
+      viaHost: 'bastion',
+      display: 'window',
+      width: 1600,
+      height: 900,
+      multiMonitor: false,
+      clipboard: true,
+      drives: false,
+      audio: 'remote'
+    });
     await saveRemoteDesktopConnections([c]);
     const loaded = await loadRemoteDesktopConnections();
     expect(loaded).toEqual([c]);
@@ -98,5 +114,13 @@ describe('remote-desktop.toml I/O', () => {
       '[[connections]]\nid = "c1"\nname = "x"\nprotocol = "telnet"\nhostname = "h"\nport = 23\n'
     );
     await expect(loadRemoteDesktopConnections()).rejects.toThrow(/protocol/);
+  });
+});
+
+describe('rdpSettingsFrom', () => {
+  it('keeps valid settings and drops malformed ones', () => {
+    expect(
+      rdpSettingsFrom({ display: 'window', width: 1600, height: 12, multiMonitor: true, clipboard: 'yes', audio: 'loud', drives: false })
+    ).toEqual({ display: 'window', width: 1600, multiMonitor: true, drives: false });
   });
 });

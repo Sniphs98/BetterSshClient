@@ -131,3 +131,25 @@ describe('filterConnections', () => {
     expect(filterConnections(list, '10.0.0.9')).toEqual([list[1]]);
   });
 });
+
+describe('RDP settings in the form', () => {
+  it('start from the usual client defaults', () => {
+    const r = formToInput(fields({ name: 'n', hostname: 'h' }));
+    expect(r.ok && r.input).toMatchObject({ multiMonitor: false, clipboard: true, drives: false, audio: 'local' });
+    expect(r.ok && r.input.display).toBeUndefined();
+  });
+
+  it('take a window size only for a window, and only a sensible one', () => {
+    const ok = formToInput(fields({ name: 'n', hostname: 'h', display: 'window', width: '1600', height: '900' }));
+    expect(ok.ok && [ok.input.width, ok.input.height]).toEqual([1600, 900]);
+    const bad = formToInput(fields({ name: 'n', hostname: 'h', display: 'window', width: '1600', height: '' }));
+    expect(bad).toEqual({ ok: false, error: 'Window size must be a width and a height between 200 and 8192' });
+    const ignored = formToInput(fields({ name: 'n', hostname: 'h', display: 'fullscreen', width: 'x' }));
+    expect(ignored.ok && ignored.input.width).toBeUndefined();
+  });
+
+  it('round-trip through a saved connection', () => {
+    const f = formFromConnection(connection({ display: 'window', width: 1280, height: 720, clipboard: false, audio: 'off' }));
+    expect(f).toMatchObject({ display: 'window', width: '1280', height: '720', clipboard: false, audio: 'off', drives: false });
+  });
+});

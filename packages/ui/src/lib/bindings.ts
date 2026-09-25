@@ -398,7 +398,18 @@ export type RdpLaunchResultDto = {
   notice?: string;
 };
 
-export type RemoteDesktopConnectionDto = {
+/** rdp-only settings; each left out means "whatever the client does by default". */
+export type RdpSettingsDto = {
+  display?: 'fullscreen' | 'window' | null;
+  width?: number | null;
+  height?: number | null;
+  multiMonitor?: boolean | null;
+  clipboard?: boolean | null;
+  drives?: boolean | null;
+  audio?: 'local' | 'remote' | 'off' | null;
+};
+
+export type RemoteDesktopConnectionDto = RdpSettingsDto & {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocolDto;
@@ -413,7 +424,7 @@ export type RemoteDesktopConnectionDto = {
 };
 /** Inbound form payload for `save_remote_desktop_connection`. Omitting `password`
  *  means "keep the stored value" on an edit. */
-export type RemoteDesktopConnectionInputDto = {
+export type RemoteDesktopConnectionInputDto = RdpSettingsDto & {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocolDto;

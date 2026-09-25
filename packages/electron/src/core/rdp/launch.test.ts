@@ -22,9 +22,11 @@ const {
   buildFreerdpArgs,
   buildRdpFileContent,
   CREDENTIAL_HOLD_MS,
+  freerdpSettingArgs,
   freerdpStdin,
   launchRdp,
   pendingCredentialHosts,
+  rdpSettingLines,
   selectRdpStrategy
 } = await import('./launch.js');
 
@@ -74,6 +76,55 @@ describe('buildRdpFileContent', () => {
   it('cannot be made to carry extra settings through a newline in a value', () => {
     const content = buildRdpFileContent({ ...connection(), username: 'admin\nalternate shell:s:cmd.exe' });
     expect(content.split('\n').filter((l) => l.startsWith('alternate shell'))).toEqual([]);
+  });
+});
+
+describe('RDP settings', () => {
+  it('leave everything to the client when none are set', () => {
+    expect(rdpSettingLines({})).toEqual([]);
+    expect(freerdpSettingArgs({})).toEqual([]);
+  });
+
+  it('become .rdp lines for mstsc', () => {
+    expect(
+      rdpSettingLines({ display: 'window', width: 1600, height: 900, multiMonitor: false, clipboard: true, drives: true, audio: 'remote' })
+    ).toEqual([
+      'screen mode id:i:1',
+      'desktopwidth:i:1600',
+      'desktopheight:i:900',
+      'dynamic resolution:i:1',
+      'use multimon:i:0',
+      'redirectclipboard:i:1',
+      'drivestoredirect:s:*',
+      'audiomode:i:1'
+    ]);
+    expect(rdpSettingLines({ display: 'fullscreen', clipboard: false, drives: false, audio: 'off' })).toEqual([
+      'screen mode id:i:2',
+      'redirectclipboard:i:0',
+      'drivestoredirect:s:',
+      'audiomode:i:2'
+    ]);
+  });
+
+  it('become FreeRDP arguments', () => {
+    expect(freerdpSettingArgs({ display: 'window', width: 1600, height: 900, clipboard: true, drives: true, audio: 'local' })).toEqual([
+      '/size:1600x900',
+      '/dynamic-resolution',
+      '+clipboard',
+      '/drives',
+      '/sound'
+    ]);
+    expect(freerdpSettingArgs({ display: 'fullscreen', multiMonitor: true, clipboard: false, audio: 'off' })).toEqual([
+      '/f',
+      '/multimon',
+      '-clipboard',
+      '/audio-mode:2'
+    ]);
+  });
+
+  it('end up in the .rdp file and the FreeRDP command line', () => {
+    expect(buildRdpFileContent({ ...connection(), display: 'fullscreen' })).toContain('screen mode id:i:2\n');
+    expect(buildFreerdpArgs(connection({ display: 'fullscreen' }))).toContain('/f');
   });
 });
 

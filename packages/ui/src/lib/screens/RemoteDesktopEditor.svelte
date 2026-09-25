@@ -61,7 +61,13 @@
     return fields.viaHost && !names.includes(fields.viaHost) ? [fields.viaHost, ...names] : names;
   });
 
+  // Starts open when the profile already deviates from the defaults (seeded once, like `fields`).
+  // svelte-ignore state_referenced_locally
+  const initialHasSettings =
+    initial.display !== '' || initial.multiMonitor || !initial.clipboard || initial.drives || initial.audio !== 'local';
+
   const label = 'block space-y-1 text-xs font-medium text-muted';
+  const check = 'flex items-center gap-2 text-fg';
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
@@ -133,6 +139,56 @@
           autocomplete="off"
         />
       </label>
+
+      <details class="rounded-lg border border-default px-3 py-2" open={initialHasSettings}>
+        <summary class="cursor-pointer text-xs font-medium text-muted">Display &amp; devices</summary>
+        <div class="mt-3 space-y-3.5 pb-1">
+          <div class="grid grid-cols-[1fr,6rem,6rem] gap-3">
+            <label class={label}>
+              <span>Display</span>
+              <Select bind:value={fields.display} class={field}>
+                <option value="">Client default</option>
+                <option value="fullscreen">Full screen</option>
+                <option value="window">Window</option>
+              </Select>
+            </label>
+            {#if fields.display === 'window'}
+              <label class={label}>
+                <span>Width</span>
+                <input bind:value={fields.width} inputmode="numeric" class={field} placeholder="1600" />
+              </label>
+              <label class={label}>
+                <span>Height</span>
+                <input bind:value={fields.height} inputmode="numeric" class={field} placeholder="900" />
+              </label>
+            {/if}
+          </div>
+
+          <label class={label}>
+            <span>Sound</span>
+            <Select bind:value={fields.audio} class={field}>
+              <option value="local">Play on this computer</option>
+              <option value="remote">Play on the remote computer</option>
+              <option value="off">Don't play</option>
+            </Select>
+          </label>
+
+          <div class="space-y-2 text-sm">
+            <label class={check}>
+              <input type="checkbox" bind:checked={fields.multiMonitor} />
+              Use all my monitors
+            </label>
+            <label class={check}>
+              <input type="checkbox" bind:checked={fields.clipboard} />
+              Share the clipboard
+            </label>
+            <label class={check}>
+              <input type="checkbox" bind:checked={fields.drives} />
+              Make my local drives available on the remote computer
+            </label>
+          </div>
+        </div>
+      </details>
 
       {#if error}
         <p class="text-xs text-status-crit">{error}</p>

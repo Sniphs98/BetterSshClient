@@ -4,7 +4,7 @@ import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
-import type { RemoteDesktopConnection } from '../config/remoteDesktop.js';
+import type { RdpSettings, RemoteDesktopConnection } from '../config/remoteDesktop.js';
 import { removeCredential, stageCredential, type StageOutcome } from './windowsCredentials.js';
 
 /**
@@ -49,14 +49,35 @@ function rdpValue(value: string): string {
  *  credential store instead (see `launchWindows`); everywhere else there is no safe
  *  place to put it in this file, so a fallback-opened `.rdp` prompts for it. */
 export function buildRdpFileContent(
-  connection: Pick<RemoteDesktopConnection, 'hostname' | 'port' | 'username' | 'domain'>
+  connection: Pick<RemoteDesktopConnection, 'hostname' | 'port' | 'username' | 'domain'> & RdpSettings
 ): string {
   const lines = [`full address:s:${rdpValue(connection.hostname)}:${connection.port}`];
   if (connection.username) {
     const user = connection.domain ? `${connection.domain}\\${connection.username}` : connection.username;
     lines.push(`username:s:${rdpValue(user)}`);
   }
-  return lines.join('\n') + '\n';
+  return [...lines, ...rdpSettingLines(connection)].join('\n') + '\n';
+}
+
+const flag = (on: boolean): number => (on ? 1 : 0);
+
+/** The `.rdp` lines for the settings that are set; the rest stay the client's default. */
+export function rdpSettingLines(settings: RdpSettings): string[] {
+  const lines: string[] = [];
+  if (settings.display === 'fullscreen') lines.push('screen mode id:i:2');
+  if (settings.display === 'window') {
+    lines.push('screen mode id:i:1');
+    if (settings.width && settings.height) {
+      lines.push(`desktopwidth:i:${settings.width}`, `desktopheight:i:${settings.height}`);
+    }
+    // Follow the window when it's resized, instead of scrollbars.
+    lines.push('dynamic resolution:i:1');
+  }
+  if (settings.multiMonitor !== undefined) lines.push(`use multimon:i:${flag(settings.multiMonitor)}`);
+  if (settings.clipboard !== undefined) lines.push(`redirectclipboard:i:${flag(settings.clipboard)}`);
+  if (settings.drives !== undefined) lines.push(`drivestoredirect:s:${settings.drives ? '*' : ''}`);
+  if (settings.audio !== undefined) lines.push(`audiomode:i:${{ local: 0, remote: 1, off: 2 }[settings.audio]}`);
+  return lines;
 }
 
 /** FreeRDP's X11 client, newest first: FreeRDP 3 packages install it as `xfreerdp3`. */
@@ -77,6 +98,23 @@ export function buildFreerdpArgs(connection: RemoteDesktopConnection): string[] 
   if (connection.username) args.push(`/u:${connection.username}`);
   if (connection.domain) args.push(`/d:${connection.domain}`);
   if (connection.password) args.push('/from-stdin:force');
+  return [...args, ...freerdpSettingArgs(connection)];
+}
+
+/** FreeRDP's spelling of the same settings as `rdpSettingLines`. */
+export function freerdpSettingArgs(settings: RdpSettings): string[] {
+  const args: string[] = [];
+  if (settings.display === 'fullscreen') args.push('/f');
+  if (settings.display === 'window') {
+    if (settings.width && settings.height) args.push(`/size:${settings.width}x${settings.height}`);
+    args.push('/dynamic-resolution');
+  }
+  if (settings.multiMonitor) args.push('/multimon');
+  if (settings.clipboard !== undefined) args.push(settings.clipboard ? '+clipboard' : '-clipboard');
+  if (settings.drives) args.push('/drives');
+  if (settings.audio === 'local') args.push('/sound');
+  if (settings.audio === 'remote') args.push('/audio-mode:1');
+  if (settings.audio === 'off') args.push('/audio-mode:2');
   return args;
 }
 

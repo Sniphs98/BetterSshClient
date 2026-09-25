@@ -24,7 +24,27 @@ export interface RemoteDesktopFormFields {
   domain: string;
   /** Name of the SSH host to tunnel through; blank connects directly. */
   viaHost: string;
+  /** Blank leaves it to the client. */
+  display: '' | 'fullscreen' | 'window';
+  /** Window size; both blank leaves it to the client. */
+  width: string;
+  height: string;
+  multiMonitor: boolean;
+  clipboard: boolean;
+  drives: boolean;
+  audio: 'local' | 'remote' | 'off';
 }
+
+/** What a new profile starts with — the usual client defaults, spelled out. */
+const SETTING_DEFAULTS = {
+  display: '',
+  width: '',
+  height: '',
+  multiMonitor: false,
+  clipboard: true,
+  drives: false,
+  audio: 'local'
+} as const;
 
 export function emptyForm(): RemoteDesktopFormFields {
   return {
@@ -36,7 +56,8 @@ export function emptyForm(): RemoteDesktopFormFields {
     username: '',
     password: '',
     domain: '',
-    viaHost: ''
+    viaHost: '',
+    ...SETTING_DEFAULTS
   };
 }
 
@@ -54,7 +75,14 @@ export function formFromConnection(c: RemoteDesktopConnectionDto): RemoteDesktop
     username: c.username ?? '',
     password: '',
     domain: c.domain ?? '',
-    viaHost: c.viaHost ?? ''
+    viaHost: c.viaHost ?? '',
+    display: c.display ?? SETTING_DEFAULTS.display,
+    width: c.width ? String(c.width) : '',
+    height: c.height ? String(c.height) : '',
+    multiMonitor: c.multiMonitor ?? SETTING_DEFAULTS.multiMonitor,
+    clipboard: c.clipboard ?? SETTING_DEFAULTS.clipboard,
+    drives: c.drives ?? SETTING_DEFAULTS.drives,
+    audio: c.audio ?? SETTING_DEFAULTS.audio
   };
 }
 
@@ -85,6 +113,20 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
   const password = f.password.trim();
   const domain = f.domain.trim();
   const viaHost = f.viaHost.trim();
+
+  let width: number | undefined;
+  let height: number | undefined;
+  if (f.display === 'window' && (f.width.trim() !== '' || f.height.trim() !== '')) {
+    const w = Number(f.width.trim());
+    const h = Number(f.height.trim());
+    const valid = (n: number): boolean => Number.isInteger(n) && n >= 200 && n <= 8192;
+    if (!valid(w) || !valid(h)) {
+      return { ok: false, error: 'Window size must be a width and a height between 200 and 8192' };
+    }
+    width = w;
+    height = h;
+  }
+
   return {
     ok: true,
     input: {
@@ -96,7 +138,14 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       username: username || undefined,
       password: password || undefined,
       domain: domain || undefined,
-      viaHost: viaHost || undefined
+      viaHost: viaHost || undefined,
+      display: f.display || undefined,
+      width,
+      height,
+      multiMonitor: f.multiMonitor,
+      clipboard: f.clipboard,
+      drives: f.drives,
+      audio: f.audio
     }
   };
 }

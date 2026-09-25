@@ -7,7 +7,7 @@ import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
 import type { Snippet, NodeTarget, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
-import type { RemoteDesktopConnection, RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
+import { rdpSettingsFrom, type RdpSettings, type RemoteDesktopConnection, type RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
 import type { ConnectionStatus, Metrics } from './event.js';
 import type { ProcessInfo } from './core/ssh/metrics.js';
 import type { DetectedService, ServiceKind, ServiceMetric } from './core/ssh/services/types.js';
@@ -205,7 +205,7 @@ export type RemoteDesktopProtocolDto = RemoteDesktopProtocol;
 
 /** A saved RDP/VNC connection profile as the frontend sees it — password omitted,
  *  `hasPassword` tells the editor whether one is stored (mirrors `HostDto.hasKey`). */
-export interface RemoteDesktopConnectionDto {
+export interface RemoteDesktopConnectionDto extends RdpSettings {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocolDto;
@@ -222,7 +222,7 @@ export interface RemoteDesktopConnectionDto {
 /** Inbound form payload for `save_remote_desktop_connection`. `password` arrives here
  *  but never travels back out on `RemoteDesktopConnectionDto`; omitted means "keep the
  *  stored value" on an edit (see `upsertRemoteDesktopConnection`). */
-export interface RemoteDesktopConnectionInputDto {
+export interface RemoteDesktopConnectionInputDto extends RdpSettings {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocolDto;
@@ -253,7 +253,8 @@ export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection
     hasPassword: connection.password !== undefined,
     domain: connection.domain,
     viewOnly: connection.viewOnly,
-    viaHost: connection.viaHost
+    viaHost: connection.viaHost,
+    ...rdpSettingsFrom(connection as unknown as Record<string, unknown>)
   };
 }
 
@@ -271,7 +272,8 @@ export function remoteDesktopConnectionFromInputDto(input: RemoteDesktopConnecti
     password: input.password,
     domain: input.domain,
     viewOnly: input.viewOnly,
-    viaHost: input.viaHost
+    viaHost: input.viaHost,
+    ...rdpSettingsFrom(input as unknown as Record<string, unknown>)
   };
 }
 
