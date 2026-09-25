@@ -248,6 +248,8 @@ describe('launchRdp', () => {
     expect(result.credential).toBe('staged');
     expect(stageMock).toHaveBeenCalledWith('10.0.0.5', 'admin', 'secret');
     expect(spawnMock).toHaveBeenCalledWith('mstsc.exe', [result.filePath], expect.objectContaining({ detached: true }));
+    // Hidden, mstsc's window may never show up (found against a real Windows).
+    expect(spawnMock.mock.calls[0][2]).not.toHaveProperty('windowsHide');
     // Nothing spawned carries the password.
     expect(JSON.stringify(spawnMock.mock.calls)).not.toContain('secret');
     expect(pendingCredentialHosts.has('10.0.0.5')).toBe(true);

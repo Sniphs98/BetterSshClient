@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 
 import type { RdpSettings, RemoteDesktopConnection } from '../config/remoteDesktop.js';
 import { removeCredential, stageCredential, type StageOutcome } from './windowsCredentials.js';
@@ -264,19 +264,22 @@ async function launchWindows(connection: RemoteDesktopConnection): Promise<RdpLa
   let filePath: string | undefined;
   try {
     filePath = await writeRdpFile(connection);
-    const child = spawn('mstsc.exe', [filePath], { detached: true, windowsHide: true, stdio: 'ignore' });
+    // Never `windowsHide`: Windows hands that on as SW_HIDE to mstsc's first window,
+    // and without a screen mode in the profile mstsc keeps it — a session that runs,
+    // connected, with no window anywhere.
+    const child = spawn('mstsc.exe', [filePath], { detached: true, stdio: 'ignore' });
     await started(child, 'Remote Desktop (mstsc.exe)');
     child.unref();
     const file = filePath;
     child.once('exit', () => {
       dropCredential();
-      void rm(file, { force: true }).catch(() => {});
+      void rm(dirname(file), { recursive: true, force: true }).catch(() => {});
     });
     if (!dropped && child.pid !== undefined) watchForConnection(child.pid);
     return { opened: 'mstsc', filePath, credential, child };
   } catch (err) {
     dropCredential();
-    if (filePath) void rm(filePath, { force: true }).catch(() => {});
+    if (filePath) void rm(dirname(filePath), { recursive: true, force: true }).catch(() => {});
     throw err;
   }
 }
