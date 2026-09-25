@@ -150,7 +150,7 @@ export const commands = {
   async deleteRemoteDesktopConnection(id: string): Promise<Result<null, CommandError>> {
     return call('delete_remote_desktop_connection', id);
   },
-  async rdpLaunch(connectionId: string): Promise<Result<null, CommandError>> {
+  async rdpLaunch(connectionId: string): Promise<Result<RdpLaunchResultDto, CommandError>> {
     return call('rdp_launch', connectionId);
   }
 };
@@ -392,6 +392,12 @@ export type NodeStatusDto = 'success' | 'failed' | 'skipped';
 export type ProcessDto = { name: string; cpuPercent: number; memPercent: number };
 /** A saved RDP/VNC connection profile as the frontend sees it — password omitted,
  *  `hasPassword` tells the editor whether one is stored. */
+/** What `rdp_launch` resolves with once the native client is running. */
+export type RdpLaunchResultDto = {
+  /** Something the user should know about how it was launched. */
+  notice?: string;
+};
+
 export type RemoteDesktopConnectionDto = {
   id: string;
   name: string;

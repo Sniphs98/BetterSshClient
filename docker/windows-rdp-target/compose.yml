@@ -1,0 +1,33 @@
+# Disposable Windows RDP test target — a real Windows 11 running as a VM inside a container
+# (dockurr/windows: QEMU/KVM), for trying BetterSshClient's Remote Desktop feature against a
+# real RDP server. Heavy and optional: see README.md next to this file. Never expose it
+# beyond your own machine — the credentials are fixed and public.
+name: better-ssh-client-rdp
+services:
+  windows:
+    image: dockurr/windows
+    container_name: better-ssh-client-windows-rdp-target
+    environment:
+      VERSION: '11'
+      USERNAME: 'tester'
+      PASSWORD: 'tester'
+      RAM_SIZE: '4G'
+      CPU_CORES: '2'
+      DISK_SIZE: '64G'
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      # Not 3389: that may be this machine's own Remote Desktop.
+      - '127.0.0.1:8006:8006'
+      - '127.0.0.1:13389:3389/tcp'
+      - '127.0.0.1:13389:3389/udp'
+    volumes:
+      - windows-storage:/storage
+    restart: 'no'
+    stop_grace_period: 2m
+
+volumes:
+  windows-storage:

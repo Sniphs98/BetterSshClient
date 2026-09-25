@@ -26,6 +26,9 @@
   let query = $state('');
   let dialog = $state<Dialog | null>(null);
   let connecting = $state<string | null>(null);
+  // Something to know about the last launch (e.g. Windows used its own saved password).
+  let notice = $state<string | null>(null);
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   const filtered = $derived(filterConnections($remoteDesktopConnections, query));
 
   const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -58,8 +61,14 @@
 
   async function connect(connection: RemoteDesktopConnectionDto): Promise<void> {
     connecting = connection.id;
+    notice = null;
     try {
-      await rdpLaunch(connection.id);
+      const result = await rdpLaunch(connection.id);
+      if (result?.notice) {
+        notice = result.notice;
+        clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => (notice = null), 12_000);
+      }
     } catch (e) {
       lastError.set(message(e));
     } finally {
@@ -90,6 +99,10 @@
       New connection
     </button>
   </div>
+
+  {#if notice}
+    <p class="mb-4 rounded-lg bg-surface-inset px-3 py-2 text-sm text-muted" role="status">{notice}</p>
+  {/if}
 
   {#if filtered.length === 0}
     <div class="flex flex-1 flex-col items-center justify-center gap-2 text-center">

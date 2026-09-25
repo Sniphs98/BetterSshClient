@@ -232,6 +232,12 @@ export interface RemoteDesktopConnectionInputDto {
   viewOnly?: boolean;
 }
 
+/** What `rdp_launch` resolves with once the native client is running. */
+export interface RdpLaunchResultDto {
+  /** Something the user should know about how it was launched. */
+  notice?: string;
+}
+
 export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection): RemoteDesktopConnectionDto {
   return {
     id: connection.id,

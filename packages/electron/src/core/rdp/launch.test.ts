@@ -1,33 +1,54 @@
+import { EventEmitter } from 'node:events';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RemoteDesktopConnection } from '../config/remoteDesktop.js';
 
-const execFileMock = vi.fn();
 const spawnMock = vi.fn();
+const stageMock = vi.fn();
+const removeMock = vi.fn();
 
 vi.mock('node:child_process', () => ({
-  execFile: (...args: unknown[]) => execFileMock(...args),
   spawn: (...args: unknown[]) => spawnMock(...args)
 }));
+vi.mock('./windowsCredentials.js', () => ({
+  stageCredential: (...args: unknown[]) => stageMock(...args),
+  removeCredential: (...args: unknown[]) => removeMock(...args)
+}));
 
-// Imported after the mock so `launch.ts` picks up the mocked module.
-const { buildRdpFileContent, selectRdpStrategy, launchRdp } = await import('./launch.js');
+// Imported after the mocks so `launch.ts` picks up the mocked modules.
+const {
+  buildFreerdpArgs,
+  buildRdpFileContent,
+  CREDENTIAL_HOLD_MS,
+  freerdpStdin,
+  launchRdp,
+  pendingCredentialHosts,
+  selectRdpStrategy
+} = await import('./launch.js');
 
 function connection(overrides: Partial<RemoteDesktopConnection> = {}): RemoteDesktopConnection {
   return { id: 'c1', name: 'office-pc', protocol: 'rdp', hostname: '10.0.0.5', port: 3389, ...overrides };
 }
 
-type Listener = () => void;
+type FakeChild = EventEmitter & { unref: () => void; stdin: { end: (s: string) => void; on: () => void }; written: string };
 
-function fakeChild(): { unref: () => void; once: (event: string, cb: Listener) => void; trigger: (event: string) => void } {
-  const listeners: Record<string, Listener[]> = {};
-  return {
-    unref: vi.fn(),
-    once: (event, cb) => {
-      (listeners[event] ??= []).push(cb);
-    },
-    trigger: (event) => listeners[event]?.forEach((cb) => cb())
-  };
+/** A child that, once spawned, starts (or fails to, with `error`) on the next tick
+ *  like a real one. Returned by `spawnMock`. */
+function fakeChild(error?: NodeJS.ErrnoException): FakeChild {
+  const child = new EventEmitter() as FakeChild;
+  child.unref = vi.fn();
+  child.written = '';
+  child.stdin = { end: (s) => (child.written += s), on: () => {} };
+  spawnMock.mockImplementation(() => {
+    setImmediate(() => (error ? child.emit('error', error) : child.emit('spawn')));
+    return child;
+  });
+  return child;
 }
+
+const flush = (): Promise<void> => new Promise((r) => setImmediate(r));
 
 describe('buildRdpFileContent', () => {
   it('always includes the full address', () => {
@@ -49,6 +70,11 @@ describe('buildRdpFileContent', () => {
     const content = buildRdpFileContent(connection());
     expect(content).not.toContain('username:s:');
   });
+
+  it('cannot be made to carry extra settings through a newline in a value', () => {
+    const content = buildRdpFileContent({ ...connection(), username: 'admin\nalternate shell:s:cmd.exe' });
+    expect(content.split('\n').filter((l) => l.startsWith('alternate shell'))).toEqual([]);
+  });
 });
 
 describe('selectRdpStrategy', () => {
@@ -68,78 +94,175 @@ describe('selectRdpStrategy', () => {
   });
 });
 
+describe('FreeRDP arguments', () => {
+  it('never put the password on the command line', () => {
+    const args = buildFreerdpArgs(connection({ username: 'admin', password: 'secret' }));
+    expect(args.join(' ')).not.toContain('secret');
+    expect(args).toEqual(['/v:10.0.0.5:3389', '/u:admin', '/from-stdin:force']);
+  });
+
+  it('answer the domain prompt blank when there is no domain, then give the password', () => {
+    expect(freerdpStdin(connection({ password: 'secret' }))).toBe('\nsecret\n');
+    expect(freerdpStdin(connection({ domain: 'CORP', password: 'secret' }))).toBe('secret\n');
+  });
+
+  it('do not ask for anything on stdin without a saved password', () => {
+    expect(buildFreerdpArgs(connection({ username: 'admin' }))).not.toContain('/from-stdin:force');
+  });
+});
+
 describe('launchRdp', () => {
   const originalPlatform = process.platform;
+  const originalPath = process.env.PATH;
 
   function setPlatform(platform: NodeJS.Platform): void {
     Object.defineProperty(process, 'platform', { value: platform, configurable: true });
   }
 
   beforeEach(() => {
-    execFileMock.mockReset();
     spawnMock.mockReset();
-    execFileMock.mockImplementation((_cmd, _args, _options, callback) => callback(null, '', ''));
+    stageMock.mockReset().mockResolvedValue('staged');
+    removeMock.mockReset().mockResolvedValue(undefined);
+    pendingCredentialHosts.clear();
   });
 
   afterEach(() => {
     setPlatform(originalPlatform);
+    process.env.PATH = originalPath;
+    vi.useRealTimers();
   });
 
-  it('on Windows: stages the password via cmdkey, spawns mstsc with a .rdp file, then cleans up on exit', async () => {
+  it('on Windows: stages the password, spawns mstsc with a .rdp file, and drops it again on exit', async () => {
     setPlatform('win32');
     const child = fakeChild();
-    spawnMock.mockReturnValue(child);
 
     const result = await launchRdp(connection({ username: 'admin', password: 'secret' }));
 
     expect(result.opened).toBe('mstsc');
+    expect(result.credential).toBe('staged');
+    expect(stageMock).toHaveBeenCalledWith('10.0.0.5', 'admin', 'secret');
     expect(spawnMock).toHaveBeenCalledWith('mstsc.exe', [result.filePath], expect.objectContaining({ detached: true }));
+    // Nothing spawned carries the password.
+    expect(JSON.stringify(spawnMock.mock.calls)).not.toContain('secret');
+    expect(pendingCredentialHosts.has('10.0.0.5')).toBe(true);
 
-    // cmdkey /generic:... was invoked before mstsc, with the password, never landing in the .rdp file.
-    const cmdkeyAddCall = execFileMock.mock.calls.find((c) => c[1]?.[0]?.startsWith('/generic:'));
-    expect(cmdkeyAddCall).toBeDefined();
-    expect(cmdkeyAddCall![1]).toEqual(expect.arrayContaining([expect.stringContaining('/pass:secret')]));
-
-    child.trigger('exit');
-    // cmdkey /delete runs asynchronously off the 'exit' listener — give the microtask queue a turn.
-    await Promise.resolve();
-    await Promise.resolve();
-    const cmdkeyDeleteCall = execFileMock.mock.calls.find((c) => c[1]?.[0]?.startsWith('/delete:'));
-    expect(cmdkeyDeleteCall).toBeDefined();
+    child.emit('exit');
+    await flush();
+    expect(removeMock).toHaveBeenCalledTimes(1);
+    expect(removeMock).toHaveBeenCalledWith('10.0.0.5');
+    expect(pendingCredentialHosts.has('10.0.0.5')).toBe(false);
   });
 
-  it('on Windows without a saved password: never calls cmdkey', async () => {
+  it('on Windows: drops the credential after the hold time even while mstsc keeps running — once', async () => {
     setPlatform('win32');
-    spawnMock.mockReturnValue(fakeChild());
+    const child = fakeChild();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 
-    await launchRdp(connection());
+    await launchRdp(connection({ username: 'admin', password: 'secret' }));
+    expect(removeMock).not.toHaveBeenCalled();
 
-    expect(execFileMock).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(CREDENTIAL_HOLD_MS);
+    expect(removeMock).toHaveBeenCalledTimes(1);
+
+    child.emit('exit');
+    expect(removeMock).toHaveBeenCalledTimes(1);
   });
 
-  it('on Linux with xfreerdp available: spawns it directly, no .rdp file', async () => {
-    setPlatform('linux');
-    spawnMock.mockReturnValue(fakeChild());
+  it("on Windows: never removes a credential the user saved themselves", async () => {
+    setPlatform('win32');
+    stageMock.mockResolvedValue('kept-existing');
+    const child = fakeChild();
 
     const result = await launchRdp(connection({ username: 'admin', password: 'secret' }));
+    child.emit('exit');
+    await flush();
 
-    expect(result.opened).toBe('xfreerdp');
-    expect(result.filePath).toBeUndefined();
-    expect(spawnMock).toHaveBeenCalledWith(
-      'xfreerdp',
-      expect.arrayContaining(['/v:10.0.0.5:3389', '/u:admin', '/p:secret']),
-      expect.anything()
-    );
+    expect(result.credential).toBe('kept-existing');
+    expect(removeMock).not.toHaveBeenCalled();
   });
 
-  it('on Linux without xfreerdp: falls back to writing a .rdp file, does not spawn anything', async () => {
-    setPlatform('linux');
-    execFileMock.mockImplementation((_cmd, _args, _options, callback) => callback(new Error('not found')));
+  it('on Windows: a missing mstsc is an error, and the staged password is taken out again', async () => {
+    setPlatform('win32');
+    fakeChild(Object.assign(new Error('spawn mstsc.exe ENOENT'), { code: 'ENOENT' }));
 
-    const result = await launchRdp(connection());
+    await expect(launchRdp(connection({ username: 'admin', password: 'secret' }))).rejects.toThrow(
+      'Remote Desktop (mstsc.exe) was not found'
+    );
+    await flush();
+    expect(removeMock).toHaveBeenCalledWith('10.0.0.5');
+  });
 
-    expect(result.opened).toBe('file');
-    expect(result.filePath).toBeDefined();
+  it('on Windows: a failure to stage the password is an error, and mstsc is not started', async () => {
+    setPlatform('win32');
+    stageMock.mockRejectedValue(new Error('access denied'));
+
+    await expect(launchRdp(connection({ username: 'admin', password: 'secret' }))).rejects.toThrow('access denied');
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('on Windows without a saved password: never touches the credential store', async () => {
+    setPlatform('win32');
+    const child = fakeChild();
+
+    await launchRdp(connection());
+    child.emit('exit');
+    await flush();
+
+    expect(stageMock).not.toHaveBeenCalled();
+    expect(removeMock).not.toHaveBeenCalled();
+  });
+
+  describe('on Linux', () => {
+    let binDir: string;
+
+    beforeEach(async () => {
+      binDir = await mkdtemp(join(tmpdir(), 'bssh-rdp-bin-'));
+      process.env.PATH = binDir;
+    });
+
+    afterEach(async () => {
+      await rm(binDir, { recursive: true, force: true });
+    });
+
+    async function install(cmd: string): Promise<string> {
+      const path = join(binDir, cmd);
+      await writeFile(path, '#!/bin/sh\n');
+      await chmod(path, 0o755);
+      return path;
+    }
+
+    it('with xfreerdp on PATH: spawns it and types the password into its stdin, no .rdp file', async () => {
+      setPlatform('linux');
+      const bin = await install('xfreerdp');
+      const child = fakeChild();
+
+      const result = await launchRdp(connection({ username: 'admin', password: 'secret' }));
+
+      expect(result.opened).toBe('xfreerdp');
+      expect(result.filePath).toBeUndefined();
+      expect(spawnMock).toHaveBeenCalledWith(bin, ['/v:10.0.0.5:3389', '/u:admin', '/from-stdin:force'], expect.anything());
+      expect(child.written).toBe('\nsecret\n');
+    });
+
+    it("prefers FreeRDP 3's xfreerdp3 when both are installed", async () => {
+      setPlatform('linux');
+      await install('xfreerdp');
+      const bin3 = await install('xfreerdp3');
+      fakeChild();
+
+      await launchRdp(connection());
+
+      expect(spawnMock.mock.calls[0][0]).toBe(bin3);
+    });
+
+    it('without xfreerdp: falls back to writing a .rdp file, does not spawn anything', async () => {
+      setPlatform('linux');
+
+      const result = await launchRdp(connection());
+
+      expect(result.opened).toBe('file');
+      expect(result.filePath).toBeDefined();
+      expect(spawnMock).not.toHaveBeenCalled();
+    });
   });
 });

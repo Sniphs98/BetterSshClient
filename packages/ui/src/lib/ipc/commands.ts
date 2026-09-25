@@ -9,6 +9,7 @@ import type {
   HostDto,
   HostInputDto,
   ImportResultDto,
+  RdpLaunchResultDto,
   RemoteDesktopConnectionDto,
   RemoteDesktopConnectionInputDto,
   TerminalBytes,
@@ -326,9 +327,10 @@ export async function deleteRemoteDesktopConnection(id: string): Promise<void> {
 }
 
 /** Launches the connection's native RDP client (mstsc/xfreerdp/the OS's registered
- *  .rdp handler) as its own external window. Fire-and-forget — resolves once the
- *  client process has been asked to start, not once the user is actually connected. */
-export async function rdpLaunch(connectionId: string): Promise<void> {
+ *  .rdp handler) as its own external window. Resolves once it is running — with a
+ *  notice to show, if there is one — and throws if it couldn't be started. */
+export async function rdpLaunch(connectionId: string): Promise<RdpLaunchResultDto> {
   const res = await commands.rdpLaunch(connectionId);
   if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
 }

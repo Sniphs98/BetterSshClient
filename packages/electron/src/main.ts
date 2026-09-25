@@ -6,7 +6,7 @@ import { installApplicationMenu } from './applicationMenu.js';
 import { registerAutomationsIpc } from './ipc/automations.js';
 import { registerHostsIpc } from './ipc/hosts.js';
 import { registerKeySetupIpc } from './ipc/keysetup.js';
-import { registerRdpIpc } from './ipc/rdp.js';
+import { cleanUpRdpOnQuit, registerRdpIpc } from './ipc/rdp.js';
 import { registerRemoteDesktopIpc } from './ipc/remoteDesktop.js';
 import { registerSettingsIpc } from './ipc/settings.js';
 import { registerSftpIpc } from './ipc/sftp.js';
@@ -151,4 +151,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   state.shutdown();
+  cleanUpRdpOnQuit();
 });
