@@ -101,7 +101,7 @@
     class="flex items-center gap-2.5 px-3 py-4 {$sidebarCollapsed ? 'justify-center' : ''}"
   >
     {#if !$sidebarCollapsed}
-      <Logo size={22} />
+      <Logo size={30} />
       <span class="flex-1 truncate text-sm font-bold tracking-wide">BetterSshClient</span>
     {/if}
     <Button
