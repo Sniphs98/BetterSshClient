@@ -7,6 +7,8 @@
   import type { RemoteDesktopConnectionInputDto } from '$lib/bindings';
   import { Button } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
+  import Select from '$lib/components/Select.svelte';
+  import { hosts } from '$lib/stores/hosts';
   import { formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
 
   let {
@@ -52,6 +54,13 @@
   // starts blank and means "keep the stored value"; on add it means "none".
   const secretHint = $derived(mode === 'edit' ? 'Leave blank to keep the current value' : undefined);
 
+  // SSH hosts to tunnel through — plus the saved one if it has since been renamed or
+  // removed, so opening the editor doesn't silently switch the profile to direct.
+  const tunnelHosts = $derived.by(() => {
+    const names = $hosts.map((h) => h.name);
+    return fields.viaHost && !names.includes(fields.viaHost) ? [fields.viaHost, ...names] : names;
+  });
+
   const label = 'block space-y-1 text-xs font-medium text-muted';
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
@@ -86,6 +95,22 @@
           <input bind:value={fields.port} inputmode="numeric" class={field} placeholder="3389" />
         </label>
       </div>
+
+      <label class={label}>
+        <span>Connect</span>
+        <Select bind:value={fields.viaHost} class={field}>
+          <option value="">Directly</option>
+          {#each tunnelHosts as name (name)}
+            <option value={name}>Through SSH host {name}</option>
+          {/each}
+        </Select>
+      </label>
+      {#if fields.viaHost}
+        <p class="-mt-2 text-xs text-faint">
+          Hostname and port are as seen from {fields.viaHost}. The connection runs through an SSH tunnel, so the
+          remote machine's RDP port doesn't need to be reachable from here.
+        </p>
+      {/if}
 
       <div class="grid grid-cols-2 gap-3">
         <label class={label}>

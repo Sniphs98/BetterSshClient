@@ -129,6 +129,7 @@
               </div>
               <div class="mt-1 truncate font-mono text-xs text-muted">
                 {connection.username ? `${connection.username}@` : ''}{connection.hostname}:{connection.port}
+                {#if connection.viaHost}<span class="font-sans"> · via {connection.viaHost}</span>{/if}
               </div>
             </div>
             <div class="flex shrink-0 items-center gap-1.5">

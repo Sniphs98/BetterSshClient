@@ -222,6 +222,18 @@ export class SshSession {
     );
   }
 
+  /** Opens a `direct-tcpip` channel to `host:port` as the server sees it — what
+   *  `ssh -L` does per connection. Not a session channel, so `MaxSessions` doesn't
+   *  apply and there's nothing to fall back from. */
+  forward(host: string, port: number): Promise<ClientChannel> {
+    return new Promise((resolve, reject) => {
+      this.connection.client.forwardOut('127.0.0.1', 0, host, port, (err, channel) => {
+        if (err) reject(err);
+        else resolve(channel);
+      });
+    });
+  }
+
   /** Closes an own connection; gives a shared one back to the pool, which
    *  closes it once nothing else uses it. */
   disconnect(): void {

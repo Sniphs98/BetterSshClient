@@ -22,6 +22,8 @@ export interface RemoteDesktopFormFields {
   username: string;
   password: string;
   domain: string;
+  /** Name of the SSH host to tunnel through; blank connects directly. */
+  viaHost: string;
 }
 
 export function emptyForm(): RemoteDesktopFormFields {
@@ -33,7 +35,8 @@ export function emptyForm(): RemoteDesktopFormFields {
     port: '',
     username: '',
     password: '',
-    domain: ''
+    domain: '',
+    viaHost: ''
   };
 }
 
@@ -50,7 +53,8 @@ export function formFromConnection(c: RemoteDesktopConnectionDto): RemoteDesktop
     port: String(c.port),
     username: c.username ?? '',
     password: '',
-    domain: c.domain ?? ''
+    domain: c.domain ?? '',
+    viaHost: c.viaHost ?? ''
   };
 }
 
@@ -80,6 +84,7 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
   const username = f.username.trim();
   const password = f.password.trim();
   const domain = f.domain.trim();
+  const viaHost = f.viaHost.trim();
   return {
     ok: true,
     input: {
@@ -90,7 +95,8 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       port,
       username: username || undefined,
       password: password || undefined,
-      domain: domain || undefined
+      domain: domain || undefined,
+      viaHost: viaHost || undefined
     }
   };
 }

@@ -215,6 +215,8 @@ export interface RemoteDesktopConnectionDto {
   hasPassword: boolean;
   domain?: string;
   viewOnly?: boolean;
+  /** SSH host the connection is tunnelled through. */
+  viaHost?: string;
 }
 
 /** Inbound form payload for `save_remote_desktop_connection`. `password` arrives here
@@ -230,6 +232,8 @@ export interface RemoteDesktopConnectionInputDto {
   password?: string;
   domain?: string;
   viewOnly?: boolean;
+  /** SSH host the connection is tunnelled through. */
+  viaHost?: string;
 }
 
 /** What `rdp_launch` resolves with once the native client is running. */
@@ -248,7 +252,8 @@ export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection
     username: connection.username,
     hasPassword: connection.password !== undefined,
     domain: connection.domain,
-    viewOnly: connection.viewOnly
+    viewOnly: connection.viewOnly,
+    viaHost: connection.viaHost
   };
 }
 
@@ -265,7 +270,8 @@ export function remoteDesktopConnectionFromInputDto(input: RemoteDesktopConnecti
     username: input.username,
     password: input.password,
     domain: input.domain,
-    viewOnly: input.viewOnly
+    viewOnly: input.viewOnly,
+    viaHost: input.viaHost
   };
 }
 

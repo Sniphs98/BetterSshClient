@@ -1,9 +1,12 @@
 import { shell, type IpcMain } from 'electron';
 
-import { loadRemoteDesktopConnections } from '../core/config/remoteDesktop.js';
+import { loadRemoteDesktopConnections, type RemoteDesktopConnection } from '../core/config/remoteDesktop.js';
 import { launchRdp, pendingCredentialHosts, type RdpLaunchResult } from '../core/rdp/launch.js';
+import { openTunnel, tunnelAddress, type RdpTunnel } from '../core/rdp/tunnel.js';
 import { removeCredentialsOnQuit, sweepStagedCredentials } from '../core/rdp/windowsCredentials.js';
+import { SshSession } from '../core/ssh/session.js';
 import { toCommandError, type RdpLaunchResultDto } from '../dto.js';
+import type { GuiState } from '../state/guiState.js';
 
 /** What the user should know about a launch that went through, if anything. */
 export function launchNotice(result: Pick<RdpLaunchResult, 'credential'>): string | undefined {
@@ -13,9 +16,30 @@ export function launchNotice(result: Pick<RdpLaunchResult, 'credential'>): strin
   return undefined;
 }
 
+/** Tunnels still open, for `before-quit`. */
+const openTunnels = new Set<RdpTunnel>();
+
+/** For a profile with `viaHost`: a tunnel through that SSH host (over a connection of
+ *  its own, so a busy desktop doesn't slow down terminals on the same host). */
+async function tunnelFor(state: GuiState, connection: RemoteDesktopConnection): Promise<RdpTunnel | undefined> {
+  if (!connection.viaHost) return undefined;
+  const host = state.hostByName(connection.viaHost);
+  if (!host) throw new Error(`SSH host '${connection.viaHost}' to tunnel through no longer exists`);
+  let session: SshSession;
+  try {
+    session = await SshSession.connect(host);
+  } catch (err) {
+    throw new Error(`Could not connect to SSH host '${host.name}' for the tunnel: ${(err as Error).message}`);
+  }
+  const tunnel = await openTunnel(session, { host: connection.hostname, port: connection.port }, tunnelAddress(connection.id));
+  openTunnels.add(tunnel);
+  void tunnel.closed.then(() => openTunnels.delete(tunnel));
+  return tunnel;
+}
+
 /** `rdp_launch`: resolves once the native client is running (a separate OS window this
  *  app doesn't track further) and rejects if it couldn't be started. */
-export function registerRdpIpc(ipcMain: IpcMain): void {
+export function registerRdpIpc(ipcMain: IpcMain, state: GuiState): void {
   ipcMain.handle('rdp_launch', async (_event, connectionId: string): Promise<RdpLaunchResultDto> => {
     try {
       const connections = await loadRemoteDesktopConnections();
@@ -23,15 +47,24 @@ export function registerRdpIpc(ipcMain: IpcMain): void {
       if (!connection) throw new Error(`unknown remote desktop connection '${connectionId}'`);
       if (connection.protocol !== 'rdp') throw new Error(`connection '${connection.name}' is not an RDP connection`);
 
-      const result = await launchRdp(connection);
-      if (result.opened === 'file' && result.filePath) {
-        // Only the fallback path needs Electron's `shell` (an OS-native handler for
-        // the .rdp file) — `core/rdp/launch.ts` stays Electron-free by leaving this
-        // one step to the caller instead of doing it itself.
-        const failure = await shell.openPath(result.filePath);
-        if (failure) throw new Error(`No app could open the .rdp file: ${failure}`);
+      const tunnel = await tunnelFor(state, connection);
+      try {
+        const target = tunnel ? { ...connection, hostname: tunnel.address, port: tunnel.port } : connection;
+        const result = await launchRdp(target);
+        if (result.opened === 'file' && result.filePath) {
+          // Only the fallback path needs Electron's `shell` (an OS-native handler for
+          // the .rdp file) — `core/rdp/launch.ts` stays Electron-free by leaving this
+          // one step to the caller instead of doing it itself.
+          const failure = await shell.openPath(result.filePath);
+          if (failure) throw new Error(`No app could open the .rdp file: ${failure}`);
+        }
+        // With a client to watch, the tunnel goes with it; otherwise it closes once idle.
+        if (tunnel) result.child?.once('exit', () => tunnel.close());
+        return { notice: launchNotice(result) };
+      } catch (err) {
+        tunnel?.close();
+        throw err;
       }
-      return { notice: launchNotice(result) };
     } catch (err) {
       throw toCommandError(err);
     }
@@ -43,6 +76,7 @@ export function registerRdpIpc(ipcMain: IpcMain): void {
 
 /** For `before-quit`: takes out the passwords of launches still starting up. */
 export function cleanUpRdpOnQuit(): void {
+  for (const tunnel of openTunnels) tunnel.close();
   if (process.platform === 'win32' && pendingCredentialHosts.size > 0) {
     removeCredentialsOnQuit(pendingCredentialHosts);
     pendingCredentialHosts.clear();

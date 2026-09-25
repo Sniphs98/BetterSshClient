@@ -127,7 +127,7 @@ app.whenReady().then(async () => {
   registerUpdateIpc(ipcMain, state);
   registerAutomationsIpc(ipcMain, state);
   registerRemoteDesktopIpc(ipcMain);
-  registerRdpIpc(ipcMain);
+  registerRdpIpc(ipcMain, state);
 
   // Pre-load the shared host config so the first `list_hosts` paints
   // immediately, before the renderer's own `reload_hosts` call. A load

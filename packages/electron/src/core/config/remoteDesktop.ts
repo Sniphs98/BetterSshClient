@@ -28,6 +28,9 @@ export interface RemoteDesktopConnection {
   domain?: string;
   /** vnc-only. */
   viewOnly?: boolean;
+  /** Name of an SSH host to tunnel the connection through; `hostname`/`port` are
+   *  then as seen from that host. */
+  viaHost?: string;
 }
 
 interface RemoteDesktopFile {
@@ -58,7 +61,8 @@ function connectionFromToml(raw: Record<string, unknown>): RemoteDesktopConnecti
     username: typeof raw.username === 'string' ? raw.username : undefined,
     password: typeof raw.password === 'string' ? raw.password : undefined,
     domain: typeof raw.domain === 'string' ? raw.domain : undefined,
-    viewOnly: typeof raw.viewOnly === 'boolean' ? raw.viewOnly : undefined
+    viewOnly: typeof raw.viewOnly === 'boolean' ? raw.viewOnly : undefined,
+    viaHost: typeof raw.viaHost === 'string' ? raw.viaHost : undefined
   });
 }
 
@@ -75,6 +79,7 @@ function connectionToToml(connection: RemoteDesktopConnection): Record<string, u
   if (encrypted.password !== undefined) out.password = encrypted.password;
   if (encrypted.domain !== undefined) out.domain = encrypted.domain;
   if (encrypted.viewOnly !== undefined) out.viewOnly = encrypted.viewOnly;
+  if (encrypted.viaHost !== undefined) out.viaHost = encrypted.viaHost;
   return out;
 }
 

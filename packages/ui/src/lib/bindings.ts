@@ -408,6 +408,8 @@ export type RemoteDesktopConnectionDto = {
   hasPassword: boolean;
   domain?: string | null;
   viewOnly?: boolean | null;
+  /** Name of the SSH host the connection is tunnelled through. */
+  viaHost?: string | null;
 };
 /** Inbound form payload for `save_remote_desktop_connection`. Omitting `password`
  *  means "keep the stored value" on an edit. */
@@ -421,6 +423,8 @@ export type RemoteDesktopConnectionInputDto = {
   password?: string | null;
   domain?: string | null;
   viewOnly?: boolean | null;
+  /** Name of the SSH host the connection is tunnelled through. */
+  viaHost?: string | null;
 };
 /** Only `'rdp'` is reachable from the UI for now — `'vnc'` exists so a later pass is
  *  additive, not a migration. */

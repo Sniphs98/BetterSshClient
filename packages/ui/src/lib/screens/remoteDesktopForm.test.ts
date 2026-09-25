@@ -79,6 +79,13 @@ describe('formToInput', () => {
     expect(r.ok && r.input.domain).toBeUndefined();
   });
 
+  it('connects directly unless an SSH host to tunnel through is chosen', () => {
+    const direct = formToInput(fields({ name: 'n', hostname: 'h' }));
+    expect(direct.ok && direct.input.viaHost).toBeUndefined();
+    const tunnelled = formToInput(fields({ name: 'n', hostname: 'h', viaHost: 'bastion' }));
+    expect(tunnelled.ok && tunnelled.input.viaHost).toBe('bastion');
+  });
+
   it('keeps a provided username/password/domain, trimmed', () => {
     const r = formToInput(fields({ name: 'n', hostname: 'h', username: ' admin ', password: ' pw ', domain: ' CORP ' }));
     expect(r.ok && r.input.username).toBe('admin');
