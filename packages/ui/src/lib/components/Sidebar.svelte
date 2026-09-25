@@ -15,6 +15,7 @@
     sessionLabel,
     sessionTitle,
     sessionStatusDot,
+    sessionIcon,
     type SessionKind
   } from '$lib/stores/sessions';
   import { sidebarCollapsed } from '$lib/stores/ui';
@@ -214,14 +215,14 @@
               >
                 {#if $sidebarCollapsed}
                   <span class="relative inline-flex shrink-0">
-                    <Icon name={s.kind} />
+                    <Icon name={sessionIcon(s.kind)} />
                     <span class="absolute -right-1 -top-1">
                       <StatusDot status={sessionStatusDot[s.status]} size={7} />
                     </span>
                   </span>
                 {:else}
                   <StatusDot status={sessionStatusDot[s.status]} />
-                  <Icon name={s.kind} size={16} />
+                  <Icon name={sessionIcon(s.kind)} size={16} />
                   <span class="min-w-0 flex-1 truncate">{sessionLabel(s)}</span>
                 {/if}
               </button>

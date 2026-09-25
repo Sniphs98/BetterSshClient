@@ -236,6 +236,25 @@ export interface RemoteDesktopConnectionInputDto extends RdpSettings {
   viaHost?: string;
 }
 
+/** What the renderer's embedded RDP client needs to connect (`rdp_embedded_open`). */
+export interface RdpEmbeddedSessionDto {
+  /** One-time token: the client's RDCleanPath "proxy auth". */
+  token: string;
+  /** The local gateway's WebSocket URL. */
+  proxyUrl: string;
+  destination: string;
+  username: string;
+  /** Needed by the client itself for CredSSP (NLA). */
+  password: string;
+  domain?: string;
+}
+
+/** What happened in an embedded session's handshake (`rdp_embedded_status`). */
+export interface RdpEmbeddedStatusDto {
+  failure?: string;
+  notice?: string;
+}
+
 /** What `rdp_launch` resolves with once the native client is running. */
 export interface RdpLaunchResultDto {
   /** Something the user should know about how it was launched. */

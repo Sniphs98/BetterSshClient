@@ -7,6 +7,7 @@ import { registerAutomationsIpc } from './ipc/automations.js';
 import { registerHostsIpc } from './ipc/hosts.js';
 import { registerKeySetupIpc } from './ipc/keysetup.js';
 import { cleanUpRdpOnQuit, registerRdpIpc } from './ipc/rdp.js';
+import { closeEmbeddedRdp, registerRdpEmbeddedIpc } from './ipc/rdpEmbedded.js';
 import { registerRemoteDesktopIpc } from './ipc/remoteDesktop.js';
 import { registerSettingsIpc } from './ipc/settings.js';
 import { registerSftpIpc } from './ipc/sftp.js';
@@ -128,6 +129,7 @@ app.whenReady().then(async () => {
   registerAutomationsIpc(ipcMain, state);
   registerRemoteDesktopIpc(ipcMain);
   registerRdpIpc(ipcMain, state);
+  registerRdpEmbeddedIpc(ipcMain, state);
 
   // Pre-load the shared host config so the first `list_hosts` paints
   // immediately, before the renderer's own `reload_hosts` call. A load
@@ -152,4 +154,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   state.shutdown();
   cleanUpRdpOnQuit();
+  closeEmbeddedRdp();
 });

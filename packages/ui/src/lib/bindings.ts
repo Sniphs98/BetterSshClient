@@ -152,6 +152,18 @@ export const commands = {
   },
   async rdpLaunch(connectionId: string): Promise<Result<RdpLaunchResultDto, CommandError>> {
     return call('rdp_launch', connectionId);
+  },
+  async rdpEmbeddedOpen(connectionId: string): Promise<Result<RdpEmbeddedSessionDto, CommandError>> {
+    return call('rdp_embedded_open', connectionId);
+  },
+  async rdpEmbeddedStatus(token: string): Promise<Result<RdpEmbeddedStatusDto, CommandError>> {
+    return call('rdp_embedded_status', token);
+  },
+  async rdpEmbeddedClose(token: string): Promise<Result<null, CommandError>> {
+    return call('rdp_embedded_close', token);
+  },
+  async rdpForgetCertificate(connectionId: string): Promise<Result<null, CommandError>> {
+    return call('rdp_forget_certificate', connectionId);
   }
 };
 
@@ -392,6 +404,22 @@ export type NodeStatusDto = 'success' | 'failed' | 'skipped';
 export type ProcessDto = { name: string; cpuPercent: number; memPercent: number };
 /** A saved RDP/VNC connection profile as the frontend sees it — password omitted,
  *  `hasPassword` tells the editor whether one is stored. */
+/** What the embedded RDP client needs to connect (`rdp_embedded_open`). */
+export type RdpEmbeddedSessionDto = {
+  token: string;
+  proxyUrl: string;
+  destination: string;
+  username: string;
+  password: string;
+  domain?: string | null;
+};
+
+/** What happened in an embedded session's handshake. */
+export type RdpEmbeddedStatusDto = {
+  failure?: string | null;
+  notice?: string | null;
+};
+
 /** What `rdp_launch` resolves with once the native client is running. */
 export type RdpLaunchResultDto = {
   /** Something the user should know about how it was launched. */

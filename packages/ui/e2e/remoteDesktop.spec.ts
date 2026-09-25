@@ -50,6 +50,11 @@ async function boot(page: Page, opts: { launch?: Rec } = {}): Promise<void> {
             state.connections = state.connections.filter((x) => x.id !== args[0]);
             return Promise.resolve(null);
           }
+          case 'rdp_embedded_open':
+            // No gateway behind the stub: the in-app viewer has to say so and offer the rest.
+            return Promise.reject({ message: 'could not reach 10.0.0.5:3389: connect ECONNREFUSED' });
+          case 'rdp_embedded_status':
+            return Promise.resolve({});
           case 'rdp_launch': {
             rdpLaunchCalls.push(args[0] as string);
             if (launch && 'error' in launch) return Promise.reject({ message: launch.error });
@@ -120,8 +125,8 @@ test('create, edit, connect to, and delete an RDP connection', async ({ page }) 
   await expect(page.getByText('office-pc', { exact: true })).toBeVisible();
   await expect(page.getByText('admin@10.0.0.5:3389')).toBeVisible();
 
-  // Connect: fires rdp_launch with this connection's id, no session tab is created.
-  await page.getByRole('button', { name: 'Connect to office-pc' }).click();
+  // External: fires rdp_launch with this connection's id, no session tab is created.
+  await page.getByRole('button', { name: 'Open office-pc in the Remote Desktop app' }).click();
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __rdpLaunchCalls: string[] }).__rdpLaunchCalls.length))
     .toBe(1);
@@ -188,7 +193,7 @@ test('a connection through an SSH host, with display and device settings', async
   await page.screenshot({ path: 'test-results/rdp-tiles.png' });
 
   // What the launch had to say is shown.
-  await page.getByRole('button', { name: 'Connect to behind-bastion' }).click();
+  await page.getByRole('button', { name: 'Open behind-bastion in the Remote Desktop app' }).click();
   await expect(page.getByRole('status')).toContainText('Windows already has a saved password');
 
   // Reopened, the settings section is open and shows what was saved.
@@ -207,7 +212,35 @@ test('a launch that fails says why', async ({ page }) => {
   await editor.getByLabel('Hostname / IP').fill('10.0.0.5');
   await editor.getByRole('button', { name: 'Add connection' }).click();
 
-  await page.getByRole('button', { name: 'Connect to office-pc' }).click();
+  await page.getByRole('button', { name: 'Open office-pc in the Remote Desktop app' }).click();
   await expect(page.getByText('Remote Desktop (mstsc.exe) was not found')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Connect to office-pc' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Open office-pc in the Remote Desktop app' })).toBeEnabled();
+});
+
+test('Connect opens the remote desktop in a tab, with the external app as the way out', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Switch to Remote Desktop' }).click();
+  await page.getByRole('button', { name: 'New connection' }).first().click();
+  const editor = page.getByRole('dialog', { name: 'New RDP connection' });
+  await editor.getByLabel('Name', { exact: true }).fill('office-pc');
+  await editor.getByLabel('Hostname / IP').fill('10.0.0.5');
+  await editor.getByRole('button', { name: 'Add connection' }).click();
+
+  await page.getByRole('button', { name: 'Connect to office-pc' }).click();
+  // A session row in the sidebar, and the tab saying what went wrong.
+  await expect(page.getByRole('button', { name: 'office-pc · rdp' })).toBeVisible();
+  await expect(page.getByText('Could not connect')).toBeVisible();
+  await expect(page.getByText('Could not reach 10.0.0.5:3389: connect ECONNREFUSED')).toBeVisible();
+
+  // Its fallback is the external app.
+  await page.getByRole('button', { name: 'Open in the Remote Desktop app' }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __rdpLaunchCalls: string[] }).__rdpLaunchCalls.length))
+    .toBe(1);
+
+  // Connect again goes to the open tab instead of a second one.
+  await page.getByRole('button', { name: 'Switch to Remote Desktop' }).click();
+  await page.getByRole('button', { name: 'Remote Desktop', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect to office-pc' }).click();
+  await expect(page.getByRole('button', { name: 'office-pc · rdp' })).toHaveCount(1);
 });

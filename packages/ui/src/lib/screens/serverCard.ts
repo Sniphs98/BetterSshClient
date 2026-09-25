@@ -169,7 +169,7 @@ export function filterHosts(cards: ServerCard[], query: string): ServerCard[] {
 
 // Host-first quick actions (tech-gui.md §2): `sh` opens a terminal, `files` opens
 // SFTP — both through the shared spawn path. The kind is a valid icon name too.
-export type QuickAction = { id: 'sh' | 'files'; label: string; kind: SessionKind };
+export type QuickAction = { id: 'sh' | 'files'; label: string; kind: Exclude<SessionKind, 'rdp'> };
 
 export const QUICK_ACTIONS: readonly QuickAction[] = [
   { id: 'sh', label: 'sh', kind: 'terminal' },

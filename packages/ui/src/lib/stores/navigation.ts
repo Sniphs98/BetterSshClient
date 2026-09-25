@@ -12,6 +12,13 @@ export function spawnSession(kind: SessionKind, hostName: string): Session {
   return session;
 }
 
+/** Opens a remote desktop connection as a tab (the embedded viewer). */
+export function spawnRdpSession(connectionId: string, name: string): Session {
+  const session = sessions.spawn('rdp', name, { rdpConnectionId: connectionId });
+  activeEntity.activateSession(session.id);
+  return session;
+}
+
 export function closeSession(id: number): void {
   const active = get(activeEntity);
   if (active.kind === 'session' && active.id === id) {

@@ -13,6 +13,9 @@
     rdpLaunch
   } from '$lib/ipc/commands';
   import { remoteDesktopConnections } from '$lib/stores/remoteDesktop';
+  import { sessions } from '$lib/stores/sessions';
+  import { activeEntity } from '$lib/stores/activeEntity';
+  import { spawnRdpSession } from '$lib/stores/navigation';
   import { lastError } from '$lib/stores/notifications';
   import { describeSettings, filterConnections, emptyForm, formFromConnection } from './remoteDesktopForm';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
@@ -60,7 +63,15 @@
     dialog = null;
   }
 
-  async function connect(connection: RemoteDesktopConnectionDto): Promise<void> {
+  /** Opens the connection in a tab inside the app — or goes to its tab if it has one. */
+  function connect(connection: RemoteDesktopConnectionDto): void {
+    const open = $sessions.find((s) => s.kind === 'rdp' && s.rdpConnectionId === connection.id);
+    if (open) activeEntity.activateSession(open.id);
+    else spawnRdpSession(connection.id, connection.name);
+  }
+
+  /** Opens the connection in the system's Remote Desktop app (mstsc / FreeRDP). */
+  async function openExternally(connection: RemoteDesktopConnectionDto): Promise<void> {
     connecting = connection.id;
     notice = null;
     try {
@@ -160,11 +171,21 @@
                 class={pill}
                 title="Connect to {connection.name}"
                 aria-label="Connect to {connection.name}"
-                disabled={connecting === connection.id}
                 onclick={() => connect(connection)}
               >
                 <Icon name="play" size={12} />
-                {connecting === connection.id ? 'Connecting…' : 'Connect'}
+                Connect
+              </button>
+              <button
+                type="button"
+                class={pill}
+                title="Open {connection.name} in the Remote Desktop app"
+                aria-label="Open {connection.name} in the Remote Desktop app"
+                disabled={connecting === connection.id}
+                onclick={() => openExternally(connection)}
+              >
+                <Icon name="upload" size={12} />
+                {connecting === connection.id ? 'Opening…' : 'External'}
               </button>
               <button
                 type="button"
