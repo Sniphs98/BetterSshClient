@@ -30,6 +30,17 @@ import { loadWindowGeometry, trackWindowGeometry } from './windowState.js';
 // `--bg` token (packages/ui/src/app.css).
 const BACKGROUND_COLOR = '#171717';
 
+/** The window's icon. Packaged on Windows and macOS the window takes the icon of its
+ *  .exe / .app bundle; this covers Linux, where a window has none of its own, and
+ *  `npm run dev:electron`, which runs the plain electron binary and would otherwise
+ *  show Electron's default icon. */
+function windowIcon(): string | undefined {
+  if (process.platform === 'darwin') return undefined;
+  return app.isPackaged
+    ? join(process.resourcesPath, 'icon.png')
+    : join(__dirname, '..', '..', '..', 'build', 'icons', '256x256.png');
+}
+
 /** How long the hidden window may wait for the page before it is revealed anyway. */
 const REVEAL_FALLBACK_MS = 3000;
 
@@ -44,6 +55,7 @@ function createWindow(): BrowserWindow {
 
   const win = new BrowserWindow({
     title: 'BetterSshClient',
+    icon: windowIcon(),
     width: geometry.width,
     height: geometry.height,
     x: geometry.x,

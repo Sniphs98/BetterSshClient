@@ -84,6 +84,7 @@ async function boot(
           return Promise.resolve();
         },
         homeDir: () => Promise.resolve('/home/user'),
+        appVersion: () => Promise.resolve('1.4.2'),
         getPathForFile: () => ''
       };
     },
@@ -198,4 +199,13 @@ test('where the app cannot update itself, the banner links to the release page',
   await expect(page.getByRole('button', { name: 'Update now' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Download', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as UpdateTestWindow).__opened)).toBe(UPDATE.url);
+});
+
+test('the running version sits beside the Settings gear, and in its tooltip when collapsed', async ({ page }) => {
+  await boot(page, { fireUpdateOnBoot: false });
+  await expect(page.getByText('v1.4.2', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+  await expect(page.getByText('v1.4.2', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Settings' })).toHaveAttribute('title', 'Settings · v1.4.2');
 });
