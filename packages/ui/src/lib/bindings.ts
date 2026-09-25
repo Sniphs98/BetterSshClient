@@ -353,6 +353,8 @@ export type HostDto = {
   monitorPort?: number | null;
   defaultPath?: string | null;
   startupCommand?: string | null;
+  /** A 1Password secret reference the password is read from at connect time. */
+  passwordRef?: string | null;
 };
 /** Inbound host form payload for `save_host`. */
 export type HostInputDto = {
@@ -369,6 +371,8 @@ export type HostInputDto = {
   monitorPort?: number | null;
   defaultPath?: string | null;
   startupCommand?: string | null;
+  /** A 1Password secret reference the password is read from at connect time. */
+  passwordRef?: string | null;
 };
 /** Host origin. */
 export type HostSourceDto = 'sshConfig' | 'manual';

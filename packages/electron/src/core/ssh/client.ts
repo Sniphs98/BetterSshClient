@@ -18,6 +18,9 @@ export interface Host {
   port: number;
   identityFile?: string;
   password?: string;
+  /** A 1Password secret reference (`op://vault/item/field`) to read the password
+   *  from at connect time, instead of storing it. Takes precedence over `password`. */
+  passwordRef?: string;
   proxyJump?: string;
   tags: string[];
   notes?: string;
@@ -78,6 +81,7 @@ export function hostFromToml(raw: Record<string, unknown>): Host {
     port: typeof raw.port === 'number' ? raw.port : DEFAULT_PORT,
     identityFile: typeof raw.identity_file === 'string' ? raw.identity_file : undefined,
     password: typeof raw.password === 'string' ? raw.password : undefined,
+    passwordRef: typeof raw.password_ref === 'string' ? raw.password_ref : undefined,
     proxyJump: typeof raw.proxy_jump === 'string' ? raw.proxy_jump : undefined,
     tags: Array.isArray(raw.tags) ? raw.tags.filter((t): t is string => typeof t === 'string') : [],
     notes: typeof raw.notes === 'string' ? raw.notes : undefined,
@@ -108,6 +112,7 @@ export function hostToToml(host: Host): Record<string, unknown> {
   };
   if (host.identityFile !== undefined) out.identity_file = host.identityFile;
   if (host.password !== undefined) out.password = host.password;
+  if (host.passwordRef !== undefined) out.password_ref = host.passwordRef;
   if (host.proxyJump !== undefined) out.proxy_jump = host.proxyJump;
   if (host.tags.length > 0) out.tags = host.tags;
   if (host.notes !== undefined) out.notes = host.notes;

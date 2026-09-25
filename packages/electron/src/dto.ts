@@ -29,6 +29,8 @@ export interface HostDto {
   monitorPort?: number;
   defaultPath?: string;
   startupCommand?: string;
+  /** A 1Password reference — not a secret itself, so it travels both ways. */
+  passwordRef?: string;
 }
 
 /** Inbound host form payload for `save_host`. Always builds a manual `Host`:
@@ -48,6 +50,8 @@ export interface HostInputDto {
   monitorPort?: number;
   defaultPath?: string;
   startupCommand?: string;
+  /** A 1Password reference — not a secret itself, so it travels both ways. */
+  passwordRef?: string;
 }
 
 function sourceToDto(source: HostSource): HostSourceDto {
@@ -81,7 +85,8 @@ export function hostToDto(host: Host): HostDto {
     monitoring: monitorModeToDto(host.monitoring),
     monitorPort: host.monitorPort,
     defaultPath: host.defaultPath,
-    startupCommand: host.startupCommand
+    startupCommand: host.startupCommand,
+    passwordRef: host.passwordRef
   };
 }
 
@@ -103,7 +108,8 @@ export function hostFromInputDto(input: HostInputDto): Host {
     monitoring: input.monitoring !== undefined ? monitorModeFromDto(input.monitoring) : 'ssh',
     monitorPort: input.monitorPort,
     defaultPath: input.defaultPath,
-    startupCommand: input.startupCommand
+    startupCommand: input.startupCommand,
+    passwordRef: input.passwordRef
   };
 }
 

@@ -22,6 +22,8 @@ export interface HostFormFields {
   defaultPath: string;
   /** Command typed into every new terminal on the host. Blank means none. */
   startupCommand: string;
+  /** 1Password reference the password is read from at connect time. Blank means none. */
+  passwordRef: string;
 }
 
 export function emptyForm(): HostFormFields {
@@ -39,7 +41,8 @@ export function emptyForm(): HostFormFields {
     monitoring: 'ssh',
     monitorPort: '',
     defaultPath: '',
-    startupCommand: ''
+    startupCommand: '',
+    passwordRef: ''
   };
 }
 
@@ -59,7 +62,8 @@ export function formFromHost(h: HostDto): HostFormFields {
     monitoring: h.monitoring,
     monitorPort: h.monitorPort == null ? '' : String(h.monitorPort),
     defaultPath: h.defaultPath ?? '',
-    startupCommand: h.startupCommand ?? ''
+    startupCommand: h.startupCommand ?? '',
+    passwordRef: h.passwordRef ?? ''
   };
 }
 
@@ -115,6 +119,11 @@ export function formToInput(f: HostFormFields): HostFormResult {
   const tags = splitCsv(f.tags);
   const defaultPath = f.defaultPath.trim();
   const startupCommand = f.startupCommand.trim();
+  // Same shape the app's 1Password reader accepts: op://vault/item[/section]/field.
+  const passwordRef = f.passwordRef.trim();
+  if (passwordRef !== '' && !/^op:\/\/[^/\s]+\/[^/\s]+(\/[^/\s]+){1,2}$/.test(passwordRef)) {
+    return { ok: false, error: '1Password reference must look like op://vault/item/field' };
+  }
   return {
     ok: true,
     input: {
@@ -129,7 +138,8 @@ export function formToInput(f: HostFormFields): HostFormResult {
       monitoring: f.monitoring,
       monitorPort,
       defaultPath: defaultPath || undefined,
-      startupCommand: startupCommand || undefined
+      startupCommand: startupCommand || undefined,
+      passwordRef: passwordRef || undefined
     }
   };
 }

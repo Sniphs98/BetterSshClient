@@ -137,6 +137,21 @@
       </label>
 
       <label class={label}>
+        <span>1Password reference</span>
+        <input
+          bind:value={fields.passwordRef}
+          class="{field} font-mono"
+          placeholder="op://Servers/web-1/password (optional)"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <p class="-mt-2.5 text-xs text-faint">
+        Reads the password from 1Password when connecting instead of storing it (needs the 1Password
+        CLI). In 1Password: right-click the password field → Copy Secret Reference.
+      </p>
+
+      <label class={label}>
         <span>Default path</span>
         <input
           bind:value={fields.defaultPath}
