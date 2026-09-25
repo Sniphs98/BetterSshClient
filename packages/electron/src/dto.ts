@@ -7,7 +7,7 @@ import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
 import type { Snippet, NodeTarget, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
-import type { RemoteDesktopConnection, RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
+import { rdpSettingsFrom, type RdpSettings, type RemoteDesktopConnection, type RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
 import type { ConnectionStatus, Metrics } from './event.js';
 import type { ProcessInfo } from './core/ssh/metrics.js';
 import type { DetectedService, ServiceKind, ServiceMetric } from './core/ssh/services/types.js';
@@ -205,7 +205,7 @@ export type RemoteDesktopProtocolDto = RemoteDesktopProtocol;
 
 /** A saved RDP/VNC connection profile as the frontend sees it — password omitted,
  *  `hasPassword` tells the editor whether one is stored (mirrors `HostDto.hasKey`). */
-export interface RemoteDesktopConnectionDto {
+export interface RemoteDesktopConnectionDto extends RdpSettings {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocolDto;
@@ -215,12 +215,14 @@ export interface RemoteDesktopConnectionDto {
   hasPassword: boolean;
   domain?: string;
   viewOnly?: boolean;
+  /** SSH host the connection is tunnelled through. */
+  viaHost?: string;
 }
 
 /** Inbound form payload for `save_remote_desktop_connection`. `password` arrives here
  *  but never travels back out on `RemoteDesktopConnectionDto`; omitted means "keep the
  *  stored value" on an edit (see `upsertRemoteDesktopConnection`). */
-export interface RemoteDesktopConnectionInputDto {
+export interface RemoteDesktopConnectionInputDto extends RdpSettings {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocolDto;
@@ -230,6 +232,47 @@ export interface RemoteDesktopConnectionInputDto {
   password?: string;
   domain?: string;
   viewOnly?: boolean;
+  /** SSH host the connection is tunnelled through. */
+  viaHost?: string;
+}
+
+/** Credentials typed in the embedded viewer for a profile that doesn't store them;
+ *  used for that one connection, never saved. */
+export interface RdpCredentialsDto {
+  username: string;
+  password: string;
+  domain?: string;
+}
+
+/** What `rdp_embedded_open` answers: ready to connect, or first ask for credentials
+ *  the profile doesn't store (the username/domain it has are there to prefill). */
+export type RdpEmbeddedOpenDto =
+  | ({ kind: 'ready' } & RdpEmbeddedSessionDto)
+  | { kind: 'credentials'; username?: string; domain?: string };
+
+/** What the renderer's embedded RDP client needs to connect (`rdp_embedded_open`). */
+export interface RdpEmbeddedSessionDto {
+  /** One-time token: the client's RDCleanPath "proxy auth". */
+  token: string;
+  /** The local gateway's WebSocket URL. */
+  proxyUrl: string;
+  destination: string;
+  username: string;
+  /** Needed by the client itself for CredSSP (NLA). */
+  password: string;
+  domain?: string;
+}
+
+/** What happened in an embedded session's handshake (`rdp_embedded_status`). */
+export interface RdpEmbeddedStatusDto {
+  failure?: string;
+  notice?: string;
+}
+
+/** What `rdp_launch` resolves with once the native client is running. */
+export interface RdpLaunchResultDto {
+  /** Something the user should know about how it was launched. */
+  notice?: string;
 }
 
 export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection): RemoteDesktopConnectionDto {
@@ -242,7 +285,9 @@ export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection
     username: connection.username,
     hasPassword: connection.password !== undefined,
     domain: connection.domain,
-    viewOnly: connection.viewOnly
+    viewOnly: connection.viewOnly,
+    viaHost: connection.viaHost,
+    ...rdpSettingsFrom(connection as unknown as Record<string, unknown>)
   };
 }
 
@@ -259,7 +304,9 @@ export function remoteDesktopConnectionFromInputDto(input: RemoteDesktopConnecti
     username: input.username,
     password: input.password,
     domain: input.domain,
-    viewOnly: input.viewOnly
+    viewOnly: input.viewOnly,
+    viaHost: input.viaHost,
+    ...rdpSettingsFrom(input as unknown as Record<string, unknown>)
   };
 }
 

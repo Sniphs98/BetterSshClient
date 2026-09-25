@@ -9,6 +9,10 @@ import type {
   HostDto,
   HostInputDto,
   ImportResultDto,
+  RdpCredentialsDto,
+  RdpEmbeddedOpenDto,
+  RdpEmbeddedStatusDto,
+  RdpLaunchResultDto,
   RemoteDesktopConnectionDto,
   RemoteDesktopConnectionInputDto,
   TerminalBytes,
@@ -326,9 +330,35 @@ export async function deleteRemoteDesktopConnection(id: string): Promise<void> {
 }
 
 /** Launches the connection's native RDP client (mstsc/xfreerdp/the OS's registered
- *  .rdp handler) as its own external window. Fire-and-forget — resolves once the
- *  client process has been asked to start, not once the user is actually connected. */
-export async function rdpLaunch(connectionId: string): Promise<void> {
+ *  .rdp handler) as its own external window. Resolves once it is running — with a
+ *  notice to show, if there is one — and throws if it couldn't be started. */
+export async function rdpLaunch(connectionId: string): Promise<RdpLaunchResultDto> {
   const res = await commands.rdpLaunch(connectionId);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Registers an embedded RDP session with the local gateway and returns what the
+ *  in-app client connects with. */
+export async function rdpEmbeddedOpen(connectionId: string, credentials?: RdpCredentialsDto): Promise<RdpEmbeddedOpenDto> {
+  const res = await commands.rdpEmbeddedOpen(connectionId, credentials);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+export async function rdpEmbeddedStatus(token: string): Promise<RdpEmbeddedStatusDto> {
+  const res = await commands.rdpEmbeddedStatus(token);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+export async function rdpEmbeddedClose(token: string): Promise<void> {
+  const res = await commands.rdpEmbeddedClose(token);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Forgets the remembered certificate of a connection's server (trust on first use). */
+export async function rdpForgetCertificate(connectionId: string): Promise<void> {
+  const res = await commands.rdpForgetCertificate(connectionId);
   if (res.status === 'error') throw new Error(res.error.message);
 }

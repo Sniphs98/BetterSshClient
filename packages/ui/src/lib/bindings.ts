@@ -150,8 +150,23 @@ export const commands = {
   async deleteRemoteDesktopConnection(id: string): Promise<Result<null, CommandError>> {
     return call('delete_remote_desktop_connection', id);
   },
-  async rdpLaunch(connectionId: string): Promise<Result<null, CommandError>> {
+  async rdpLaunch(connectionId: string): Promise<Result<RdpLaunchResultDto, CommandError>> {
     return call('rdp_launch', connectionId);
+  },
+  async rdpEmbeddedOpen(
+    connectionId: string,
+    credentials?: RdpCredentialsDto
+  ): Promise<Result<RdpEmbeddedOpenDto, CommandError>> {
+    return call('rdp_embedded_open', connectionId, credentials);
+  },
+  async rdpEmbeddedStatus(token: string): Promise<Result<RdpEmbeddedStatusDto, CommandError>> {
+    return call('rdp_embedded_status', token);
+  },
+  async rdpEmbeddedClose(token: string): Promise<Result<null, CommandError>> {
+    return call('rdp_embedded_close', token);
+  },
+  async rdpForgetCertificate(connectionId: string): Promise<Result<null, CommandError>> {
+    return call('rdp_forget_certificate', connectionId);
   }
 };
 
@@ -392,7 +407,49 @@ export type NodeStatusDto = 'success' | 'failed' | 'skipped';
 export type ProcessDto = { name: string; cpuPercent: number; memPercent: number };
 /** A saved RDP/VNC connection profile as the frontend sees it — password omitted,
  *  `hasPassword` tells the editor whether one is stored. */
-export type RemoteDesktopConnectionDto = {
+/** Credentials typed in the embedded viewer; used once, never saved. */
+export type RdpCredentialsDto = { username: string; password: string; domain?: string };
+
+/** Ready to connect, or first ask for credentials the profile doesn't store. */
+export type RdpEmbeddedOpenDto =
+  | ({ kind: 'ready' } & RdpEmbeddedSessionDto)
+  | { kind: 'credentials'; username?: string | null; domain?: string | null };
+
+/** What the embedded RDP client needs to connect (`rdp_embedded_open`). */
+export type RdpEmbeddedSessionDto = {
+  token: string;
+  proxyUrl: string;
+  destination: string;
+  username: string;
+  password: string;
+  domain?: string | null;
+};
+
+/** What happened in an embedded session's handshake. */
+export type RdpEmbeddedStatusDto = {
+  failure?: string | null;
+  notice?: string | null;
+};
+
+/** What `rdp_launch` resolves with once the native client is running. */
+export type RdpLaunchResultDto = {
+  /** Something the user should know about how it was launched. */
+  notice?: string;
+};
+
+/** rdp-only settings; each left out means "whatever the client does by default". */
+export type RdpSettingsDto = {
+  display?: 'fullscreen' | 'window' | 'fit' | null;
+  width?: number | null;
+  height?: number | null;
+  multiMonitor?: boolean | null;
+  clipboard?: boolean | null;
+  drives?: boolean | null;
+  audio?: 'local' | 'remote' | 'off' | null;
+  dynamicResolution?: boolean | null;
+};
+
+export type RemoteDesktopConnectionDto = RdpSettingsDto & {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocolDto;
@@ -402,10 +459,12 @@ export type RemoteDesktopConnectionDto = {
   hasPassword: boolean;
   domain?: string | null;
   viewOnly?: boolean | null;
+  /** Name of the SSH host the connection is tunnelled through. */
+  viaHost?: string | null;
 };
 /** Inbound form payload for `save_remote_desktop_connection`. Omitting `password`
  *  means "keep the stored value" on an edit. */
-export type RemoteDesktopConnectionInputDto = {
+export type RemoteDesktopConnectionInputDto = RdpSettingsDto & {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocolDto;
@@ -415,6 +474,8 @@ export type RemoteDesktopConnectionInputDto = {
   password?: string | null;
   domain?: string | null;
   viewOnly?: boolean | null;
+  /** Name of the SSH host the connection is tunnelled through. */
+  viaHost?: string | null;
 };
 /** Only `'rdp'` is reachable from the UI for now — `'vnc'` exists so a later pass is
  *  additive, not a migration. */

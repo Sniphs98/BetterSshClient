@@ -15,7 +15,53 @@ import { decryptSecret, encryptSecret } from './secretField.js';
 
 export type RemoteDesktopProtocol = 'rdp' | 'vnc';
 
-export interface RemoteDesktopConnection {
+/** rdp-only settings; each left out means "whatever the client does by default". */
+export interface RdpSettings {
+  /** Full screen, a window of `width`×`height`, or a window sized to fill the screen
+   *  above the taskbar when maximised (`width`/`height` worked out at launch). */
+  display?: 'fullscreen' | 'window' | 'fit';
+  width?: number;
+  height?: number;
+  /** Span all local monitors. */
+  multiMonitor?: boolean;
+  /** Share the clipboard with the remote machine. */
+  clipboard?: boolean;
+  /** Make the local drives available on the remote machine. */
+  drives?: boolean;
+  /** Where sound plays: here, on the remote machine, or nowhere. */
+  audio?: 'local' | 'remote' | 'off';
+  /** Change the remote resolution whenever the window is resized. */
+  dynamicResolution?: boolean;
+}
+
+export const RDP_SETTING_KEYS = [
+  'display',
+  'width',
+  'height',
+  'multiMonitor',
+  'clipboard',
+  'drives',
+  'audio',
+  'dynamicResolution'
+] as const;
+
+/** Picks the valid RDP settings out of a parsed TOML table or a DTO, dropping anything
+ *  malformed rather than failing the whole file over a hand edit. */
+export function rdpSettingsFrom(raw: Record<string, unknown>): RdpSettings {
+  const out: RdpSettings = {};
+  if (raw.display === 'fullscreen' || raw.display === 'window' || raw.display === 'fit') out.display = raw.display;
+  for (const key of ['width', 'height'] as const) {
+    const v = raw[key];
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 200 && v <= 8192) out[key] = v;
+  }
+  for (const key of ['multiMonitor', 'clipboard', 'drives', 'dynamicResolution'] as const) {
+    if (typeof raw[key] === 'boolean') out[key] = raw[key] as boolean;
+  }
+  if (raw.audio === 'local' || raw.audio === 'remote' || raw.audio === 'off') out.audio = raw.audio;
+  return out;
+}
+
+export interface RemoteDesktopConnection extends RdpSettings {
   id: string;
   name: string;
   protocol: RemoteDesktopProtocol;
@@ -28,6 +74,9 @@ export interface RemoteDesktopConnection {
   domain?: string;
   /** vnc-only. */
   viewOnly?: boolean;
+  /** Name of an SSH host to tunnel the connection through; `hostname`/`port` are
+   *  then as seen from that host. */
+  viaHost?: string;
 }
 
 interface RemoteDesktopFile {
@@ -58,7 +107,9 @@ function connectionFromToml(raw: Record<string, unknown>): RemoteDesktopConnecti
     username: typeof raw.username === 'string' ? raw.username : undefined,
     password: typeof raw.password === 'string' ? raw.password : undefined,
     domain: typeof raw.domain === 'string' ? raw.domain : undefined,
-    viewOnly: typeof raw.viewOnly === 'boolean' ? raw.viewOnly : undefined
+    viewOnly: typeof raw.viewOnly === 'boolean' ? raw.viewOnly : undefined,
+    viaHost: typeof raw.viaHost === 'string' ? raw.viaHost : undefined,
+    ...rdpSettingsFrom(raw)
   });
 }
 
@@ -75,6 +126,10 @@ function connectionToToml(connection: RemoteDesktopConnection): Record<string, u
   if (encrypted.password !== undefined) out.password = encrypted.password;
   if (encrypted.domain !== undefined) out.domain = encrypted.domain;
   if (encrypted.viewOnly !== undefined) out.viewOnly = encrypted.viewOnly;
+  if (encrypted.viaHost !== undefined) out.viaHost = encrypted.viaHost;
+  for (const key of RDP_SETTING_KEYS) {
+    if (encrypted[key] !== undefined) out[key] = encrypted[key];
+  }
   return out;
 }
 
