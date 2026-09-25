@@ -90,6 +90,13 @@ jobs:
       # Unsigned builds: don't let electron-builder go looking for a signing identity.
       CSC_IDENTITY_AUTO_DISCOVERY: false
 
+    # Bash on every OS, Windows included: PowerShell splits an argument like
+    # `-c.win.signAndEditExecutable=true` at the dot, and electron-builder then reads
+    # `.win.…` as the path of a config file.
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
