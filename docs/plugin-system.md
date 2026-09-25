@@ -199,7 +199,13 @@ plugins/
   docker-containers/
     plugin.json
     main.js
+    README.md      (optional)
 ```
+
+**`README.md`** (optional): die Doku des Plugins. Die Karte bekommt dann einen Knopf **Docs**,
+der sie formatiert anzeigt. Weil das fremder Inhalt ist, wird er vorher entschärft: keine
+Skripte, keine Bilder (ein Bild aus dem Netz würde dem Autor verraten, wann jemand die Doku
+liest), Links öffnen im Browser statt in der App.
 
 **`plugin.json`:**
 
