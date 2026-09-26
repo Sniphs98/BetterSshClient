@@ -48,6 +48,9 @@ export const commands = {
   async sftpOpen(hostName: string): Promise<Result<number, CommandError>> {
     return call('sftp_open', hostName);
   },
+  async sftpDefaultPath(hostName: string): Promise<Result<string | null, CommandError>> {
+    return call('sftp_default_path', hostName);
+  },
   async sftpList(sessionId: number, path: string): Promise<Result<null, CommandError>> {
     return call('sftp_list', sessionId, path);
   },
@@ -164,6 +167,9 @@ export const commands = {
   },
   async rdpEmbeddedClose(token: string): Promise<Result<null, CommandError>> {
     return call('rdp_embedded_close', token);
+  },
+  async onePasswordStatus(): Promise<Result<OnePasswordStatusDto, CommandError>> {
+    return call('onepassword_status');
   },
   async rdpForgetCertificate(connectionId: string): Promise<Result<null, CommandError>> {
     return call('rdp_forget_certificate', connectionId);
@@ -296,6 +302,8 @@ export type AutomationNodeResult = NodeResultDto & { automationName: string };
 /** A node started executing. */
 export type AutomationNodeStarted = { automationName: string; nodeId: string; label: string };
 export type CommandError = { message: string };
+/** Whether the 1Password CLI is installed, and how to get it. */
+export type OnePasswordStatusDto = { installed: boolean; version?: string | null; command?: string | null; docsUrl: string };
 /** Live connection state for a host. Internally tagged so the frontend
  *  consumes a discriminated union keyed on `kind`. */
 export type ConnectionStatusDto =
@@ -353,6 +361,10 @@ export type HostDto = {
   monitorPort?: number | null;
   defaultPath?: string | null;
   startupCommand?: string | null;
+  /** A 1Password secret reference the password is read from at connect time. */
+  passwordRef?: string | null;
+  /** A 1Password reference the port is read from at connect time. */
+  portRef?: string | null;
 };
 /** Inbound host form payload for `save_host`. */
 export type HostInputDto = {
@@ -369,6 +381,10 @@ export type HostInputDto = {
   monitorPort?: number | null;
   defaultPath?: string | null;
   startupCommand?: string | null;
+  /** A 1Password secret reference the password is read from at connect time. */
+  passwordRef?: string | null;
+  /** A 1Password reference the port is read from at connect time. */
+  portRef?: string | null;
 };
 /** Host origin. */
 export type HostSourceDto = 'sshConfig' | 'manual';
@@ -475,6 +491,10 @@ export type RemoteDesktopConnectionDto = RdpSettingsDto & {
   viewOnly?: boolean | null;
   /** Name of the SSH host the connection is tunnelled through. */
   viaHost?: string | null;
+  /** A 1Password reference the password is read from at connect time. */
+  passwordRef?: string | null;
+  /** A 1Password reference the port is read from at connect time. */
+  portRef?: string | null;
 };
 /** Inbound form payload for `save_remote_desktop_connection`. Omitting `password`
  *  means "keep the stored value" on an edit. */
@@ -490,6 +510,10 @@ export type RemoteDesktopConnectionInputDto = RdpSettingsDto & {
   viewOnly?: boolean | null;
   /** Name of the SSH host the connection is tunnelled through. */
   viaHost?: string | null;
+  /** A 1Password reference the password is read from at connect time. */
+  passwordRef?: string | null;
+  /** A 1Password reference the port is read from at connect time. */
+  portRef?: string | null;
 };
 /** Only `'rdp'` is reachable from the UI for now — `'vnc'` exists so a later pass is
  *  additive, not a migration. */
@@ -569,11 +593,28 @@ async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   return bridge().invoke(channel, ...args);
 }
 
+/** Electron rejects a failed `invoke` with an Error whose message wraps the handler's:
+ *  "Error invoking remote method 'x': Error: <message>". */
+const REMOTE_ERROR = /^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?([\s\S]*)$/;
+
+/** The command error inside a rejected `invoke`, or undefined if it isn't one (a
+ *  missing bridge, say — a bug, not a command failing). */
+export function commandErrorFrom(e: unknown): CommandError | undefined {
+  if (e instanceof Error) {
+    const m = REMOTE_ERROR.exec(e.message);
+    return m ? { message: m[1] } : undefined;
+  }
+  // The e2e stubs reject with the plain `{ message }` object itself.
+  if (e && typeof e === 'object' && typeof (e as CommandError).message === 'string') return e as CommandError;
+  return undefined;
+}
+
 async function call<T>(channel: string, ...args: unknown[]): Promise<Result<T, CommandError>> {
   try {
     return { status: 'ok', data: (await invoke(channel, ...args)) as T };
   } catch (e) {
-    if (e instanceof Error) throw e;
-    return { status: 'error', error: e as CommandError };
+    const error = commandErrorFrom(e);
+    if (!error) throw e;
+    return { status: 'error', error };
   }
 }

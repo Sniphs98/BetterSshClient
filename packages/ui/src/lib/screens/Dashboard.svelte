@@ -12,6 +12,7 @@
   import { serverCards, filterHosts, QUICK_ACTIONS } from './serverCard';
   import { spawnSession } from '$lib/stores/navigation';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
+  import { addressLine } from './onePasswordRef';
   import { hosts } from '$lib/stores/hosts';
   import { lastError } from '$lib/stores/notifications';
   import { saveHost, deleteHost, reloadHosts, startKeySetup, refreshMetrics } from '$lib/ipc/commands';
@@ -243,8 +244,7 @@
                   {/if}
                 </div>
                 <div class="truncate font-mono text-xs text-faint">
-                  {card.host.user}@{displayHostname(card.host.hostname, $streamerMode)}:{card.host
-                    .port}
+                  {addressLine(card.host, displayHostname(card.host.hostname, $streamerMode))}
                 </div>
               </div>
             </div>

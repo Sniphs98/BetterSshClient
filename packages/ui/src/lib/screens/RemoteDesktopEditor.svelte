@@ -9,6 +9,8 @@
   import Modal from '$lib/components/Modal.svelte';
   import Select from '$lib/components/Select.svelte';
   import Switch from '$lib/components/Switch.svelte';
+  import OnePasswordCliHint from '$lib/components/OnePasswordCliHint.svelte';
+  import OnePasswordToggle from '$lib/components/OnePasswordToggle.svelte';
   import { hosts } from '$lib/stores/hosts';
   import { describeSettings, formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
 
@@ -79,6 +81,7 @@
   const onWindows = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
 
   const label = 'block space-y-1 text-xs font-medium text-muted';
+  const labelRow = 'flex items-center justify-between gap-2';
   const row = 'flex items-center justify-between gap-4 px-3.5 py-3';
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
@@ -104,14 +107,37 @@
       </label>
 
       <div class="grid grid-cols-[1fr,7rem] gap-3">
-        <label class={label}>
-          <span>Hostname / IP</span>
-          <input bind:value={fields.hostname} class="{field} font-mono" placeholder="10.0.0.5" />
-        </label>
-        <label class={label}>
-          <span>Port</span>
-          <input bind:value={fields.port} inputmode="numeric" class={field} placeholder="3389" />
-        </label>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="rdp-hostname">Hostname / IP</label>
+            <OnePasswordToggle bind:on={fields.hostnameFrom1P} field="Hostname" />
+          </div>
+          <input
+            id="rdp-hostname"
+            bind:value={fields.hostname}
+            class="{field} font-mono"
+            placeholder={fields.hostnameFrom1P ? 'op://Servers/office-pc/hostname' : '10.0.0.5'}
+            spellcheck="false"
+          />
+        </div>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="rdp-port">Port</label>
+            <OnePasswordToggle bind:on={fields.portFrom1P} field="Port" />
+          </div>
+          {#if fields.portFrom1P}
+            <input
+              id="rdp-port"
+              bind:value={fields.portRef}
+              class="{field} font-mono"
+              placeholder="op://…/port"
+              title={fields.portRef}
+              spellcheck="false"
+            />
+          {:else}
+            <input id="rdp-port" bind:value={fields.port} inputmode="numeric" class={field} placeholder="3389" />
+          {/if}
+        </div>
       </div>
 
       <label class={label}>
@@ -131,26 +157,67 @@
       {/if}
 
       <div class="grid grid-cols-2 gap-3">
-        <label class={label}>
-          <span>Username</span>
-          <input bind:value={fields.username} class={field} placeholder="admin" />
-        </label>
-        <label class={label}>
-          <span>Domain</span>
-          <input bind:value={fields.domain} class={field} placeholder="Optional" />
-        </label>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="rdp-username">Username</label>
+            <OnePasswordToggle bind:on={fields.usernameFrom1P} field="Username" />
+          </div>
+          <input
+            id="rdp-username"
+            bind:value={fields.username}
+            class="{field} {fields.usernameFrom1P ? 'font-mono' : ''}"
+            placeholder={fields.usernameFrom1P ? 'op://Servers/office-pc/username' : 'admin'}
+            spellcheck="false"
+          />
+        </div>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="rdp-domain">Domain</label>
+            <OnePasswordToggle bind:on={fields.domainFrom1P} field="Domain" />
+          </div>
+          <input
+            id="rdp-domain"
+            bind:value={fields.domain}
+            class="{field} {fields.domainFrom1P ? 'font-mono' : ''}"
+            placeholder={fields.domainFrom1P ? 'op://Servers/office-pc/domain' : 'Optional'}
+            spellcheck="false"
+          />
+        </div>
       </div>
 
-      <label class={label}>
-        <span>Password</span>
-        <input
-          type="password"
-          bind:value={fields.password}
-          class={field}
-          placeholder={secretHint ?? 'Optional — you can also enter it at connect time'}
-          autocomplete="off"
-        />
-      </label>
+      <div class={label}>
+        <div class={labelRow}>
+          <label for="rdp-password">Password</label>
+          <OnePasswordToggle bind:on={fields.passwordFrom1P} field="Password" />
+        </div>
+        {#if fields.passwordFrom1P}
+          <input
+            id="rdp-password"
+            bind:value={fields.passwordRef}
+            class="{field} font-mono"
+            placeholder="op://Servers/office-pc/password"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        {:else}
+          <input
+            id="rdp-password"
+            type="password"
+            bind:value={fields.password}
+            class={field}
+            placeholder={secretHint ?? 'Optional — you can also enter it at connect time'}
+            autocomplete="off"
+          />
+        {/if}
+      </div>
+
+      {#if fields.hostnameFrom1P || fields.portFrom1P || fields.usernameFrom1P || fields.domainFrom1P || fields.passwordFrom1P}
+        <p class="-mt-2 text-xs text-faint">
+          Fields marked 1Password take a secret reference and are read from 1Password when connecting (needs the
+          1Password CLI). In 1Password: right-click a field → Copy Secret Reference.
+        </p>
+        <OnePasswordCliHint />
+      {/if}
 
       <section class="rounded-xl border border-default bg-surface-inset/40">
         <button

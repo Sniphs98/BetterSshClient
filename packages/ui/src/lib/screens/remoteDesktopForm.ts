@@ -6,6 +6,7 @@
 // small diff, not a rewrite.
 
 import type { RemoteDesktopConnectionDto, RemoteDesktopConnectionInputDto, RemoteDesktopProtocolDto } from '$lib/bindings';
+import { isOnePasswordReference, normalizeReference, ONE_PASSWORD_REFERENCE_ERROR } from './onePasswordRef';
 
 export function defaultPort(protocol: RemoteDesktopProtocolDto): number {
   return protocol === 'vnc' ? 5900 : 3389;
@@ -24,6 +25,19 @@ export interface RemoteDesktopFormFields {
   domain: string;
   /** Name of the SSH host to tunnel through; blank connects directly. */
   viaHost: string;
+  /** 1Password reference the password is read from at connect time. Blank means none. */
+  passwordRef: string;
+  /** 1Password reference the port is read from at connect time. */
+  portRef: string;
+  /** Per field: read from 1Password when connecting. Address, user and domain then
+   *  hold the reference themselves; the port's goes in `portRef` (the port is a number
+   *  on disk) and the password's in `passwordRef` (the stored password is never sent
+   *  back to the form, so the two can't share a field). */
+  hostnameFrom1P: boolean;
+  portFrom1P: boolean;
+  usernameFrom1P: boolean;
+  domainFrom1P: boolean;
+  passwordFrom1P: boolean;
   /** Blank leaves it to the client. */
   display: '' | 'fullscreen' | 'window' | 'fit';
   /** Window size; both blank leaves it to the client. */
@@ -60,6 +74,13 @@ export function emptyForm(): RemoteDesktopFormFields {
     password: '',
     domain: '',
     viaHost: '',
+    passwordRef: '',
+    portRef: '',
+    hostnameFrom1P: false,
+    portFrom1P: false,
+    usernameFrom1P: false,
+    domainFrom1P: false,
+    passwordFrom1P: false,
     ...SETTING_DEFAULTS
   };
 }
@@ -79,6 +100,13 @@ export function formFromConnection(c: RemoteDesktopConnectionDto): RemoteDesktop
     password: '',
     domain: c.domain ?? '',
     viaHost: c.viaHost ?? '',
+    passwordRef: c.passwordRef ?? '',
+    portRef: c.portRef ?? '',
+    hostnameFrom1P: isOnePasswordReference(c.hostname),
+    portFrom1P: Boolean(c.portRef),
+    usernameFrom1P: isOnePasswordReference(c.username ?? ''),
+    domainFrom1P: isOnePasswordReference(c.domain ?? ''),
+    passwordFrom1P: Boolean(c.passwordRef),
     display: c.display ?? SETTING_DEFAULTS.display,
     width: c.width ? String(c.width) : '',
     height: c.height ? String(c.height) : '',
@@ -101,10 +129,14 @@ export type RemoteDesktopFormResult =
 export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult {
   const name = f.name.trim();
   if (!name) return { ok: false, error: 'Name cannot be empty' };
-  const hostname = f.hostname.trim();
+  const hostname = fieldValue(f.hostname, f.hostnameFrom1P);
   if (!hostname) return { ok: false, error: 'Hostname / IP cannot be empty' };
+  if (f.hostnameFrom1P && !isOnePasswordReference(hostname)) return { ok: false, error: referenceError('Hostname / IP') };
 
-  const portRaw = f.port.trim();
+  // From 1Password the port stays the default on disk and is read when connecting.
+  const portRef = f.portFrom1P ? normalizeReference(f.portRef) : '';
+  if (f.portFrom1P && !isOnePasswordReference(portRef)) return { ok: false, error: referenceError('Port') };
+  const portRaw = f.portFrom1P ? '' : f.port.trim();
   let port = defaultPort(f.protocol);
   if (portRaw !== '') {
     if (!/^\+?\d+$/.test(portRaw) || Number(portRaw) < 1 || Number(portRaw) > 65535) {
@@ -113,10 +145,15 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
     port = Number(portRaw);
   }
 
-  const username = f.username.trim();
+  const username = fieldValue(f.username, f.usernameFrom1P);
   const password = f.password.trim();
-  const domain = f.domain.trim();
+  const domain = fieldValue(f.domain, f.domainFrom1P);
   const viaHost = f.viaHost.trim();
+  if (f.usernameFrom1P && !isOnePasswordReference(username)) return { ok: false, error: referenceError('Username') };
+  if (f.domainFrom1P && !isOnePasswordReference(domain)) return { ok: false, error: referenceError('Domain') };
+  // Switched back to typing, the password's reference is dropped.
+  const passwordRef = f.passwordFrom1P ? normalizeReference(f.passwordRef) : '';
+  if (f.passwordFrom1P && !isOnePasswordReference(passwordRef)) return { ok: false, error: referenceError('Password') };
 
   let width: number | undefined;
   let height: number | undefined;
@@ -143,6 +180,8 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       password: password || undefined,
       domain: domain || undefined,
       viaHost: viaHost || undefined,
+      passwordRef: passwordRef || undefined,
+      portRef: portRef || undefined,
       display: f.display || undefined,
       width,
       height,
@@ -153,6 +192,32 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       audio: f.audio
     }
   };
+}
+
+/** What of a profile comes from 1Password, for the tile's badge ("Address and
+ *  password"), or '' when nothing does. */
+export function fromOnePassword(
+  c: Pick<RemoteDesktopConnectionDto, 'hostname' | 'portRef' | 'username' | 'domain' | 'passwordRef'>
+): string {
+  const parts = [
+    isOnePasswordReference(c.hostname) && 'address',
+    Boolean(c.portRef) && 'port',
+    isOnePasswordReference(c.username ?? '') && 'user',
+    isOnePasswordReference(c.domain ?? '') && 'domain',
+    Boolean(c.passwordRef) && 'password'
+  ].filter((p): p is string => Boolean(p));
+  if (parts.length === 0) return '';
+  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return list[0].toUpperCase() + list.slice(1);
+}
+
+/** A text field as it is saved: trimmed, or as a cleaned-up reference when switched to 1Password. */
+function fieldValue(value: string, from1P: boolean): string {
+  return from1P ? normalizeReference(value) : value.trim();
+}
+
+function referenceError(field: string): string {
+  return `${field}: ${ONE_PASSWORD_REFERENCE_ERROR}`;
 }
 
 /** Case-insensitive substring filter over name / hostname.

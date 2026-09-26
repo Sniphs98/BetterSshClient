@@ -65,6 +65,7 @@ describe('remote-desktop.toml I/O', () => {
       username: 'admin',
       domain: 'CORP',
       viaHost: 'bastion',
+      passwordRef: 'op://Servers/pc/password',
       display: 'window',
       width: 1600,
       height: 900,
