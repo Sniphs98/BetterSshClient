@@ -573,11 +573,28 @@ async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   return bridge().invoke(channel, ...args);
 }
 
+/** Electron rejects a failed `invoke` with an Error whose message wraps the handler's:
+ *  "Error invoking remote method 'x': Error: <message>". */
+const REMOTE_ERROR = /^Error invoking remote method '[^']*': (?:[A-Za-z]*Error: )?([\s\S]*)$/;
+
+/** The command error inside a rejected `invoke`, or undefined if it isn't one (a
+ *  missing bridge, say — a bug, not a command failing). */
+export function commandErrorFrom(e: unknown): CommandError | undefined {
+  if (e instanceof Error) {
+    const m = REMOTE_ERROR.exec(e.message);
+    return m ? { message: m[1] } : undefined;
+  }
+  // The e2e stubs reject with the plain `{ message }` object itself.
+  if (e && typeof e === 'object' && typeof (e as CommandError).message === 'string') return e as CommandError;
+  return undefined;
+}
+
 async function call<T>(channel: string, ...args: unknown[]): Promise<Result<T, CommandError>> {
   try {
     return { status: 'ok', data: (await invoke(channel, ...args)) as T };
   } catch (e) {
-    if (e instanceof Error) throw e;
-    return { status: 'error', error: e as CommandError };
+    const error = commandErrorFrom(e);
+    if (!error) throw e;
+    return { status: 'error', error };
   }
 }

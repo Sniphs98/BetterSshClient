@@ -203,8 +203,13 @@ export interface CommandError {
   message: string;
 }
 
-export function toCommandError(err: unknown): CommandError {
-  return { message: err instanceof Error ? err.message : String(err) };
+/** What an IPC handler throws. An `Error`, not a plain `{ message }`: Electron hands a
+ *  rejected `invoke` only the thrown value's `toString()`, so a plain object reached the
+ *  renderer as "[object Object]" and every error message was lost in the real app. The
+ *  renderer (`bindings.ts` → `call`) strips Electron's "Error invoking remote method"
+ *  wrapping again. */
+export function toCommandError(err: unknown): CommandError & Error {
+  return new Error(err instanceof Error ? err.message : String(err));
 }
 
 export type RemoteDesktopProtocolDto = RemoteDesktopProtocol;
