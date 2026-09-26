@@ -1,7 +1,8 @@
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import type { CoreEvent } from '../../event.js';
-import { LocalPtyManager, localTerminalEnv } from './localPty.js';
+import { LocalPtyManager, localTerminalEnv, spawnHelperPaths } from './localPty.js';
 import { listTerminalProfiles } from './profiles.js';
 
 describe('localTerminalEnv', () => {
@@ -10,6 +11,14 @@ describe('localTerminalEnv', () => {
     expect(env).toMatchObject({ PATH: '/usr/bin', TERM: 'xterm-256color', COLORTERM: 'truecolor' });
     expect(env).not.toHaveProperty('ELECTRON_RUN_AS_NODE');
     expect(env).not.toHaveProperty('UNSET');
+  });
+});
+
+describe('spawnHelperPaths', () => {
+  it("looks for macOS's spawn-helper in the prebuilds and a local build, outside the asar", () => {
+    const [prebuilt, built] = spawnHelperPaths(join('/Applications/B.app/Contents/Resources/app.asar/node_modules/node-pty'), 'arm64');
+    expect(prebuilt).toBe(join('/Applications/B.app/Contents/Resources/app.asar.unpacked/node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper'));
+    expect(built).toBe(join('/Applications/B.app/Contents/Resources/app.asar.unpacked/node_modules/node-pty/build/Release/spawn-helper'));
   });
 });
 
