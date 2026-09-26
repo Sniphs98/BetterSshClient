@@ -27,11 +27,16 @@ export interface RemoteDesktopFormFields {
   viaHost: string;
   /** 1Password reference the password is read from at connect time. Blank means none. */
   passwordRef: string;
-  /** Per field: read from 1Password when connecting. The address and user then hold
-   *  the reference themselves; the password's goes in `passwordRef` (the stored
-   *  password is never sent back to the form, so the two can't share a field). */
+  /** 1Password reference the port is read from at connect time. */
+  portRef: string;
+  /** Per field: read from 1Password when connecting. Address, user and domain then
+   *  hold the reference themselves; the port's goes in `portRef` (the port is a number
+   *  on disk) and the password's in `passwordRef` (the stored password is never sent
+   *  back to the form, so the two can't share a field). */
   hostnameFrom1P: boolean;
+  portFrom1P: boolean;
   usernameFrom1P: boolean;
+  domainFrom1P: boolean;
   passwordFrom1P: boolean;
   /** Blank leaves it to the client. */
   display: '' | 'fullscreen' | 'window' | 'fit';
@@ -70,8 +75,11 @@ export function emptyForm(): RemoteDesktopFormFields {
     domain: '',
     viaHost: '',
     passwordRef: '',
+    portRef: '',
     hostnameFrom1P: false,
+    portFrom1P: false,
     usernameFrom1P: false,
+    domainFrom1P: false,
     passwordFrom1P: false,
     ...SETTING_DEFAULTS
   };
@@ -93,8 +101,11 @@ export function formFromConnection(c: RemoteDesktopConnectionDto): RemoteDesktop
     domain: c.domain ?? '',
     viaHost: c.viaHost ?? '',
     passwordRef: c.passwordRef ?? '',
+    portRef: c.portRef ?? '',
     hostnameFrom1P: isOnePasswordReference(c.hostname),
+    portFrom1P: Boolean(c.portRef),
     usernameFrom1P: isOnePasswordReference(c.username ?? ''),
+    domainFrom1P: isOnePasswordReference(c.domain ?? ''),
     passwordFrom1P: Boolean(c.passwordRef),
     display: c.display ?? SETTING_DEFAULTS.display,
     width: c.width ? String(c.width) : '',
@@ -122,7 +133,10 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
   if (!hostname) return { ok: false, error: 'Hostname / IP cannot be empty' };
   if (f.hostnameFrom1P && !isOnePasswordReference(hostname)) return { ok: false, error: referenceError('Hostname / IP') };
 
-  const portRaw = f.port.trim();
+  // From 1Password the port stays the default on disk and is read when connecting.
+  const portRef = f.portFrom1P ? f.portRef.trim() : '';
+  if (f.portFrom1P && !isOnePasswordReference(portRef)) return { ok: false, error: referenceError('Port') };
+  const portRaw = f.portFrom1P ? '' : f.port.trim();
   let port = defaultPort(f.protocol);
   if (portRaw !== '') {
     if (!/^\+?\d+$/.test(portRaw) || Number(portRaw) < 1 || Number(portRaw) > 65535) {
@@ -136,6 +150,7 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
   const domain = f.domain.trim();
   const viaHost = f.viaHost.trim();
   if (f.usernameFrom1P && !isOnePasswordReference(username)) return { ok: false, error: referenceError('Username') };
+  if (f.domainFrom1P && !isOnePasswordReference(domain)) return { ok: false, error: referenceError('Domain') };
   // Switched back to typing, the password's reference is dropped.
   const passwordRef = f.passwordFrom1P ? f.passwordRef.trim() : '';
   if (f.passwordFrom1P && !isOnePasswordReference(passwordRef)) return { ok: false, error: referenceError('Password') };
@@ -166,6 +181,7 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       domain: domain || undefined,
       viaHost: viaHost || undefined,
       passwordRef: passwordRef || undefined,
+      portRef: portRef || undefined,
       display: f.display || undefined,
       width,
       height,
@@ -180,10 +196,14 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
 
 /** What of a profile comes from 1Password, for the tile's badge ("Address and
  *  password"), or '' when nothing does. */
-export function fromOnePassword(c: Pick<RemoteDesktopConnectionDto, 'hostname' | 'username' | 'passwordRef'>): string {
+export function fromOnePassword(
+  c: Pick<RemoteDesktopConnectionDto, 'hostname' | 'portRef' | 'username' | 'domain' | 'passwordRef'>
+): string {
   const parts = [
     isOnePasswordReference(c.hostname) && 'address',
+    Boolean(c.portRef) && 'port',
     isOnePasswordReference(c.username ?? '') && 'user',
+    isOnePasswordReference(c.domain ?? '') && 'domain',
     Boolean(c.passwordRef) && 'password'
   ].filter((p): p is string => Boolean(p));
   if (parts.length === 0) return '';

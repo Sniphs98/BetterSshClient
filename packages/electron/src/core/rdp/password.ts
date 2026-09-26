@@ -1,5 +1,5 @@
 import type { RemoteDesktopConnection } from '../config/remoteDesktop.js';
-import { readSecretCached, resolveReference } from '../secrets/onePassword.js';
+import { readSecretCached, resolvePort, resolveReference } from '../secrets/onePassword.js';
 
 /**
  * The password to sign in to `connection` with: read from 1Password when it has a
@@ -13,18 +13,20 @@ export async function connectionPassword(connection: Pick<RemoteDesktopConnectio
 }
 
 /**
- * `connection` with everything that comes from 1Password filled in: the address and
- * user name when they are references (`op://…` in the field itself), and the password
- * from `passwordRef`. The result carries no references any more, so whatever launches
- * or tunnels it needs no knowledge of 1Password.
+ * `connection` with everything that comes from 1Password filled in: the address, user
+ * name and domain when they are references (`op://…` in the field itself), the port
+ * from `portRef` and the password from `passwordRef`. The result carries no references
+ * any more, so whatever launches or tunnels it needs no knowledge of 1Password.
  */
-export async function resolveConnection<C extends Pick<RemoteDesktopConnection, 'hostname' | 'username' | 'password' | 'passwordRef'>>(
-  connection: C
-): Promise<C> {
+export async function resolveConnection<
+  C extends Pick<RemoteDesktopConnection, 'hostname' | 'port' | 'portRef' | 'username' | 'domain' | 'password' | 'passwordRef'>
+>(connection: C): Promise<C> {
   // One after the other: the first read may wait for Windows Hello / Touch ID, and
   // the rest then ride on that unlock.
   const hostname = await resolveReference(connection.hostname);
+  const port = await resolvePort(connection.portRef, connection.port);
   const username = connection.username ? await resolveReference(connection.username) : connection.username;
+  const domain = connection.domain ? await resolveReference(connection.domain) : connection.domain;
   const password = await connectionPassword(connection);
-  return { ...connection, hostname, username, password, passwordRef: undefined };
+  return { ...connection, hostname, port, portRef: undefined, username, domain, password, passwordRef: undefined };
 }

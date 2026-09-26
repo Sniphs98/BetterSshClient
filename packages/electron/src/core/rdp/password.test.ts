@@ -46,6 +46,19 @@ describe('connectionPassword', () => {
     expect(op).toHaveBeenCalledTimes(2);
   });
 
+  it('resolves the port and the domain too', async () => {
+    const values: Record<string, string> = { 'op://S/pc/port': '13389\n', 'op://S/pc/domain': 'CORP' };
+    setOpRunner(async (args: string[]) => ({ stdout: values[args[2]], stderr: '' }));
+    const resolved = await resolveConnection({ hostname: 'pc', port: 3389, portRef: 'op://S/pc/port', domain: 'op://S/pc/domain' });
+    expect(resolved).toMatchObject({ port: 13389, portRef: undefined, domain: 'CORP' });
+  });
+
+  it('refuses a port that is not one — without echoing what 1Password returned', async () => {
+    setOpRunner(async () => ({ stdout: 'hunter2', stderr: '' }));
+    const err = await resolveConnection({ hostname: 'pc', port: 3389, portRef: 'op://S/pc/password' }).catch((e: Error) => e);
+    expect((err as Error).message).toBe('1Password: op://S/pc/password is not a port number (1–65535)');
+  });
+
   it('leaves a connection without references as it is, without asking 1Password', async () => {
     const op = vi.fn();
     setOpRunner(op);

@@ -132,10 +132,24 @@
             spellcheck="false"
           />
         </div>
-        <label class={label}>
-          <span>Port</span>
-          <input bind:value={fields.port} inputmode="numeric" class={field} placeholder="22" />
-        </label>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="host-port">Port</label>
+            <OnePasswordToggle bind:on={fields.portFrom1P} field="Port" />
+          </div>
+          {#if fields.portFrom1P}
+            <input
+              id="host-port"
+              bind:value={fields.portRef}
+              class="{field} font-mono"
+              placeholder="op://…/port"
+              title={fields.portRef}
+              spellcheck="false"
+            />
+          {:else}
+            <input id="host-port" bind:value={fields.port} inputmode="numeric" class={field} placeholder="22" />
+          {/if}
+        </div>
       </div>
 
       <label class={label}>
@@ -173,7 +187,7 @@
         {/if}
       </div>
 
-      {#if fields.hostnameFrom1P || fields.userFrom1P || fields.passwordFrom1P}
+      {#if fields.hostnameFrom1P || fields.userFrom1P || fields.portFrom1P || fields.passwordFrom1P}
         <p class="-mt-2.5 text-xs text-faint">
           Fields marked 1Password take a secret reference and are read from 1Password when connecting (needs the
           1Password CLI). In 1Password: right-click a field → Copy Secret Reference.
@@ -233,7 +247,7 @@
               bind:value={fields.monitorPort}
               inputmode="numeric"
               class={field}
-              placeholder={fields.port || '22'}
+              placeholder={fields.portFrom1P ? 'SSH port' : fields.port || '22'}
             />
           </label>
         {/if}

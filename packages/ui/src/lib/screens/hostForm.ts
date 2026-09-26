@@ -25,11 +25,15 @@ export interface HostFormFields {
   startupCommand: string;
   /** 1Password reference the password is read from at connect time. Blank means none. */
   passwordRef: string;
+  /** 1Password reference the port is read from at connect time. */
+  portRef: string;
   /** Per field: read from 1Password when connecting. Hostname and user then hold the
-   *  reference themselves; the password's goes in `passwordRef` (the stored password
-   *  never comes back to the form, so the two can't share a field). */
+   *  reference themselves; the port's goes in `portRef` (a number on disk) and the
+   *  password's in `passwordRef` (the stored password never comes back to the form,
+   *  so the two can't share a field). */
   hostnameFrom1P: boolean;
   userFrom1P: boolean;
+  portFrom1P: boolean;
   passwordFrom1P: boolean;
 }
 
@@ -50,8 +54,10 @@ export function emptyForm(): HostFormFields {
     defaultPath: '',
     startupCommand: '',
     passwordRef: '',
+    portRef: '',
     hostnameFrom1P: false,
     userFrom1P: false,
+    portFrom1P: false,
     passwordFrom1P: false
   };
 }
@@ -76,6 +82,8 @@ export function formFromHost(h: HostDto): HostFormFields {
     passwordRef: h.passwordRef ?? '',
     hostnameFrom1P: isOnePasswordReference(h.hostname),
     userFrom1P: isOnePasswordReference(h.user),
+    portRef: h.portRef ?? '',
+    portFrom1P: Boolean(h.portRef),
     passwordFrom1P: Boolean(h.passwordRef)
   };
 }
@@ -108,7 +116,10 @@ export function formToInput(f: HostFormFields): HostFormResult {
   if (f.userFrom1P && !isOnePasswordReference(f.user)) return { ok: false, error: referenceError('User') };
   const user = f.user.trim() || 'root';
 
-  const portRaw = f.port.trim();
+  // From 1Password the port stays the default on disk and is read when connecting.
+  const portRef = f.portFrom1P ? f.portRef.trim() : '';
+  if (f.portFrom1P && !isOnePasswordReference(portRef)) return { ok: false, error: referenceError('Port') };
+  const portRaw = f.portFrom1P ? '' : f.port.trim();
   let port = 22;
   if (portRaw !== '') {
     // Digits with an optional leading `+`, matching Rust's `u16::parse` (which accepts
@@ -156,7 +167,8 @@ export function formToInput(f: HostFormFields): HostFormResult {
       monitorPort,
       defaultPath: defaultPath || undefined,
       startupCommand: startupCommand || undefined,
-      passwordRef: passwordRef || undefined
+      passwordRef: passwordRef || undefined,
+      portRef: portRef || undefined
     }
   };
 }

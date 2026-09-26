@@ -164,7 +164,7 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
 /** Where a profile's certificate is remembered: its target as the SSH host (if any)
  *  sees it, as saved. */
 function certificateKey(connection: RemoteDesktopConnection): string {
-  return `${connection.viaHost ? `${connection.viaHost}>` : ''}${connection.hostname}:${connection.port}`;
+  return `${connection.viaHost ? `${connection.viaHost}>` : ''}${connection.hostname}:${connection.portRef ?? connection.port}`;
 }
 
 function closeSession(token: string): void {

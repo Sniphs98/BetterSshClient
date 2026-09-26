@@ -204,11 +204,24 @@ describe('1Password reference', () => {
     expect(f).toMatchObject({ passwordRef: 'op://Servers/pc/password', passwordFrom1P: true, usernameFrom1P: true, hostnameFrom1P: false });
   });
 
+  it('takes the port and the domain from 1Password too — the port keeps the default on disk', () => {
+    const r = formToInput(
+      fields({ name: 'n', hostname: 'h', port: '13389', portFrom1P: true, portRef: 'op://S/pc/port', domain: 'op://S/pc/domain', domainFrom1P: true })
+    );
+    expect(r.ok && [r.input.port, r.input.portRef, r.input.domain]).toEqual([3389, 'op://S/pc/port', 'op://S/pc/domain']);
+    const error = (field: string) => ({ ok: false, error: `${field}: 1Password reference must look like op://vault/item/field` });
+    expect(formToInput(fields({ name: 'n', hostname: 'h', portFrom1P: true, portRef: '3389' }))).toEqual(error('Port'));
+    expect(formToInput(fields({ name: 'n', hostname: 'h', domain: 'CORP', domainFrom1P: true }))).toEqual(error('Domain'));
+    const f = formFromConnection(connection({ portRef: 'op://S/pc/port', domain: 'op://S/pc/domain' }));
+    expect(f).toMatchObject({ portFrom1P: true, portRef: 'op://S/pc/port', domainFrom1P: true });
+  });
+
   it('names what comes from 1Password, for the tile', () => {
     expect(fromOnePassword({ hostname: 'pc.lan' })).toBe('');
     expect(fromOnePassword({ hostname: 'pc.lan', passwordRef: 'op://a/b/c' })).toBe('Password');
     expect(fromOnePassword({ hostname: 'op://a/b/host', username: 'op://a/b/user', passwordRef: 'op://a/b/c' })).toBe(
       'Address, user and password'
     );
+    expect(fromOnePassword({ hostname: 'pc', portRef: 'op://a/b/port', domain: 'op://a/b/domain' })).toBe('Port and domain');
   });
 });

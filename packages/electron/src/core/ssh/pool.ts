@@ -240,7 +240,8 @@ async function runTcpPoller(
     return;
   }
 
-  const port = host.monitorPort !== undefined && host.monitorPort !== 0 ? host.monitorPort : host.port;
+  // A probe port of its own wins; else the SSH port, which may come from 1Password.
+  const probePort = host.monitorPort !== undefined && host.monitorPort !== 0 ? host.monitorPort : undefined;
   const backoff = new BackoffState();
   let last: ConnectionStatusResult | undefined;
 
@@ -250,7 +251,7 @@ async function runTcpPoller(
     }
 
     const status = await resolveHostAddress(host).then(
-      (resolved) => tcpProbe(resolved.hostname, port),
+      (resolved) => tcpProbe(resolved.hostname, probePort ?? resolved.port),
       (err: Error): ConnectionStatusResult => ({ kind: 'failed', message: err.message })
     );
     const reachable = status.kind === 'connected';

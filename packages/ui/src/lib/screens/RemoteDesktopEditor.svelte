@@ -120,10 +120,24 @@
             spellcheck="false"
           />
         </div>
-        <label class={label}>
-          <span>Port</span>
-          <input bind:value={fields.port} inputmode="numeric" class={field} placeholder="3389" />
-        </label>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="rdp-port">Port</label>
+            <OnePasswordToggle bind:on={fields.portFrom1P} field="Port" />
+          </div>
+          {#if fields.portFrom1P}
+            <input
+              id="rdp-port"
+              bind:value={fields.portRef}
+              class="{field} font-mono"
+              placeholder="op://…/port"
+              title={fields.portRef}
+              spellcheck="false"
+            />
+          {:else}
+            <input id="rdp-port" bind:value={fields.port} inputmode="numeric" class={field} placeholder="3389" />
+          {/if}
+        </div>
       </div>
 
       <label class={label}>
@@ -156,10 +170,19 @@
             spellcheck="false"
           />
         </div>
-        <label class={label}>
-          <span>Domain</span>
-          <input bind:value={fields.domain} class={field} placeholder="Optional" />
-        </label>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="rdp-domain">Domain</label>
+            <OnePasswordToggle bind:on={fields.domainFrom1P} field="Domain" />
+          </div>
+          <input
+            id="rdp-domain"
+            bind:value={fields.domain}
+            class="{field} {fields.domainFrom1P ? 'font-mono' : ''}"
+            placeholder={fields.domainFrom1P ? 'op://Servers/office-pc/domain' : 'Optional'}
+            spellcheck="false"
+          />
+        </div>
       </div>
 
       <div class={label}>
@@ -188,7 +211,7 @@
         {/if}
       </div>
 
-      {#if fields.hostnameFrom1P || fields.usernameFrom1P || fields.passwordFrom1P}
+      {#if fields.hostnameFrom1P || fields.portFrom1P || fields.usernameFrom1P || fields.domainFrom1P || fields.passwordFrom1P}
         <p class="-mt-2 text-xs text-faint">
           Fields marked 1Password take a secret reference and are read from 1Password when connecting (needs the
           1Password CLI). In 1Password: right-click a field → Copy Secret Reference.

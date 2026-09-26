@@ -122,6 +122,19 @@ export async function resolveReference(value: string): Promise<string> {
   return isSecretReference(value) ? readSecretCached(value) : value;
 }
 
+/** A port read from 1Password: `reference` when there is one, else `port`. The value
+ *  read is never put in the error — a reference to the wrong field could point at a
+ *  password. */
+export async function resolvePort(reference: string | undefined, port: number): Promise<number> {
+  if (!reference) return port;
+  const raw = (await readSecretCached(reference)).trim();
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || value < 1 || value > 65535) {
+    throw new OnePasswordError(`1Password: ${reference.trim()} is not a port number (1–65535)`);
+  }
+  return value;
+}
+
 /** Forgets every remembered secret (tests). */
 export function clearSecretCache(): void {
   secretCache.clear();

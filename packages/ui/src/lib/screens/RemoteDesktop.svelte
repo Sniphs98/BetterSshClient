@@ -18,7 +18,7 @@
   import { spawnRdpSession } from '$lib/stores/navigation';
   import { lastError } from '$lib/stores/notifications';
   import { describeSettings, filterConnections, emptyForm, formFromConnection, fromOnePassword } from './remoteDesktopForm';
-  import { displayReference } from './onePasswordRef';
+  import { addressLine } from './onePasswordRef';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import RemoteDesktopEditor from './RemoteDesktopEditor.svelte';
   import Modal from '$lib/components/Modal.svelte';
@@ -167,10 +167,10 @@
                   {/if}
                 </div>
                 <div class="truncate font-mono text-xs text-faint">
-                  {connection.username ? `${connection.domain ? `${connection.domain}\\` : ''}${displayReference(connection.username)}@` : ''}{displayHostname(
-                    connection.hostname,
-                    $streamerMode
-                  )}:{connection.port}
+                  {addressLine(
+                    { ...connection, user: connection.username },
+                    displayHostname(connection.hostname, $streamerMode)
+                  )}
                 </div>
               </div>
             </div>

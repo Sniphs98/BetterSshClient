@@ -9,7 +9,7 @@ import { ConnectionPool, type Lease } from './connectionPool.js';
 import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
-import { readSecretCached, resolveReference } from '../secrets/onePassword.js';
+import { readSecretCached, resolvePort, resolveReference } from '../secrets/onePassword.js';
 
 /**
  * SSH session management via `ssh2`. Ported from
@@ -66,7 +66,7 @@ class SshConnection {
  *  two hosts differing only in name, tags or notes share a connection, and an
  *  edited password or key never reuses one made with the old value. */
 function connectionKey(host: Host): string {
-  return JSON.stringify([host.hostname, host.port, host.user, host.identityFile, host.password, host.passwordRef, jumpValue(host)]);
+  return JSON.stringify([host.hostname, host.port, host.user, host.identityFile, host.password, host.passwordRef, host.portRef, jumpValue(host)]);
 }
 
 const sharedConnections = new ConnectionPool<Host, SshConnection>(connectionKey, connectAndAuth);
@@ -360,11 +360,14 @@ async function connectAndAuth(host: Host): Promise<SshConnection> {
 }
 
 /** `host` with its address and user read from 1Password where they are references
- *  (`op://…` in the field itself). Done per hop, before dialling it. */
+ *  (`op://…` in the field itself), and its port where it has a `portRef`. Done per
+ *  hop, before dialling it. */
 export async function resolveHostAddress(host: Host): Promise<Host> {
   const hostname = await resolveReference(host.hostname);
+  const port = await resolvePort(host.portRef, host.port);
   const user = await resolveReference(host.user);
-  return hostname === host.hostname && user === host.user ? host : { ...host, hostname, user };
+  if (hostname === host.hostname && port === host.port && user === host.user) return host;
+  return { ...host, hostname, port, user };
 }
 
 /** Opens a TCP connection to `host` and authenticates. */

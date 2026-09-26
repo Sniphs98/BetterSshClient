@@ -31,6 +31,8 @@ export interface HostDto {
   startupCommand?: string;
   /** A 1Password reference — not a secret itself, so it travels both ways. */
   passwordRef?: string;
+  /** The port's 1Password reference, likewise. */
+  portRef?: string;
 }
 
 /** Inbound host form payload for `save_host`. Always builds a manual `Host`:
@@ -52,6 +54,8 @@ export interface HostInputDto {
   startupCommand?: string;
   /** A 1Password reference — not a secret itself, so it travels both ways. */
   passwordRef?: string;
+  /** The port's 1Password reference, likewise. */
+  portRef?: string;
 }
 
 function sourceToDto(source: HostSource): HostSourceDto {
@@ -86,7 +90,8 @@ export function hostToDto(host: Host): HostDto {
     monitorPort: host.monitorPort,
     defaultPath: host.defaultPath,
     startupCommand: host.startupCommand,
-    passwordRef: host.passwordRef
+    passwordRef: host.passwordRef,
+    portRef: host.portRef
   };
 }
 
@@ -109,7 +114,8 @@ export function hostFromInputDto(input: HostInputDto): Host {
     monitorPort: input.monitorPort,
     defaultPath: input.defaultPath,
     startupCommand: input.startupCommand,
-    passwordRef: input.passwordRef
+    passwordRef: input.passwordRef,
+    portRef: input.portRef || undefined
   };
 }
 
@@ -238,6 +244,8 @@ export interface RemoteDesktopConnectionDto extends RdpSettings {
   viaHost?: string;
   /** A 1Password reference — not a secret itself, so it travels both ways. */
   passwordRef?: string;
+  /** The port's 1Password reference, likewise. */
+  portRef?: string;
 }
 
 /** Inbound form payload for `save_remote_desktop_connection`. `password` arrives here
@@ -257,6 +265,8 @@ export interface RemoteDesktopConnectionInputDto extends RdpSettings {
   viaHost?: string;
   /** A 1Password reference — not a secret itself, so it travels both ways. */
   passwordRef?: string;
+  /** The port's 1Password reference, likewise. */
+  portRef?: string;
 }
 
 /** Credentials typed in the embedded viewer for a profile that doesn't store them;
@@ -311,6 +321,7 @@ export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection
     viewOnly: connection.viewOnly,
     viaHost: connection.viaHost,
     passwordRef: connection.passwordRef,
+    portRef: connection.portRef,
     ...rdpSettingsFrom(connection as unknown as Record<string, unknown>)
   };
 }
@@ -331,6 +342,7 @@ export function remoteDesktopConnectionFromInputDto(input: RemoteDesktopConnecti
     viewOnly: input.viewOnly,
     viaHost: input.viaHost,
     passwordRef: input.passwordRef || undefined,
+    portRef: input.portRef || undefined,
     ...rdpSettingsFrom(input as unknown as Record<string, unknown>)
   };
 }

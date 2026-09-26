@@ -192,6 +192,22 @@ test('address, user and password can each come from 1Password, switched per fiel
   const resaved = await page.evaluate(() => (window as unknown as { __rdpConnections: { connections: Rec[] } }).__rdpConnections.connections[0]);
   expect(resaved.passwordRef).toBeUndefined();
   await expect(page.getByTitle('Address read from 1Password when connecting')).toBeVisible();
+
+  // Port and domain too; everything from the one item shows as just that item.
+  await page.getByRole('button', { name: 'Edit office-pc' }).click();
+  const again = page.getByRole('dialog', { name: 'Edit RDP connection' });
+  await again.getByRole('button', { name: 'Port from 1Password' }).click();
+  await again.getByLabel('Port', { exact: true }).fill('op://Servers/office-pc/port');
+  await again.getByRole('button', { name: 'Domain from 1Password' }).click();
+  await again.getByLabel('Domain', { exact: true }).fill('op://Servers/office-pc/domain');
+  await again.getByRole('button', { name: 'Username from 1Password' }).click();
+  await again.getByLabel('Username', { exact: true }).fill('op://Servers/office-pc/username');
+  await again.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const all = await page.evaluate(() => (window as unknown as { __rdpConnections: { connections: Rec[] } }).__rdpConnections.connections[0]);
+  expect(all).toMatchObject({ port: 3389, portRef: 'op://Servers/office-pc/port', domain: 'op://Servers/office-pc/domain' });
+  await expect(page.getByText('‹office-pc›', { exact: true })).toBeVisible();
+  await expect(page.getByTitle('Address, port, user and domain read from 1Password when connecting')).toBeVisible();
 });
 
 test('a connection through an SSH host, with display and device settings', async ({ page }) => {
