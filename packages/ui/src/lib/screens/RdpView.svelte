@@ -12,6 +12,7 @@
   import { rdpEmbeddedClose, rdpEmbeddedOpen, rdpEmbeddedStatus, rdpForgetCertificate, rdpLaunch } from '$lib/ipc/commands';
   import { Icon } from '$lib/theme';
   import { explainRdpError, loadIronRdp, type IronUserInteraction } from './rdpEmbedded';
+  import { formatBytes, RdpTransfers } from './rdpTransfers.svelte';
 
   let { session, active }: { session: Session; active: boolean } = $props();
 
@@ -25,6 +26,10 @@
   let problem = $state<string | null>(null);
   let notice = $state<string | null>(null);
   let certificateChanged = $state(false);
+  // File transfer over the clipboard channel (drop files on the tab / copy them there).
+  let transfers = $state<RdpTransfers | null>(null);
+  let dragging = $state(false);
+  let dragDepth = 0;
 
   let ui: IronUserInteraction | undefined;
   let token: string | undefined;
@@ -49,7 +54,7 @@
     certificateChanged = false;
     sessions.setStatus(session.id, 'connecting');
     try {
-      const { Backend, displayControl } = await loadIronRdp();
+      const { Backend, displayControl, RdpFileTransferProvider } = await loadIronRdp();
       if (destroyed) return;
 
       element?.remove();
@@ -80,6 +85,20 @@
       token = dto.token;
       ui.setEnableClipboard(connection?.clipboard !== false);
       ui.setEnableAutoClipboard(connection?.clipboard !== false);
+      // Files travel over the clipboard channel, so they go with the clipboard setting.
+      transfers?.dispose();
+      transfers = null;
+      if (connection?.clipboard !== false) {
+        const provider = new RdpFileTransferProvider();
+        // The two packages' typings disagree on the provider's hooks (private in one,
+        // public in the other); it is the object the component expects, per its docs.
+        ui.enableFileTransfer(provider as unknown as Parameters<IronUserInteraction['enableFileTransfer']>[0]);
+        const sync = ui;
+        transfers = new RdpTransfers(provider, {
+          pause: () => sync.setEnableAutoClipboard(false),
+          resume: () => sync.setEnableAutoClipboard(connection?.clipboard !== false)
+        });
+      }
       const config = ui
         .configBuilder()
         .withUsername(dto.username)
@@ -176,8 +195,40 @@
       // already gone
     }
     if (token) void rdpEmbeddedClose(token).catch(() => {});
+    transfers?.dispose();
     element?.remove();
   });
+
+  // Dropping files on the tab puts them on the remote clipboard.
+  const hasFiles = (e: DragEvent): boolean => Boolean(e.dataTransfer?.types.includes('Files'));
+  function onDragEnter(e: DragEvent): void {
+    if (!hasFiles(e) || phase !== 'connected' || !transfers) return;
+    e.preventDefault();
+    dragDepth++;
+    dragging = true;
+  }
+  function onDragOver(e: DragEvent): void {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = phase === 'connected' && transfers ? 'copy' : 'none';
+  }
+  function onDragLeave(): void {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) dragging = false;
+  }
+  function onDrop(e: DragEvent): void {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    dragging = false;
+    if (phase !== 'connected' || !transfers) return;
+    void transfers.drop(e).catch((err) => lastError.set(err instanceof Error ? err.message : String(err)));
+    focus();
+  }
+
+  function percent(done: number, total: number): number {
+    return total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  }
 
   $effect(() => {
     if (active && phase === 'connected') {
@@ -210,6 +261,17 @@
     </span>
     <div class="ml-auto flex items-center gap-1.5">
       {#if phase === 'connected'}
+        {#if transfers}
+          <button
+            type="button"
+            class={btn}
+            title="Copy files to the remote desktop (or drop them on it)"
+            onclick={() => void transfers?.pick().catch((err) => lastError.set(err instanceof Error ? err.message : String(err)))}
+          >
+            <Icon name="upload" size={12} />
+            Send files
+          </button>
+        {/if}
         <button type="button" class={btn} title="Send Ctrl+Alt+Del" onclick={() => ui?.ctrlAltDel()}>Ctrl+Alt+Del</button>
       {:else if phase !== 'connecting' && phase !== 'credentials'}
         <button type="button" class={btn} onclick={() => connect()}>
@@ -236,8 +298,100 @@
     </div>
   {/if}
 
-  <div class="relative min-h-0 flex-1 overflow-hidden bg-black">
+  <!-- svelte-ignore a11y_no_static_element_interactions -- a drop target; the files can also be picked with "Send files". -->
+  <div
+    class="relative min-h-0 flex-1 overflow-hidden bg-black"
+    ondragenter={onDragEnter}
+    ondragover={onDragOver}
+    ondragleave={onDragLeave}
+    ondrop={onDrop}
+  >
     <div bind:this={viewport} class="rdp-viewport absolute inset-0"></div>
+
+    {#if dragging}
+      <div class="pointer-events-none absolute inset-3 grid place-items-center rounded-xl border-2 border-dashed border-strong bg-surface/80">
+        <div class="text-center">
+          <Icon name="upload" size={22} />
+          <p class="mt-2 font-medium">Drop to copy to {session.hostName}</p>
+          <p class="text-sm text-muted">Then paste them into a folder there with Ctrl+V.</p>
+        </div>
+      </div>
+    {/if}
+
+    {#if phase === 'connected' && transfers && (transfers.upload || transfers.remote)}
+      <div class="absolute right-4 top-4 z-10 w-80 space-y-2">
+        {#if transfers.upload}
+          {@const up = transfers.upload}
+          <div class="rounded-xl border border-default bg-surface p-3 text-xs shadow-soft" role="status">
+            <div class="flex items-start gap-2">
+              <Icon name="upload" size={14} />
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium" title={up.label}>{up.label}</p>
+                <p class="text-muted">
+                  {#if up.phase === 'waiting'}
+                    Ready — paste into a folder on {session.hostName} with Ctrl+V.
+                  {:else if up.phase === 'copying'}
+                    Copying… {formatBytes(up.transferred)} of {formatBytes(up.bytes)}
+                  {:else if up.phase === 'done'}
+                    Copied to {session.hostName}.
+                  {:else}
+                    Failed: {up.error}
+                  {/if}
+                </p>
+                {#if up.phase === 'copying'}
+                  <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-inset">
+                    <div class="h-full rounded-full bg-accent transition-[width]" style="width: {percent(up.transferred, up.bytes)}%"></div>
+                  </div>
+                {/if}
+              </div>
+              <button type="button" class="text-faint hover:text-fg" aria-label="Dismiss" onclick={() => transfers?.dismissUpload()}>
+                <Icon name="close" size={12} />
+              </button>
+            </div>
+          </div>
+        {/if}
+        {#if transfers.remote}
+          {@const rf = transfers.remote}
+          <div class="rounded-xl border border-default bg-surface p-3 text-xs shadow-soft" role="status">
+            <div class="flex items-start gap-2">
+              <Icon name="download" size={14} />
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium" title={rf.label}>Copied on {session.hostName}: {rf.label}</p>
+                <p class="text-muted">
+                  {#if rf.phase === 'available'}
+                    Save them on this computer?
+                  {:else if rf.phase === 'saving'}
+                    Saving… {rf.saved} of {rf.total}
+                  {:else if rf.phase === 'saved'}
+                    Saved {rf.saved} {rf.saved === 1 ? 'file' : 'files'}.
+                  {:else}
+                    Failed: {rf.error}
+                  {/if}
+                </p>
+                {#if rf.phase === 'saving'}
+                  <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-inset">
+                    <div class="h-full rounded-full bg-accent transition-[width]" style="width: {percent(rf.saved, rf.total)}%"></div>
+                  </div>
+                {/if}
+                <div class="mt-2 flex gap-1.5">
+                  {#if rf.phase === 'available' || rf.phase === 'failed'}
+                    <button type="button" class={btn} onclick={() => void transfers?.save()}>
+                      <Icon name="download" size={12} />
+                      Save…
+                    </button>
+                  {:else if rf.phase === 'saved'}
+                    <button type="button" class={btn} onclick={() => transfers?.showSaved()}>Show in folder</button>
+                  {/if}
+                </div>
+              </div>
+              <button type="button" class="text-faint hover:text-fg" aria-label="Dismiss" onclick={() => transfers?.dismissRemote()}>
+                <Icon name="close" size={12} />
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
+    {/if}
     {#if phase !== 'connected'}
       <div class="absolute inset-0 grid place-items-center bg-surface p-6">
         <div class="max-w-md space-y-3 text-center">

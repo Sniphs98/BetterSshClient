@@ -1,10 +1,11 @@
 import { connect } from 'node:net';
 import type { Duplex } from 'node:stream';
-import type { IpcMain } from 'electron';
+import { app, BrowserWindow, dialog, shell, type IpcMain } from 'electron';
 
 import { loadRemoteDesktopConnections } from '../core/config/remoteDesktop.js';
 import { RdpGateway } from '../core/rdp/gateway.js';
 import { checkCertificate, forgetCertificate } from '../core/rdp/knownCerts.js';
+import { saveReceivedFile } from '../core/rdp/savedFiles.js';
 import { SshSession } from '../core/ssh/session.js';
 import { toCommandError, type RdpCredentialsDto, type RdpEmbeddedOpenDto, type RdpEmbeddedStatusDto } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
@@ -25,6 +26,8 @@ interface OpenSession {
   notice?: string;
 }
 const open = new Map<string, OpenSession>();
+/** Folders the user chose in `rdp_pick_save_folder` — the only ones `rdp_save_file` writes to. */
+const pickedFolders = new Set<string>();
 
 function openTcp(host: string, port: number): Promise<Duplex> {
   return new Promise((resolve, reject) => {
@@ -113,6 +116,37 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
     closeSession(token);
   });
 
+  // Files copied on the remote desktop, saved here: only into a folder the user picked
+  // in this dialog, so a renderer can't write anywhere else.
+  ipcMain.handle('rdp_pick_save_folder', async (event): Promise<string | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    const options = {
+      title: 'Save files from the remote desktop',
+      defaultPath: defaultSaveFolder(),
+      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>
+    };
+    const { canceled, filePaths } = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    if (canceled || !filePaths[0]) return null;
+    pickedFolders.add(filePaths[0]);
+    return filePaths[0];
+  });
+
+  ipcMain.handle(
+    'rdp_save_file',
+    async (_event, folder: string, relativePath: string | undefined, name: string, bytes: Uint8Array): Promise<string> => {
+      try {
+        if (!pickedFolders.has(folder)) throw new Error('not a folder chosen for saving');
+        return await saveReceivedFile(folder, relativePath, name, bytes);
+      } catch (err) {
+        throw toCommandError(err);
+      }
+    }
+  );
+
+  ipcMain.handle('rdp_show_saved', (_event, path: string) => {
+    if ([...pickedFolders].some((f) => path.startsWith(f))) shell.showItemInFolder(path);
+  });
+
   ipcMain.handle('rdp_forget_certificate', async (_event, connectionId: string) => {
     try {
       const connection = (await loadRemoteDesktopConnections()).find((c) => c.id === connectionId);
@@ -128,6 +162,15 @@ function closeSession(token: string): void {
   gateway.revoke(token);
   open.get(token)?.ssh?.disconnect();
   open.delete(token);
+}
+
+/** Downloads, or the home folder where there is none (Electron throws then). */
+function defaultSaveFolder(): string {
+  try {
+    return app.getPath('downloads');
+  } catch {
+    return app.getPath('home');
+  }
 }
 
 /** For `before-quit`. */

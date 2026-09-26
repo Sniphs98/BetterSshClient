@@ -51,7 +51,7 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
 | ✅ | **Light & dark theme** | |
 | 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps. Usable, but still changing. |
-| 🚧 | **Remote desktop (RDP)** *(in progress)* | RDP sessions as tabs inside the app, next to your terminals (IronRDP, no extra window), or in the OS's own client (Remote Desktop on Windows, FreeRDP on Linux and macOS), signed in automatically either way. Can tunnel through any SSH host, so machines behind a bastion work without exposing port 3389. Display, monitor, clipboard, drive and sound settings per profile. |
+| 🚧 | **Remote desktop (RDP)** *(in progress)* | RDP sessions as tabs inside the app, next to your terminals (IronRDP, no extra window), or in the OS's own client (Remote Desktop on Windows, FreeRDP on Linux and macOS), signed in automatically either way. Drag files onto the session to copy them there, and save files copied on the remote desktop. Can tunnel through any SSH host, so machines behind a bastion work without exposing port 3389. Display, monitor, clipboard, drive and sound settings per profile. |
 | 💡 | **AI integration** *(maybe in the future)* | Help with commands, explain output or errors, right in the terminal. |
 | 💡 | **Plugin system** *(maybe in the future)* | Extend the app with your own features without touching the core. |
 | 💡 | **1Password integration** *(maybe in the future)* | Use SSH keys and passwords straight from your 1Password vault. |

@@ -167,6 +167,20 @@ export const commands = {
   },
   async rdpForgetCertificate(connectionId: string): Promise<Result<null, CommandError>> {
     return call('rdp_forget_certificate', connectionId);
+  },
+  async rdpPickSaveFolder(): Promise<Result<string | null, CommandError>> {
+    return call('rdp_pick_save_folder');
+  },
+  async rdpSaveFile(
+    folder: string,
+    relativePath: string | undefined,
+    name: string,
+    bytes: Uint8Array
+  ): Promise<Result<string, CommandError>> {
+    return call('rdp_save_file', folder, relativePath, name, bytes);
+  },
+  async rdpShowSaved(path: string): Promise<Result<null, CommandError>> {
+    return call('rdp_show_saved', path);
   }
 };
 

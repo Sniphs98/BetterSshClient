@@ -357,6 +357,26 @@ export async function rdpEmbeddedClose(token: string): Promise<void> {
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
+/** Asks where to save files copied on a remote desktop; null if cancelled. */
+export async function rdpPickSaveFolder(): Promise<string | null> {
+  const res = await commands.rdpPickSaveFolder();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Saves one file received from a remote desktop into a folder picked with
+ *  `rdpPickSaveFolder`; returns where it went (never over an existing file). */
+export async function rdpSaveFile(folder: string, relativePath: string | undefined, name: string, bytes: Uint8Array): Promise<string> {
+  const res = await commands.rdpSaveFile(folder, relativePath, name, bytes);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+export async function rdpShowSaved(path: string): Promise<void> {
+  const res = await commands.rdpShowSaved(path);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
 /** Forgets the remembered certificate of a connection's server (trust on first use). */
 export async function rdpForgetCertificate(connectionId: string): Promise<void> {
   const res = await commands.rdpForgetCertificate(connectionId);
