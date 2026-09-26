@@ -36,6 +36,15 @@ describe('navigation actions', () => {
     expect(get(activeEntity)).toEqual({ kind: 'dashboard' });
   });
 
+  it('closing the active session in Remote Desktop mode goes back to the Remote Desktop screen', async () => {
+    const { spawnRdpSession, closeSession, activeEntity } = await fresh();
+    const { sidebarMode } = await import('./sidebarMode');
+    sidebarMode.set('remoteDesktop');
+    const s = spawnRdpSession('c1', 'win11');
+    closeSession(s.id);
+    expect(get(activeEntity)).toEqual({ kind: 'remoteDesktop' });
+  });
+
   it('closing an inactive session leaves the active entity untouched', async () => {
     const { spawnSession, closeSession, activeEntity } = await fresh();
     const a = spawnSession('terminal', 'a');
