@@ -220,3 +220,55 @@ describe('formToInput — monitoring mode', () => {
     expect(fields.monitorPort).toBe('8443');
   });
 });
+
+describe('1Password reference', () => {
+  it('passes the password reference through, trimmed, while the password is switched to 1Password', () => {
+    const set = formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: true, passwordRef: ' op://Servers/web-1/password ' }));
+    expect(set.ok && set.input.passwordRef).toBe('op://Servers/web-1/password');
+  });
+
+  it('drops the password reference once switched back to typing', () => {
+    const off = formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: false, passwordRef: 'op://Servers/web-1/password' }));
+    expect(off.ok && off.input.passwordRef).toBeUndefined();
+  });
+
+  it('refuses a field switched to 1Password that holds no reference', () => {
+    const error = (field: string) => ({ ok: false, error: `${field}: 1Password reference must look like op://vault/item/field` });
+    expect(formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: true, passwordRef: 'hunter2' }))).toEqual(error('Password'));
+    expect(formToInput(fields({ name: 'n', hostname: '10.0.0.1', hostnameFrom1P: true }))).toEqual(error('Hostname / IP'));
+    expect(formToInput(fields({ name: 'n', hostname: 'h', user: '', userFrom1P: true }))).toEqual(error('User'));
+  });
+
+  it('keeps a hostname and user reference in the field itself', () => {
+    const r = formToInput(
+      fields({ name: 'n', hostname: 'op://Servers/web-1/hostname', hostnameFrom1P: true, user: 'op://Servers/web-1/username', userFrom1P: true })
+    );
+    expect(r.ok && [r.input.hostname, r.input.user]).toEqual(['op://Servers/web-1/hostname', 'op://Servers/web-1/username']);
+  });
+
+  it('takes the port from 1Password — the port keeps the default on disk', () => {
+    const r = formToInput(fields({ name: 'n', hostname: 'h', port: '2222', portFrom1P: true, portRef: 'op://S/web-1/port' }));
+    expect(r.ok && [r.input.port, r.input.portRef]).toEqual([22, 'op://S/web-1/port']);
+    expect(formToInput(fields({ name: 'n', hostname: 'h', portFrom1P: true, portRef: '2222' }))).toEqual({
+      ok: false,
+      error: 'Port: 1Password reference must look like op://vault/item/field'
+    });
+    expect(formFromHost(host({ portRef: 'op://S/web-1/port' }))).toMatchObject({ portFrom1P: true, portRef: 'op://S/web-1/port' });
+  });
+
+  it('takes the default path from 1Password, the reference in the field itself', () => {
+    const r = formToInput(fields({ name: 'n', hostname: 'h', defaultPath: '"op://S/web 1/path"', defaultPathFrom1P: true }));
+    expect(r.ok && r.input.defaultPath).toBe('op://S/web 1/path');
+    expect(formToInput(fields({ name: 'n', hostname: 'h', defaultPath: '/var/www', defaultPathFrom1P: true }))).toEqual({
+      ok: false,
+      error: 'Default path: 1Password reference must look like op://vault/item/field'
+    });
+    expect(formFromHost(host({ defaultPath: 'op://S/web-1/path' })).defaultPathFrom1P).toBe(true);
+    expect(formFromHost(host({ defaultPath: '/var/www' })).defaultPathFrom1P).toBe(false);
+  });
+
+  it('seeds the edit form with the stored references, switched on', () => {
+    const f = formFromHost(host({ passwordRef: 'op://a/b/c', hostname: 'op://a/b/host', user: 'deploy' }));
+    expect(f).toMatchObject({ passwordRef: 'op://a/b/c', passwordFrom1P: true, hostnameFrom1P: true, userFrom1P: false });
+  });
+});

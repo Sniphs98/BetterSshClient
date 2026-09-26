@@ -29,6 +29,10 @@ export interface HostDto {
   monitorPort?: number;
   defaultPath?: string;
   startupCommand?: string;
+  /** A 1Password reference — not a secret itself, so it travels both ways. */
+  passwordRef?: string;
+  /** The port's 1Password reference, likewise. */
+  portRef?: string;
 }
 
 /** Inbound host form payload for `save_host`. Always builds a manual `Host`:
@@ -48,6 +52,10 @@ export interface HostInputDto {
   monitorPort?: number;
   defaultPath?: string;
   startupCommand?: string;
+  /** A 1Password reference — not a secret itself, so it travels both ways. */
+  passwordRef?: string;
+  /** The port's 1Password reference, likewise. */
+  portRef?: string;
 }
 
 function sourceToDto(source: HostSource): HostSourceDto {
@@ -81,7 +89,9 @@ export function hostToDto(host: Host): HostDto {
     monitoring: monitorModeToDto(host.monitoring),
     monitorPort: host.monitorPort,
     defaultPath: host.defaultPath,
-    startupCommand: host.startupCommand
+    startupCommand: host.startupCommand,
+    passwordRef: host.passwordRef,
+    portRef: host.portRef
   };
 }
 
@@ -103,7 +113,9 @@ export function hostFromInputDto(input: HostInputDto): Host {
     monitoring: input.monitoring !== undefined ? monitorModeFromDto(input.monitoring) : 'ssh',
     monitorPort: input.monitorPort,
     defaultPath: input.defaultPath,
-    startupCommand: input.startupCommand
+    startupCommand: input.startupCommand,
+    passwordRef: input.passwordRef,
+    portRef: input.portRef || undefined
   };
 }
 
@@ -193,12 +205,25 @@ export function nodeResultToDto(result: NodeResult): NodeResultDto {
  *  silently. */
 export type ImportResultDto = ImportResult;
 
+/** Whether the 1Password CLI is installed (`onepassword_status`), and how to get it. */
+export interface OnePasswordStatusDto {
+  installed: boolean;
+  version?: string;
+  command?: string;
+  docsUrl: string;
+}
+
 export interface CommandError {
   message: string;
 }
 
-export function toCommandError(err: unknown): CommandError {
-  return { message: err instanceof Error ? err.message : String(err) };
+/** What an IPC handler throws. An `Error`, not a plain `{ message }`: Electron hands a
+ *  rejected `invoke` only the thrown value's `toString()`, so a plain object reached the
+ *  renderer as "[object Object]" and every error message was lost in the real app. The
+ *  renderer (`bindings.ts` → `call`) strips Electron's "Error invoking remote method"
+ *  wrapping again. */
+export function toCommandError(err: unknown): CommandError & Error {
+  return new Error(err instanceof Error ? err.message : String(err));
 }
 
 export type RemoteDesktopProtocolDto = RemoteDesktopProtocol;
@@ -217,6 +242,10 @@ export interface RemoteDesktopConnectionDto extends RdpSettings {
   viewOnly?: boolean;
   /** SSH host the connection is tunnelled through. */
   viaHost?: string;
+  /** A 1Password reference — not a secret itself, so it travels both ways. */
+  passwordRef?: string;
+  /** The port's 1Password reference, likewise. */
+  portRef?: string;
 }
 
 /** Inbound form payload for `save_remote_desktop_connection`. `password` arrives here
@@ -234,6 +263,10 @@ export interface RemoteDesktopConnectionInputDto extends RdpSettings {
   viewOnly?: boolean;
   /** SSH host the connection is tunnelled through. */
   viaHost?: string;
+  /** A 1Password reference — not a secret itself, so it travels both ways. */
+  passwordRef?: string;
+  /** The port's 1Password reference, likewise. */
+  portRef?: string;
 }
 
 /** Credentials typed in the embedded viewer for a profile that doesn't store them;
@@ -287,6 +320,8 @@ export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection
     domain: connection.domain,
     viewOnly: connection.viewOnly,
     viaHost: connection.viaHost,
+    passwordRef: connection.passwordRef,
+    portRef: connection.portRef,
     ...rdpSettingsFrom(connection as unknown as Record<string, unknown>)
   };
 }
@@ -306,6 +341,8 @@ export function remoteDesktopConnectionFromInputDto(input: RemoteDesktopConnecti
     domain: input.domain,
     viewOnly: input.viewOnly,
     viaHost: input.viaHost,
+    passwordRef: input.passwordRef || undefined,
+    portRef: input.portRef || undefined,
     ...rdpSettingsFrom(input as unknown as Record<string, unknown>)
   };
 }

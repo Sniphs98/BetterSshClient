@@ -2,6 +2,7 @@ import { clipboard, screen, shell, type IpcMain } from 'electron';
 
 import { loadRemoteDesktopConnections, type RdpSettings, type RemoteDesktopConnection } from '../core/config/remoteDesktop.js';
 import { fitToWorkArea, launchRdp, pendingCredentialHosts, type LaunchTarget, type RdpLaunchResult } from '../core/rdp/launch.js';
+import { resolveConnection } from '../core/rdp/password.js';
 import { openTunnel, tunnelAddress, type RdpTunnel } from '../core/rdp/tunnel.js';
 import { removeCredentialsOnQuit, sweepStagedCredentials } from '../core/rdp/windowsCredentials.js';
 import { SshSession } from '../core/ssh/session.js';
@@ -95,9 +96,11 @@ export function registerRdpIpc(ipcMain: IpcMain, state: GuiState): void {
   ipcMain.handle('rdp_launch', async (_event, connectionId: string): Promise<RdpLaunchResultDto> => {
     try {
       const connections = await loadRemoteDesktopConnections();
-      const connection = connections.find((c) => c.id === connectionId);
-      if (!connection) throw new Error(`unknown remote desktop connection '${connectionId}'`);
-      if (connection.protocol !== 'rdp') throw new Error(`connection '${connection.name}' is not an RDP connection`);
+      const saved = connections.find((c) => c.id === connectionId);
+      if (!saved) throw new Error(`unknown remote desktop connection '${connectionId}'`);
+      if (saved.protocol !== 'rdp') throw new Error(`connection '${saved.name}' is not an RDP connection`);
+      // Whatever comes from 1Password — before any tunnel or client starts.
+      const connection = await resolveConnection(saved);
 
       const tunnel = await tunnelFor(state, connection);
       try {

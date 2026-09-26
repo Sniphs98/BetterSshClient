@@ -43,8 +43,10 @@
     listAutomations,
     listSnippets,
     reloadHosts,
-    saveHost
+    saveHost,
+    sftpDefaultPath
   } from '$lib/ipc/commands';
+  import { isOnePasswordReference } from './onePasswordRef';
   import { commandInFolder, fillFilePlaceholder, usesFilePlaceholder } from './snippetPlaceholders';
 
   let { session, active }: { session: Session; active: boolean } = $props();
@@ -248,7 +250,18 @@
       // The host's configured default path, if any (tech-gui.md §4.1) — otherwise the
       // server root, as before.
       const host = get(hosts).find((h) => h.name === session.hostName);
-      refreshRemote(host?.defaultPath || '/');
+      let start = host?.defaultPath || '/';
+      if (isOnePasswordReference(start)) {
+        // Read from 1Password by the backend; if that fails, the root, and why.
+        start = await sftpDefaultPath(session.hostName).then(
+          (path) => path || '/',
+          (err) => {
+            lastError.set(`Default path: ${errMsg(err)}`);
+            return '/';
+          }
+        );
+      }
+      refreshRemote(start);
     })();
   });
 
@@ -733,7 +746,8 @@
   async function setDefaultPath(path: string): Promise<void> {
     const host = get(hosts).find((h) => h.name === session.hostName);
     if (!host) return;
-    const result = formToInput({ ...formFromHost(host), defaultPath: path });
+    // A plain path now, even where the default came from 1Password before.
+    const result = formToInput({ ...formFromHost(host), defaultPath: path, defaultPathFrom1P: false });
     if (!result.ok) {
       lastError.set(result.error);
       return;

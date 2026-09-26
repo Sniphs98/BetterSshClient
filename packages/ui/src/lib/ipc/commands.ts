@@ -9,6 +9,7 @@ import type {
   HostDto,
   HostInputDto,
   ImportResultDto,
+  OnePasswordStatusDto,
   RdpCredentialsDto,
   RdpEmbeddedOpenDto,
   RdpEmbeddedStatusDto,
@@ -84,6 +85,13 @@ export async function sftpOpen(hostName: string): Promise<number> {
 }
 
 /** List a remote directory; the result arrives as `sftp-dir-listed`. */
+/** The host's default path, read from 1Password when it is a reference; null if none. */
+export async function sftpDefaultPath(hostName: string): Promise<string | null> {
+  const res = await commands.sftpDefaultPath(hostName);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
 export async function sftpList(sessionId: number, path: string): Promise<void> {
   const res = await commands.sftpList(sessionId, path);
   if (res.status === 'error') throw new Error(res.error.message);
@@ -375,6 +383,13 @@ export async function rdpSaveFile(folder: string, relativePath: string | undefin
 export async function rdpShowSaved(path: string): Promise<void> {
   const res = await commands.rdpShowSaved(path);
   if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Whether the 1Password CLI is installed, and how to install it if not. */
+export async function onePasswordStatus(): Promise<OnePasswordStatusDto> {
+  const res = await commands.onePasswordStatus();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
 }
 
 /** Forgets the remembered certificate of a connection's server (trust on first use). */

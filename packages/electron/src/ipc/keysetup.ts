@@ -76,6 +76,8 @@ async function persistKey(hostName: string, keyPath: string, passwordDisabled: b
   if (passwordDisabled) {
     host.passwordAuthDisabled = true;
     host.password = undefined;
+    // Nothing would accept it any more — and resolving it would prompt 1Password on every connect.
+    host.passwordRef = undefined;
   }
   await saveHosts(hosts);
 }

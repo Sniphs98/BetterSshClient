@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { displayReference, isOnePasswordReference } from '$lib/screens/onePasswordRef';
 
 // Streamer mode: a privacy pref that swaps real host addresses in the UI for
 // deterministic fake-but-realistic ones, so IPs never appear on screen while recording.
@@ -133,5 +134,7 @@ export function maskHostname(hostname: string): string {
 
 /** The address to render for a host: disguised when streamer mode is on, else the real one. */
 export function displayHostname(hostname: string, streamerOn: boolean): string {
+  // A 1Password reference names an item, not an address — nothing to mask.
+  if (isOnePasswordReference(hostname)) return displayReference(hostname);
   return streamerOn ? maskHostname(hostname) : hostname;
 }

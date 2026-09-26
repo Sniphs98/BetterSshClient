@@ -2,6 +2,7 @@ import type { ClientChannel } from 'ssh2';
 
 import type { Host } from './client.js';
 import { SshSession } from './session.js';
+import { resolveReference } from '../secrets/onePassword.js';
 import type { CoreEvent } from '../../event.js';
 
 /**
@@ -141,7 +142,10 @@ export class PtyManager {
     let channel: ClientChannel;
     try {
       sshSession = await SshSession.shared(host);
-      channel = await sshSession.openShell(cols, rows, processLocaleEnv(), host.defaultPath);
+      // The default path may be a 1Password reference; read once connected, so the
+      // same unlock covers it.
+      const cwd = host.defaultPath === undefined ? undefined : await resolveReference(host.defaultPath);
+      channel = await sshSession.openShell(cols, rows, processLocaleEnv(), cwd);
     } catch (e) {
       emit({ type: 'error', message: `Terminal: ${(e as Error).message}` });
       emit({ type: 'ptyExited', sessionId: id });

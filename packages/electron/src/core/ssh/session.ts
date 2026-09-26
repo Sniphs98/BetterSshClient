@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +9,7 @@ import { ConnectionPool, type Lease } from './connectionPool.js';
 import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
+import { readSecretCached, resolvePort, resolveReference } from '../secrets/onePassword.js';
 
 /**
  * SSH session management via `ssh2`. Ported from
@@ -64,7 +66,7 @@ class SshConnection {
  *  two hosts differing only in name, tags or notes share a connection, and an
  *  edited password or key never reuses one made with the old value. */
 function connectionKey(host: Host): string {
-  return JSON.stringify([host.hostname, host.port, host.user, host.identityFile, host.password, jumpValue(host)]);
+  return JSON.stringify([host.hostname, host.port, host.user, host.identityFile, host.password, host.passwordRef, host.portRef, jumpValue(host)]);
 }
 
 const sharedConnections = new ConnectionPool<Host, SshConnection>(connectionKey, connectAndAuth);
@@ -357,15 +359,27 @@ async function connectAndAuth(host: Host): Promise<SshConnection> {
   return new SshConnection(target, jumps);
 }
 
+/** `host` with its address and user read from 1Password where they are references
+ *  (`op://…` in the field itself), and its port where it has a `portRef`. Done per
+ *  hop, before dialling it. */
+export async function resolveHostAddress(host: Host): Promise<Host> {
+  const hostname = await resolveReference(host.hostname);
+  const port = await resolvePort(host.portRef, host.port);
+  const user = await resolveReference(host.user);
+  if (hostname === host.hostname && port === host.port && user === host.user) return host;
+  return { ...host, hostname, port, user };
+}
+
 /** Opens a TCP connection to `host` and authenticates. */
 async function connectDirect(host: Host): Promise<Client> {
-  return authenticate(host, {});
+  return authenticate(await resolveHostAddress(host), {});
 }
 
 /** Reaches `host` through the already-connected bastion `via`: a
  *  `direct-tcpip` channel on the bastion carries a second SSH session to
  *  the target, which is verified and authenticated in its own right. */
-async function connectTunnelled(via: Client, host: Host): Promise<Client> {
+async function connectTunnelled(via: Client, saved: Host): Promise<Client> {
+  const host = await resolveHostAddress(saved);
   const stream = await new Promise<import('ssh2').ClientChannel>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('SSH connection timed out (10 s)')), CONNECT_TIMEOUT_MS);
     // The originator address is informational; servers only log it.
@@ -378,11 +392,20 @@ async function connectTunnelled(via: Client, host: Host): Promise<Client> {
   return authenticate(host, { sock: stream });
 }
 
+/** The password for `host`: resolved from its 1Password reference if it has one,
+ *  else the stored one. Resolved before connecting — a Windows Hello or Touch ID
+ *  prompt can take longer than the connect timeout allows mid-handshake. */
+async function hostPassword(host: Host): Promise<string | undefined> {
+  if (host.passwordRef === undefined) return host.password;
+  return readSecretCached(host.passwordRef);
+}
+
 /** The auth methods to offer `host`, in priority order: agent → explicit
  *  identity file → default key files → password. Unreadable key files are
  *  left out; an unparseable (e.g. passphrase-protected) one is skipped by
- *  `ssh2` itself. */
-async function authMethods(host: Host): Promise<AnyAuthMethod[]> {
+ *  `ssh2` itself. A 1Password reference that can't be read drops the password
+ *  and says why in `problems`, so the keys still get their turn. */
+async function authMethods(host: Host, problems: string[]): Promise<AnyAuthMethod[]> {
   const username = host.user;
   const methods: AnyAuthMethod[] = [];
 
@@ -394,7 +417,13 @@ async function authMethods(host: Host): Promise<AnyAuthMethod[]> {
   const keys = await Promise.all(keyPaths.map(tryReadKey));
   for (const key of keys) if (key !== undefined) methods.push({ type: 'publickey', username, key });
 
-  if (host.password !== undefined) methods.push({ type: 'password', username, password: host.password });
+  let password: string | undefined;
+  try {
+    password = await hostPassword(host);
+  } catch (e) {
+    problems.push((e as Error).message);
+  }
+  if (password !== undefined) methods.push({ type: 'password', username, password });
   return methods;
 }
 
@@ -419,7 +448,8 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
     ...extra
   };
 
-  const methods = await authMethods(host);
+  const problems: string[] = [];
+  const methods = await authMethods(host, problems);
   if (methods.length > 0) {
     const attempt = await tryConnect({ ...base, authHandler: methods });
     if (attempt.client) return attempt.client;
@@ -435,7 +465,8 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
     }
   }
 
-  throw new SshAuthError(`SSH authentication failed for ${host.name}`);
+  const why = problems.length > 0 ? ` (${problems.join('; ')})` : '';
+  throw new SshAuthError(`SSH authentication failed for ${host.name}${why}`);
 }
 
 interface ConnectAttempt {
@@ -504,9 +535,18 @@ function makeHostVerifier(hostname: string, port: number): NonNullable<ConnectCo
   };
 }
 
+/** The SSH agent to ask for keys. On Windows that is the OpenSSH agent pipe,
+ *  which is also where 1Password's SSH agent listens once enabled. Elsewhere
+ *  `SSH_AUTH_SOCK`; failing that — a GUI app on macOS usually doesn't get it
+ *  from a shell profile — 1Password's own agent socket, if it is running. */
 function defaultAgentPath(): string | undefined {
   if (process.platform === 'win32') return '\\\\.\\pipe\\openssh-ssh-agent';
-  return process.env.SSH_AUTH_SOCK;
+  if (process.env.SSH_AUTH_SOCK) return process.env.SSH_AUTH_SOCK;
+  const onePasswordSockets =
+    process.platform === 'darwin'
+      ? [join(homedir(), 'Library', 'Group Containers', '2BUA8C4S2C.com.1password', 't', 'agent.sock')]
+      : [join(homedir(), '.1password', 'agent.sock')];
+  return onePasswordSockets.find((p) => existsSync(p));
 }
 
 /** Returns the standard default SSH private key paths, in priority order. */
