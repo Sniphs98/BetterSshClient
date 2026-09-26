@@ -4,7 +4,7 @@
 // so both frontends produce the same `hosts.toml` shape and error messages.
 
 import type { HostDto, HostInputDto, MonitorModeDto } from '$lib/bindings';
-import { isOnePasswordReference, ONE_PASSWORD_REFERENCE_ERROR } from './onePasswordRef';
+import { isOnePasswordReference, normalizeReference, ONE_PASSWORD_REFERENCE_ERROR } from './onePasswordRef';
 
 /** The editable form fields — all raw text (tags are comma-separated, port a string). */
 export interface HostFormFields {
@@ -95,6 +95,11 @@ function splitCsv(raw: string): string[] {
     .filter(Boolean);
 }
 
+/** A text field as it is saved: trimmed, or as a cleaned-up reference when switched to 1Password. */
+function fieldValue(value: string, from1P: boolean): string {
+  return from1P ? normalizeReference(value) : value.trim();
+}
+
 function referenceError(field: string): string {
   return `${field}: ${ONE_PASSWORD_REFERENCE_ERROR}`;
 }
@@ -110,14 +115,14 @@ export type HostFormResult = { ok: true; input: HostInputDto } | { ok: false; er
 export function formToInput(f: HostFormFields): HostFormResult {
   const name = f.name.trim();
   if (!name) return { ok: false, error: 'Name cannot be empty' };
-  const hostname = f.hostname.trim();
+  const hostname = fieldValue(f.hostname, f.hostnameFrom1P);
   if (!hostname) return { ok: false, error: 'Hostname / IP cannot be empty' };
   if (f.hostnameFrom1P && !isOnePasswordReference(hostname)) return { ok: false, error: referenceError('Hostname / IP') };
   if (f.userFrom1P && !isOnePasswordReference(f.user)) return { ok: false, error: referenceError('User') };
-  const user = f.user.trim() || 'root';
+  const user = fieldValue(f.user, f.userFrom1P) || 'root';
 
   // From 1Password the port stays the default on disk and is read when connecting.
-  const portRef = f.portFrom1P ? f.portRef.trim() : '';
+  const portRef = f.portFrom1P ? normalizeReference(f.portRef) : '';
   if (f.portFrom1P && !isOnePasswordReference(portRef)) return { ok: false, error: referenceError('Port') };
   const portRaw = f.portFrom1P ? '' : f.port.trim();
   let port = 22;
@@ -150,7 +155,7 @@ export function formToInput(f: HostFormFields): HostFormResult {
   const defaultPath = f.defaultPath.trim();
   const startupCommand = f.startupCommand.trim();
   // Switched back to typing, the password's reference is dropped.
-  const passwordRef = f.passwordFrom1P ? f.passwordRef.trim() : '';
+  const passwordRef = f.passwordFrom1P ? normalizeReference(f.passwordRef) : '';
   if (f.passwordFrom1P && !isOnePasswordReference(passwordRef)) return { ok: false, error: referenceError('Password') };
   return {
     ok: true,

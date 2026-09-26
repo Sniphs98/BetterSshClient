@@ -6,7 +6,7 @@
 // small diff, not a rewrite.
 
 import type { RemoteDesktopConnectionDto, RemoteDesktopConnectionInputDto, RemoteDesktopProtocolDto } from '$lib/bindings';
-import { isOnePasswordReference, ONE_PASSWORD_REFERENCE_ERROR } from './onePasswordRef';
+import { isOnePasswordReference, normalizeReference, ONE_PASSWORD_REFERENCE_ERROR } from './onePasswordRef';
 
 export function defaultPort(protocol: RemoteDesktopProtocolDto): number {
   return protocol === 'vnc' ? 5900 : 3389;
@@ -129,12 +129,12 @@ export type RemoteDesktopFormResult =
 export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult {
   const name = f.name.trim();
   if (!name) return { ok: false, error: 'Name cannot be empty' };
-  const hostname = f.hostname.trim();
+  const hostname = fieldValue(f.hostname, f.hostnameFrom1P);
   if (!hostname) return { ok: false, error: 'Hostname / IP cannot be empty' };
   if (f.hostnameFrom1P && !isOnePasswordReference(hostname)) return { ok: false, error: referenceError('Hostname / IP') };
 
   // From 1Password the port stays the default on disk and is read when connecting.
-  const portRef = f.portFrom1P ? f.portRef.trim() : '';
+  const portRef = f.portFrom1P ? normalizeReference(f.portRef) : '';
   if (f.portFrom1P && !isOnePasswordReference(portRef)) return { ok: false, error: referenceError('Port') };
   const portRaw = f.portFrom1P ? '' : f.port.trim();
   let port = defaultPort(f.protocol);
@@ -145,14 +145,14 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
     port = Number(portRaw);
   }
 
-  const username = f.username.trim();
+  const username = fieldValue(f.username, f.usernameFrom1P);
   const password = f.password.trim();
-  const domain = f.domain.trim();
+  const domain = fieldValue(f.domain, f.domainFrom1P);
   const viaHost = f.viaHost.trim();
   if (f.usernameFrom1P && !isOnePasswordReference(username)) return { ok: false, error: referenceError('Username') };
   if (f.domainFrom1P && !isOnePasswordReference(domain)) return { ok: false, error: referenceError('Domain') };
   // Switched back to typing, the password's reference is dropped.
-  const passwordRef = f.passwordFrom1P ? f.passwordRef.trim() : '';
+  const passwordRef = f.passwordFrom1P ? normalizeReference(f.passwordRef) : '';
   if (f.passwordFrom1P && !isOnePasswordReference(passwordRef)) return { ok: false, error: referenceError('Password') };
 
   let width: number | undefined;
@@ -209,6 +209,11 @@ export function fromOnePassword(
   if (parts.length === 0) return '';
   const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
   return list[0].toUpperCase() + list.slice(1);
+}
+
+/** A text field as it is saved: trimmed, or as a cleaned-up reference when switched to 1Password. */
+function fieldValue(value: string, from1P: boolean): string {
+  return from1P ? normalizeReference(value) : value.trim();
 }
 
 function referenceError(field: string): string {

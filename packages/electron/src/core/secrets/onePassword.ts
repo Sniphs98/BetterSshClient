@@ -14,11 +14,21 @@ import { join } from 'node:path';
  * for a while afterwards.
  */
 
-/** `op://vault/item/field`, optionally with a section: `op://vault/item/section/field`. */
-const REFERENCE = /^op:\/\/[^/\s]+\/[^/\s]+(\/[^/\s]+){1,2}$/;
+/** `op://vault/item/field`, optionally with a section: `op://vault/item/section/field`.
+ *  Names may hold spaces — not at either end, and no line breaks or quotes. */
+const SEGMENT = '[^/\\s"\'](?:[^/\\r\\n"\']*[^/\\s"\'])?';
+const REFERENCE = new RegExp(`^op://${SEGMENT}/${SEGMENT}(?:/${SEGMENT}){1,2}$`);
+
+/** A reference as pasted, cleaned up: 1Password's "Copy Secret Reference" puts one
+ *  whose names contain spaces in quotes, "op://IT/web one/password". */
+export function normalizeReference(value: string): string {
+  const v = value.trim();
+  const quoted = v.length >= 2 && (v[0] === '"' || v[0] === "'") && v[v.length - 1] === v[0];
+  return quoted ? v.slice(1, -1).trim() : v;
+}
 
 export function isSecretReference(value: string): boolean {
-  return REFERENCE.test(value.trim());
+  return REFERENCE.test(normalizeReference(value));
 }
 
 /** How the CLI is run — replaceable in tests (there is no 1Password in CI). */
@@ -76,7 +86,7 @@ export class OnePasswordError extends Error {}
 
 /** Resolves a secret reference to its value through the 1Password CLI. */
 export async function readSecret(reference: string): Promise<string> {
-  const ref = reference.trim();
+  const ref = normalizeReference(reference);
   if (!isSecretReference(ref)) {
     throw new OnePasswordError(`"${ref}" is not a 1Password reference (expected op://vault/item/field)`);
   }
@@ -108,7 +118,7 @@ const secretCache = new Map<string, { value: string; expires: number }>();
 /** `readSecret`, remembered for `SECRET_CACHE_MS` — shared by SSH hosts and remote
  *  desktop connections, so one reference prompts once however it's used. */
 export async function readSecretCached(reference: string): Promise<string> {
-  const ref = reference.trim();
+  const ref = normalizeReference(reference);
   const cached = secretCache.get(ref);
   if (cached && cached.expires > Date.now()) return cached.value;
   const value = await readSecret(ref);
@@ -130,7 +140,7 @@ export async function resolvePort(reference: string | undefined, port: number): 
   const raw = (await readSecretCached(reference)).trim();
   const value = Number(raw);
   if (!/^\d+$/.test(raw) || value < 1 || value > 65535) {
-    throw new OnePasswordError(`1Password: ${reference.trim()} is not a port number (1–65535)`);
+    throw new OnePasswordError(`1Password: ${normalizeReference(reference)} is not a port number (1–65535)`);
   }
   return value;
 }

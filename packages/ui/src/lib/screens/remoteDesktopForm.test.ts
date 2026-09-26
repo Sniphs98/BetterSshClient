@@ -216,6 +216,13 @@ describe('1Password reference', () => {
     expect(f).toMatchObject({ portFrom1P: true, portRef: 'op://S/pc/port', domainFrom1P: true });
   });
 
+  it('takes a reference pasted in quotes, with spaces in its names, and saves it without the quotes', () => {
+    const r = formToInput(
+      fields({ name: 'n', hostname: 'h', username: '"op://IT/e-HPV one/Benutzername"', usernameFrom1P: true })
+    );
+    expect(r.ok && r.input.username).toBe('op://IT/e-HPV one/Benutzername');
+  });
+
   it('names what comes from 1Password, for the tile', () => {
     expect(fromOnePassword({ hostname: 'pc.lan' })).toBe('');
     expect(fromOnePassword({ hostname: 'pc.lan', passwordRef: 'op://a/b/c' })).toBe('Password');

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { cliVersion, installHint, isSecretReference, opLocations, readSecret, setOpRunner } from './onePassword.js';
+import { cliVersion, installHint, isSecretReference, normalizeReference, opLocations, readSecret, setOpRunner } from './onePassword.js';
 
 afterEach(() => setOpRunner(undefined));
 
@@ -10,8 +10,14 @@ describe('isSecretReference', () => {
     expect(isSecretReference(' op://Servers/web-1/login/password ')).toBe(true);
   });
 
+  it('accepts names with spaces, and the quotes 1Password copies them with', () => {
+    expect(isSecretReference('op://IT/e-HPV one/Benutzername')).toBe(true);
+    expect(isSecretReference('"op://IT/e-HPV one/Benutzername"')).toBe(true);
+    expect(normalizeReference(' "op://IT/e-HPV one/Benutzername" ')).toBe('op://IT/e-HPV one/Benutzername');
+  });
+
   it('refuses anything else', () => {
-    for (const v of ['hunter2', 'op://Servers/web-1', 'op://Servers', 'https://x/y/z', 'op://a b/c/d', 'op://a/b/c/d/e']) {
+    for (const v of ['hunter2', 'op://Servers/web-1', 'op://Servers', 'https://x/y/z', 'op://a /c/d', 'op://a/b/c"', 'op://a/b\nc/d', 'op://a/b/c/d/e']) {
       expect(isSecretReference(v), v).toBe(false);
     }
   });
@@ -26,6 +32,16 @@ describe('readSecret', () => {
     });
     expect(await readSecret(' op://Servers/web-1/password ')).toBe('s3cret');
     expect(seen).toEqual(['read', '--no-newline', 'op://Servers/web-1/password']);
+  });
+
+  it('passes op a quoted reference without its quotes', async () => {
+    let seen: string[] = [];
+    setOpRunner(async (args) => {
+      seen = args;
+      return { stdout: 'admin', stderr: '' };
+    });
+    expect(await readSecret('"op://IT/e-HPV one/Benutzername"')).toBe('admin');
+    expect(seen).toEqual(['read', '--no-newline', 'op://IT/e-HPV one/Benutzername']);
   });
 
   it('never runs op for something that is not a reference', async () => {

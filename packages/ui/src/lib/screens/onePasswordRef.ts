@@ -2,12 +2,23 @@
 // (core/secrets/onePassword.ts) accepts: op://vault/item[/section]/field. Shared by
 // the host and the remote desktop forms.
 
-const REFERENCE = /^op:\/\/[^/\s]+\/[^/\s]+(\/[^/\s]+){1,2}$/;
+// A name may hold spaces ("op://IT/web one/Benutzername") — not at either end, and no
+// line breaks or quotes.
+const SEGMENT = '[^/\\s"\'](?:[^/\\r\\n"\']*[^/\\s"\'])?';
+const REFERENCE = new RegExp(`^op://${SEGMENT}/${SEGMENT}(?:/${SEGMENT}){1,2}$`);
 
 export const ONE_PASSWORD_REFERENCE_ERROR = '1Password reference must look like op://vault/item/field';
 
+/** A reference as pasted, cleaned up: 1Password's "Copy Secret Reference" puts one
+ *  whose names contain spaces in quotes, "op://IT/web one/password". */
+export function normalizeReference(value: string): string {
+  const v = value.trim();
+  const quoted = v.length >= 2 && (v[0] === '"' || v[0] === "'") && v[v.length - 1] === v[0];
+  return quoted ? v.slice(1, -1).trim() : v;
+}
+
 export function isOnePasswordReference(value: string): boolean {
-  return REFERENCE.test(value.trim());
+  return REFERENCE.test(normalizeReference(value));
 }
 
 /** A field that may be a reference, for tiles and lists: a reference shows as its
@@ -18,7 +29,7 @@ export function displayReference(value: string): string {
 }
 
 function referenceItem(value: string): string | undefined {
-  return isOnePasswordReference(value) ? value.trim().split('/')[3] : undefined;
+  return isOnePasswordReference(value) ? normalizeReference(value).split('/')[3] : undefined;
 }
 
 /**
