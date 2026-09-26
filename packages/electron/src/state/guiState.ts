@@ -4,6 +4,7 @@ import { loadAppConfig } from '../core/config/appConfig.js';
 import type { Host } from '../core/ssh/client.js';
 import { PollManager } from '../core/ssh/pool.js';
 import { PtyManager } from '../core/ssh/pty.js';
+import { LocalPtyManager } from '../core/local/localPty.js';
 import { useHosts } from '../core/ssh/session.js';
 import type { SftpManager } from '../core/ssh/sftp.js';
 import { connectionStatusToDto, hostToDto, metricsToDto, serviceToDto } from '../dto.js';
@@ -35,12 +36,20 @@ export class GuiState {
   private readonly runningAutomations = new Set<string>();
   private updateCheckClaimed = false;
   readonly pty: PtyManager;
+  /** Local terminal tabs (PowerShell, cmd, WSL, …) — same ids and events as `pty`. */
+  readonly localPty: LocalPtyManager;
 
   constructor(getWindow: () => BrowserWindow | undefined) {
     this.getWindow = getWindow;
-    this.pty = new PtyManager((sessionId, data) => {
-      this.getWindow()?.webContents.send(`terminal-output-${sessionId}`, data);
-    });
+    // A shell can still be talking while the window closes (quit with a local
+    // terminal open); sending to a destroyed window throws in the main process.
+    const sendOutput = (sessionId: number, data: Buffer): void => {
+      const win = this.getWindow();
+      if (win === undefined || win.isDestroyed() || win.webContents.isDestroyed()) return;
+      win.webContents.send(`terminal-output-${sessionId}`, data);
+    };
+    this.pty = new PtyManager(sendOutput);
+    this.localPty = new LocalPtyManager(sendOutput);
   }
 
   /** Allocates a session id from the id space shared by terminal and SFTP
@@ -141,13 +150,16 @@ export class GuiState {
   shutdown(): void {
     this.pollManager.shutdown();
     this.pty.shutdown();
+    this.localPty.shutdown();
     for (const manager of this.sftpSessions.values()) manager.disconnect();
     this.sftpSessions.clear();
   }
 
   /** Sends a typed event to the renderer, if the window still exists. */
   emit(channel: string, payload: unknown): void {
-    this.getWindow()?.webContents.send(channel, payload);
+    const win = this.getWindow();
+    if (win === undefined || win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send(channel, payload);
   }
 
   /** Maps a `CoreEvent` from the SSH engine to its outbound IPC event.

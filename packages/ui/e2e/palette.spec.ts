@@ -73,7 +73,7 @@ test('a spawner opens the host-picker and spawns a session for the chosen host',
 }) => {
   await bootWithHosts(page);
 
-  await page.getByRole('button', { name: 'Terminal' }).click();
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
   const picker = page.getByRole('dialog', { name: 'Pick a host' });
   await expect(picker).toBeVisible();
 

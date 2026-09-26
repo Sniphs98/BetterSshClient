@@ -32,6 +32,9 @@ export interface Session {
   termId?: number;
   /** For an `rdp` session: the remote desktop connection profile it shows. */
   rdpConnectionId?: string;
+  /** For a local terminal (a shell on this machine, no host): its profile id — see
+   *  `TerminalProfileDto`. `hostName` then holds the profile's label. */
+  localProfileId?: string;
 }
 
 /** The visible session label: just the host name. The type (terminal/SFTP) is already
@@ -43,7 +46,7 @@ export function sessionLabel(s: Session): string {
 /** The accessible/tooltip label: host + type, so hover and screen readers still convey
  *  the connection type the icon shows visually. */
 export function sessionTitle(s: Session): string {
-  return `${s.hostName} · ${s.kind}`;
+  return `${s.hostName} · ${s.localProfileId ? 'local terminal' : s.kind}`;
 }
 
 function createSessions() {
@@ -51,7 +54,7 @@ function createSessions() {
   let nextId = 1;
   return {
     subscribe,
-    spawn(kind: SessionKind, hostName: string, extra: Pick<Session, 'rdpConnectionId'> = {}): Session {
+    spawn(kind: SessionKind, hostName: string, extra: Pick<Session, 'rdpConnectionId' | 'localProfileId'> = {}): Session {
       const session: Session = { id: nextId++, kind, hostName, status: 'connecting', ...extra };
       update((list) => [...list, session]);
       return session;

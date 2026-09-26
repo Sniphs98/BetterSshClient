@@ -44,6 +44,7 @@ for what works, what's in progress, and what's still planned.
 |:-:|---|---|
 | ✅ | **Live dashboard** | A card per server with CPU, RAM, disk, uptime, OS and top processes. Detects running services (Docker, nginx, Node.js, PostgreSQL, Redis). Appliances without a shell can be watched with a plain TCP port check. |
 | ✅ | **Terminals** | Real PTY sessions in tabs, GPU-rendered with xterm.js. Copy on select, `Ctrl+Shift+C`/`V`, configurable right-click (menu or PuTTY-style paste). |
+| ✅ | **Local terminals** | Shells on your own computer in the same tabs, no SSH needed: PowerShell, Command Prompt, Git Bash and every WSL distribution on Windows, your login shell and the other installed ones on macOS and Linux. |
 | ✅ | **Two-panel SFTP** | Local and remote side by side, drag & drop (also from your file manager), parallel transfers, smooth even in folders with thousands of files. |
 | ✅ | **In-place file editor** | Double-click a text file to edit it with Monaco, the editor from VS Code, local or remote. |
 | ✅ | **One-click SSH key setup** | Generates an Ed25519 key, installs it, verifies it, and optionally turns off password login, with automatic rollback if anything fails. |
@@ -51,7 +52,7 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
 | ✅ | **1Password** | Read the address, port, user, domain or password of a host or a remote desktop connection from 1Password when connecting instead of storing it, and use SSH keys from the 1Password SSH agent. [How](#using-1password) |
 | ✅ | **Light & dark theme** | |
-| 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps, plus an upload step that copies a file from this computer to the host. Usable, but still changing. |
+| 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally, in WSL or on a host, with parameters and the output of earlier steps, plus an upload step that copies a file from this computer to the host. Usable, but still changing. |
 | 🚧 | **Remote desktop (RDP)** *(in progress)* | RDP sessions as tabs inside the app, next to your terminals (IronRDP, no extra window), or in the OS's own client (Remote Desktop on Windows, FreeRDP on Linux and macOS), signed in automatically either way. Drag files onto the session to copy them there, and save files copied on the remote desktop. Can tunnel through any SSH host, so machines behind a bastion work without exposing port 3389. Display, monitor, clipboard, drive and sound settings per profile. |
 | 💡 | **AI integration** *(maybe in the future)* | Help with commands, explain output or errors, right in the terminal. |
 | 💡 | **Plugin system** *(maybe in the future)* | Extend the app with your own features without touching the core. |

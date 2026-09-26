@@ -26,6 +26,7 @@
     "electron@33.4.11": true,
     "esbuild@0.21.5": true,
     "ssh2@1.17.0": true,
-    "cpu-features@0.0.10": true
+    "cpu-features@0.0.10": true,
+    "node-pty@1.1.0": true
   }
 }

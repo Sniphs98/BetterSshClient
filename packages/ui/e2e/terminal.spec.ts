@@ -36,6 +36,7 @@ async function boot(
       let terminalWriteBuffer = '';
       const terminalCommands: string[] = [];
       win.__terminalCommands = terminalCommands;
+      win.__localOpened = [];
       const terminalWrites = { text: '' };
       win.__terminalWrites = terminalWrites;
       const terminalResizes: Array<{ cols: number; rows: number }> = [];
@@ -62,6 +63,18 @@ async function boot(
               return Promise.resolve(seededHosts);
             case 'reload_hosts':
               return Promise.resolve(null);
+            // Local terminals: the shells "found" on this machine, and opening one.
+            case 'terminal_profiles':
+              return Promise.resolve([
+                { id: 'pwsh', label: 'PowerShell', kind: 'powershell' },
+                { id: 'wsl:Ubuntu', label: 'Ubuntu (WSL)', kind: 'wsl' }
+              ]);
+            case 'terminal_open_local': {
+              const sid = ++nextSession;
+              (win.__localOpened as unknown[]).push(args[0]);
+              setTimeout(() => sendToTerminal(sid, `local-${String(args[0])}> `), 0);
+              return Promise.resolve(sid);
+            }
             case 'terminal_open': {
               const sid = ++nextSession;
               // A shell prompt proves the streamed output renders + flips status to connected.
@@ -165,6 +178,27 @@ test('action-first: the Terminal spawner opens the host picker, then a live term
 
   await expect(page.getByRole('button', { name: 'web-1 · terminal', exact: true })).toBeVisible();
   await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
+});
+
+test('Local terminal offers the shells on this computer and opens one without a host', async ({ page }) => {
+  await boot(page);
+
+  await page.getByRole('button', { name: /Local terminal/ }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu.getByRole('menuitem')).toHaveText(['PowerShell', 'Ubuntu (WSL)']);
+  await menu.getByRole('menuitem', { name: 'Ubuntu (WSL)' }).click();
+
+  // A tab named after the shell, marked local, streaming like any terminal.
+  await expect(page.getByRole('button', { name: 'Ubuntu (WSL) · local terminal', exact: true })).toBeVisible();
+  await expect(page.locator('.xterm-rows')).toContainText('local-wsl:Ubuntu>');
+  expect(await page.evaluate(() => (window as unknown as { __localOpened: string[] }).__localOpened)).toEqual(['wsl:Ubuntu']);
+
+  // Typing reaches it; no host's default path or startup command is sent first.
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.type('uname');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.xterm-rows')).toContainText('RESULT-OK');
+  expect(await page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands)).toEqual([]);
 });
 
 test('toggling the theme re-themes a live terminal (§5.1)', async ({ page }) => {

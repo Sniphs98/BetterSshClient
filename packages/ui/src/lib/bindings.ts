@@ -36,6 +36,21 @@ export const commands = {
       return { status: 'error', error: e as CommandError };
     }
   },
+  /** The shells a local terminal tab can open on this machine. */
+  async terminalProfiles(): Promise<Result<TerminalProfileDto[], CommandError>> {
+    return call('terminal_profiles');
+  },
+  /** Opens a local terminal (profile `profileId`); output streams like an SSH tab's. */
+  async terminalOpenLocal(
+    profileId: string,
+    cols: number,
+    rows: number,
+    onOutput: Channel<TerminalBytes>
+  ): Promise<Result<number, CommandError>> {
+    const res = await call<number>('terminal_open_local', profileId, cols, rows);
+    if (res.status === 'ok') onOutput.attach(`terminal-output-${res.data}`);
+    return res;
+  },
   async terminalWrite(sessionId: number, data: Uint8Array): Promise<Result<null, CommandError>> {
     return call('terminal_write', sessionId, data);
   },
@@ -571,6 +586,14 @@ export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error:
  *  `new Channel<TerminalBytes>()`, then set `.onmessage`. Internally subscribes
  *  to the per-session `terminal-output-<id>` event once `terminalOpen` resolves
  *  a session id (see `commands.terminalOpen` above). */
+/** A shell a local terminal tab can open: PowerShell, Command Prompt, a WSL distribution, zsh, … */
+export type TerminalProfileDto = {
+  /** Stable across runs: `pwsh`, `cmd`, `wsl:Ubuntu`, `shell:/bin/zsh`, … */
+  id: string;
+  label: string;
+  kind: 'powershell' | 'cmd' | 'bash' | 'wsl' | 'shell';
+};
+
 export class Channel<T> {
   onmessage: (payload: T) => void = () => {};
   private off: UnlistenFn | undefined;
