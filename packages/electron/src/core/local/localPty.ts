@@ -1,4 +1,6 @@
+import { chmodSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import type { IPty } from 'node-pty';
 
 import { OutputBatcher, type SessionId } from '../ssh/pty.js';
@@ -27,7 +29,37 @@ interface Session {
 type NodePty = typeof import('node-pty');
 let nodePty: Promise<NodePty> | undefined;
 
+/**
+ * macOS: node-pty starts every shell through its `spawn-helper`, which node-pty 1.1.0's
+ * npm package ships without the executable bit — posix_spawnp then fails ("posix_spawnp
+ * failed") and no shell ever starts. Sets it where it's missing; the packaged app has
+ * it set already (build/rebuild-native.cjs), so this matters in development and CI.
+ */
+export function spawnHelperPaths(nodePtyDir: string, arch: string): string[] {
+  // Inside a packaged app node-pty resolves into app.asar, but the helper is unpacked.
+  const dir = nodePtyDir.replace('app.asar', 'app.asar.unpacked');
+  return [join(dir, 'prebuilds', `darwin-${arch}`, 'spawn-helper'), join(dir, 'build', 'Release', 'spawn-helper')];
+}
+
+function makeSpawnHelperExecutable(): void {
+  if (process.platform !== 'darwin') return;
+  let nodePtyDir: string;
+  try {
+    nodePtyDir = dirname(require.resolve('node-pty/package.json'));
+  } catch {
+    return;
+  }
+  for (const helper of spawnHelperPaths(nodePtyDir, process.arch)) {
+    try {
+      if ((statSync(helper).mode & 0o111) === 0) chmodSync(helper, 0o755);
+    } catch {
+      // Not there (the other layout), or not ours to change: spawn reports it.
+    }
+  }
+}
+
 function loadNodePty(): Promise<NodePty> {
+  makeSpawnHelperExecutable();
   nodePty ??= import('node-pty').catch((err: Error) => {
     nodePty = undefined;
     throw new Error(`local terminals are unavailable here (node-pty did not load: ${err.message})`);
