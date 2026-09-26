@@ -1,8 +1,8 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { runLocalCommand } from './localExec.js';
+import { localUploadPath, runLocalCommand } from './localExec.js';
 
 // Shells out via child_process.exec (real shell semantics — pipes, &&, …), so these
 // tests run real (tiny, fast, cross-platform) commands rather than mocking anything.
@@ -53,5 +53,15 @@ describe('runLocalCommand', () => {
     expect(result.error).toMatch(/timed out/);
     // Resolved promptly — proof the process was actually killed, not just abandoned.
     expect(elapsed).toBeLessThan(5000);
+  });
+});
+
+describe('localUploadPath', () => {
+  it('reads a relative path and ~ from the home folder, keeps an absolute one', () => {
+    const home = join('/', 'home', 'me');
+    expect(localUploadPath('image.tar.gz', home)).toBe(join(home, 'image.tar.gz'));
+    expect(localUploadPath(' ~/build/app.tgz ', home)).toBe(join(home, 'build', 'app.tgz'));
+    const absolute = resolve('/data/app.tgz');
+    expect(localUploadPath(absolute, home)).toBe(absolute);
   });
 });

@@ -1,4 +1,25 @@
 import { exec } from 'node:child_process';
+import { stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
+
+/** A local file an upload node names: absolute as given, `~/…` in the home folder, and
+ *  anything else relative to the home folder too — where local nodes run (see
+ *  `runLocalCommand`), so `image.tar.gz` is the file a previous node just wrote. */
+export function localUploadPath(from: string, home: string = homedir()): string {
+  const p = from.trim();
+  if (p === '~') return home;
+  if (p.startsWith('~/') || p.startsWith('~\\')) return join(home, p.slice(2));
+  return isAbsolute(p) ? p : join(home, p);
+}
+
+/** Checks the file an upload node is about to send, so a missing one fails with its
+ *  full path rather than SFTP's bare "No such file". */
+export async function checkUploadSource(path: string): Promise<void> {
+  const info = await stat(path).catch(() => undefined);
+  if (info === undefined) throw new Error(`no such file on this computer: ${path}`);
+  if (!info.isFile()) throw new Error(`not a file: ${path}`);
+}
 
 /**
  * Runs a shell command on the local machine for a Snippet "local" node. Unlike
@@ -26,7 +47,10 @@ export async function runLocalCommand(
   return new Promise((resolve) => {
     exec(
       command,
-      { timeout: timeoutMs, killSignal: 'SIGTERM', windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
+      // In the home folder: the app's own working directory is wherever it was started
+      // from — the install folder, often not writable — so `docker save -o image.tar`
+      // had nowhere sensible to go. An upload node's relative path means the same folder.
+      { cwd: homedir(), timeout: timeoutMs, killSignal: 'SIGTERM', windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
       (err, stdout, stderr) => {
         const output = stdout + stderr;
         if (err) {

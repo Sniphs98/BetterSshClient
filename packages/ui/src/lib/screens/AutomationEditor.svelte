@@ -31,6 +31,7 @@
   import { theme } from '$lib/stores/theme';
   import AutomationCanvasNode from './AutomationCanvasNode.svelte';
   import AutomationStartNode from './AutomationStartNode.svelte';
+  import AutomationUploadNode from './AutomationUploadNode.svelte';
   import SnippetEditor from './SnippetEditor.svelte';
   import { emptyForm, formFromSnippet } from './snippetForm';
   import {
@@ -40,6 +41,8 @@
     type AnyCanvasNode,
     type AutomationCanvasEdge,
     type SnippetNode,
+    type StepNode,
+    type UploadNode,
     type AutomationNodeActionsContext,
     type StartNode
   } from './automationCanvasTypes';
@@ -61,7 +64,7 @@
   // svelte-ignore state_referenced_locally
   const notFound = automationName !== null && existing === undefined;
 
-  const nodeTypes = { snippet: AutomationCanvasNode, start: AutomationStartNode };
+  const nodeTypes = { snippet: AutomationCanvasNode, upload: AutomationUploadNode, start: AutomationStartNode };
 
   /** A simple left-to-right, wrapping grid — used only for a node that has no saved
    *  `position` yet (freshly added, or an automation saved before positions existed). */
@@ -71,6 +74,11 @@
 
   function isSnippetNode(n: AnyCanvasNode): n is SnippetNode {
     return n.type === 'snippet';
+  }
+
+  /** Every node that is saved as an `AutomationNode` — snippets and upload steps. */
+  function isStepNode(n: AnyCanvasNode): n is StepNode {
+    return n.type === 'snippet' || n.type === 'upload';
   }
 
   const startNode: StartNode = {
@@ -86,7 +94,15 @@
   let params = $state<AutomationParamDto[]>(initial.params.map((p) => ({ ...p })));
   let canvasNodes = $state<AnyCanvasNode[]>([
     startNode,
-    ...initial.nodes.map((n, i) => {
+    ...initial.nodes.map((n, i): StepNode => {
+      if (n.upload) {
+        return {
+          id: n.id,
+          type: 'upload' as const,
+          position: n.position ?? layoutPosition(i),
+          data: { label: n.label, continueOnError: n.continueOnError, from: n.upload.from, to: n.upload.to }
+        };
+      }
       const snippet = $snippets.find((a) => a.id === n.snippetId);
       return {
         id: n.id,
@@ -184,7 +200,7 @@
       {
         id,
         type: 'snippet',
-        position: placement.position ?? layoutPosition(canvasNodes.filter(isSnippetNode).length),
+        position: placement.position ?? layoutPosition(canvasNodes.filter(isStepNode).length),
         data: {
           snippetId: snippet.id,
           label: uniqueLabel(snippet.name),
@@ -195,14 +211,29 @@
         }
       }
     ];
-    if (placement.wireFrom) {
-      canvasEdges = [
-        ...canvasEdges,
-        placement.wireFrom === START_NODE_ID
-          ? startLinkEdge(id)
-          : { id: `${placement.wireFrom}->${id}`, source: placement.wireFrom, target: id }
-      ];
-    }
+    wire(placement.wireFrom, id);
+  }
+
+  /** Places a new upload step, the same way `addSnippetNode` places a snippet. */
+  function addUploadNode(placement: NodePlacement): void {
+    const id = crypto.randomUUID();
+    const node: UploadNode = {
+      id,
+      type: 'upload',
+      position: placement.position ?? layoutPosition(canvasNodes.filter(isStepNode).length),
+      data: { label: uniqueLabel('upload'), continueOnError: false, from: '', to: '/tmp/' }
+    };
+    canvasNodes = [...canvasNodes, node];
+    wire(placement.wireFrom, id);
+  }
+
+  /** The edge a placement asks for, from `wireFrom` to the new node `id`. */
+  function wire(wireFrom: string | null, id: string): void {
+    if (!wireFrom) return;
+    canvasEdges = [
+      ...canvasEdges,
+      wireFrom === START_NODE_ID ? startLinkEdge(id) : { id: `${wireFrom}->${id}`, source: wireFrom, target: id }
+    ];
   }
 
   async function submitNewSnippet(snippet: SnippetDto): Promise<void> {
@@ -254,7 +285,7 @@
 
   function uniqueLabel(base: string): string {
     const slug = base.trim() || 'node';
-    const taken = new Set(canvasNodes.filter(isSnippetNode).map((n) => n.data.label));
+    const taken = new Set(canvasNodes.filter(isStepNode).map((n) => n.data.label));
     if (!taken.has(slug)) return slug;
     let i = 2;
     while (taken.has(`${slug}-${i}`)) i += 1;
@@ -272,6 +303,10 @@
     if (result === null) return;
     if (result === 'new') {
       newSnippetDialog = { id: crypto.randomUUID(), placement };
+      return;
+    }
+    if (result === 'upload') {
+      addUploadNode(placement);
       return;
     }
     addSnippetNode(result, placement);
@@ -323,12 +358,12 @@
       error = 'Name cannot be empty';
       return;
     }
-    const snippetNodes = canvasNodes.filter(isSnippetNode);
-    if (snippetNodes.length === 0) {
+    const stepNodes = canvasNodes.filter(isStepNode);
+    if (stepNodes.length === 0) {
       error = 'Add at least one node';
       return;
     }
-    const labels = snippetNodes.map((n) => n.data.label.trim());
+    const labels = stepNodes.map((n) => n.data.label.trim());
     if (labels.some((l) => !l)) {
       error = 'Every node needs a label';
       return;
@@ -337,9 +372,10 @@
       error = 'Node labels must be unique within the automation';
       return;
     }
-    const usesRemote = snippetNodes.some((n) => n.data.snippetKind === 'remote');
+    // An upload always goes to the host.
+    const usesRemote = stepNodes.some((n) => n.type === 'upload' || n.data.target === 'remote');
     if (usesRemote && !hasHostParam) {
-      error = 'This automation runs a remote snippet — add a host parameter on the Start node';
+      error = 'This automation runs something on a host — add a host parameter on the Start node';
       return;
     }
 
@@ -360,12 +396,13 @@
     const automation: AutomationDto = {
       name: automationNameTrimmed,
       params: params.map((p) => ({ ...p })),
-      nodes: snippetNodes.map((n) => ({
+      nodes: stepNodes.map((n) => ({
         id: n.id,
-        snippetId: n.data.snippetId,
+        ...(n.type === 'upload'
+          ? { snippetId: '', upload: { from: n.data.from.trim(), to: n.data.to.trim() }, target: 'remote' as const }
+          : { snippetId: n.data.snippetId, target: n.data.target }),
         label: n.data.label.trim(),
         continueOnError: n.data.continueOnError,
-        target: n.data.target,
         position: { x: n.position.x, y: n.position.y }
       })),
       edges: realEdges.map((e) => ({ from: e.source, to: e.target })),

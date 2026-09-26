@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { loadSnippets, saveSnippets } from '../core/config/snippets.js';
 import { loadAutomations, saveAutomations } from '../core/config/automations.js';
 import { runLocalCommand } from '../core/automation/localExec.js';
+import { uploadOverSession } from '../core/automation/upload.js';
 import { missingParamValues, runAutomation, validateAutomation, type RunAutomationDeps } from '../core/automation/engine.js';
 import {
   buildSnippetBundle,
@@ -251,6 +252,8 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
         const session = await SshSession.shared(host);
         return {
           runShell: (cmd, timeoutMs) => session.runShell(cmd, timeoutMs),
+          // Over the same connection as the commands: one login, one 1Password prompt.
+          upload: (from, to) => uploadOverSession(session, hostName, from, to),
           disconnect: () => session.disconnect()
         };
       }

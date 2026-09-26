@@ -59,6 +59,18 @@ describe('saveAutomations / loadAutomations round trip', () => {
     expect(await loadAutomations(path)).toEqual(original);
   });
 
+  it('round-trips an upload node', async () => {
+    const original = [
+      automation({
+        params: [{ name: 'host', kind: 'host' }],
+        nodes: [{ id: 'u', snippetId: '', upload: { from: 'image.tar.gz', to: '/tmp/' }, label: 'upload', continueOnError: false, target: 'remote' }],
+        edges: []
+      })
+    ];
+    await saveAutomations(original, path);
+    expect(await loadAutomations(path)).toEqual(original);
+  });
+
   it('round-trips a node position', async () => {
     const original = [automation({ nodes: [{ id: 'n1', snippetId: 'a1', label: 'build', continueOnError: false, target: 'local', position: { x: 12, y: 34 } }] })];
     await saveAutomations(original, path);

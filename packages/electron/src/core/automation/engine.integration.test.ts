@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { runAutomation, type RunAutomationDeps } from './engine.js';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { runLocalCommand } from './localExec.js';
+import { uploadOverSession } from './upload.js';
 import type { Snippet, Automation } from './types.js';
 import { SshSession } from '../ssh/session.js';
 import { testTargetHost } from '../../testSupport/sshTestTarget.js';
@@ -14,15 +18,54 @@ import { testTargetHost } from '../../testSupport/sshTestTarget.js';
 function deps(): RunAutomationDeps {
   return {
     runLocal: runLocalCommand,
-    connectHost: async () => {
+    connectHost: async (hostName) => {
       const session = await SshSession.connect(testTargetHost());
       return {
         runShell: (cmd, timeoutMs) => session.runShell(cmd, timeoutMs),
+        upload: (from, to) => uploadOverSession(session, hostName, from, to),
         disconnect: () => session.disconnect()
       };
     }
   };
 }
+
+describe('upload node against the test target', () => {
+  it('copies a local file to the host, and the next node reads it where it landed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'bssh-upload-'));
+    const file = join(dir, `payload-${Date.now()}.txt`);
+    await writeFile(file, 'hello from the upload node\n');
+    try {
+      const read: Snippet = { id: 'read', name: 'Read', command: 'cat {{nodes.upload.output}} && rm {{nodes.upload.output}}', timeoutSecs: 30 };
+      const automation: Automation = {
+        name: 'it-upload',
+        params: [{ name: 'host', kind: 'host' }],
+        nodes: [
+          { id: 'u', snippetId: '', upload: { from: file, to: '/tmp/' }, label: 'upload', continueOnError: false, target: 'remote' },
+          { id: 'r', snippetId: 'read', label: 'read', continueOnError: false, target: 'remote' }
+        ],
+        edges: [{ from: 'u', to: 'r' }]
+      };
+      const results = await runAutomation(automation, new Map([['read', read]]), { host: 'ssh-test-target' }, deps());
+      expect(results.map((r) => r.status)).toEqual(['success', 'success']);
+      expect(results[0].output).toMatch(/^\/tmp\/payload-\d+\.txt$/);
+      expect(results[1].output).toContain('hello from the upload node');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('says which local file is missing', async () => {
+    const automation: Automation = {
+      name: 'it-upload-missing',
+      params: [{ name: 'host', kind: 'host' }],
+      nodes: [{ id: 'u', snippetId: '', upload: { from: join(tmpdir(), 'no-such-file.tar.gz'), to: '/tmp/' }, label: 'upload', continueOnError: false, target: 'remote' }],
+      edges: []
+    };
+    const [result] = await runAutomation(automation, new Map(), { host: 'ssh-test-target' }, deps());
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('no such file on this computer');
+  });
+});
 
 describe('snippet engine against the test target', () => {
   it('a local node feeds its output into a remote node over a real SSH connection', async () => {

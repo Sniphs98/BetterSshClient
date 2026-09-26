@@ -24,9 +24,18 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
     raw.position !== undefined && typeof raw.position === 'object' && raw.position !== null
       ? (raw.position as { x?: unknown; y?: unknown })
       : undefined;
+  let upload: AutomationNode['upload'];
+  if (raw.upload !== undefined) {
+    const u = raw.upload as { from?: unknown; to?: unknown } | null;
+    if (typeof u !== 'object' || u === null || typeof u.from !== 'string' || typeof u.to !== 'string') {
+      throw new Error(`automation "${automationName}" node "${raw.id}" has an invalid "upload"`);
+    }
+    upload = { from: u.from, to: u.to };
+  }
   return {
     id: raw.id,
     snippetId: raw.snippetId,
+    upload,
     label: raw.label,
     continueOnError: raw.continueOnError === true,
     target,
@@ -45,6 +54,7 @@ function automationNodeToToml(node: AutomationNode): Record<string, unknown> {
     continueOnError: node.continueOnError,
     target: node.target
   };
+  if (node.upload !== undefined) out.upload = { from: node.upload.from, to: node.upload.to };
   if (node.position !== undefined) out.position = { x: node.position.x, y: node.position.y };
   return out;
 }

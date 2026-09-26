@@ -138,7 +138,10 @@ export function snippetFromDto(dto: SnippetDto): Snippet {
 
 export interface AutomationNodeDto {
   id: string;
+  /** `''` for an upload node. */
   snippetId: string;
+  /** Set for an upload node: a local file to copy to the automation's host. */
+  upload?: { from: string; to: string };
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;

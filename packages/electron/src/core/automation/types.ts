@@ -40,10 +40,24 @@ export interface AutomationParam {
  *  `'host'` param resolves at run time. */
 export type NodeTarget = 'local' | 'remote';
 
+/** A built-in step instead of a snippet: copies a file from this machine to the
+ *  automation's host over the app's own SFTP connection (its saved password,
+ *  1Password, jump hosts, known host keys). Both paths may use `{{params.<name>}}`
+ *  and `{{nodes.<label>.output}}`. */
+export interface UploadStep {
+  /** A file on this machine; relative to the home folder, like local nodes' commands. */
+  from: string;
+  /** Where on the host: a file path, or a folder ending in `/` to keep the file's name. */
+  to: string;
+}
+
 export interface AutomationNode {
   /** Instance id, unique within the automation — a Snippet can appear more than once. */
   id: string;
+  /** The snippet this node runs; `''` for an upload node. */
   snippetId: string;
+  /** Set for an upload node, which runs no snippet (and always targets the host). */
+  upload?: UploadStep;
   /** Unique within the automation; the `{{nodes.<label>.output}}` handle. */
   label: string;
   /** An automation-wiring concern, not a property of the reusable Snippet: does this
