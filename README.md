@@ -104,7 +104,7 @@ own data in `%APPDATA%\better-ssh-client\` (Windows), `~/Library/Application Sup
 **Addresses, ports, users, domains, passwords:** install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/)
 (on Windows: `winget install AgileBits.1Password.CLI`) and turn on *Settings → Developer →
 Integrate with 1Password CLI* in the 1Password app. Then, in a host's or a remote desktop
-connection's settings, click **1Password** next to the hostname, port, user, domain (remote desktop) or password, and
+connection's settings, click **1Password** next to the hostname, port, user, password, domain (remote desktop) or default path (SSH), and
 put the item's secret reference into that field (in 1Password: right-click the field → *Copy
 Secret Reference*, e.g. `op://Servers/web-1/password`). The app reads them when it connects —
 1Password may ask for Windows Hello or Touch ID — keeps them in memory for 10 minutes, and never

@@ -1,6 +1,7 @@
 import type { IpcMain } from 'electron';
 
 import { listLocalDir, previewLocalFile, readLocalFile, writeLocalFile, SftpManager } from '../core/ssh/sftp.js';
+import { resolveReference } from '../core/secrets/onePassword.js';
 import { toCommandError } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
 
@@ -30,7 +31,19 @@ export function registerSftpIpc(ipcMain: IpcMain, state: GuiState): void {
     }
   });
 
-  ipcMain.handle('sftp_list', (_event, sessionId: number, path: string) => {
+  // Where the browser opens: the host's default path, read from 1Password when it is
+  // a reference; null when it has none.
+  ipcMain.handle('sftp_default_path', async (_event, hostName: string): Promise<string | null> => {
+    const host = state.hostByName(hostName);
+    if (host === undefined) throw toCommandError(new Error(`unknown host '${hostName}'`));
+    try {
+      return host.defaultPath ? await resolveReference(host.defaultPath) : null;
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
+  ipcMain.handle('sftp_list',(_event, sessionId: number, path: string) => {
     const manager = state.getSftp(sessionId);
     if (manager === undefined) return;
     manager

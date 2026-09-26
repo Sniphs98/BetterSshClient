@@ -13,6 +13,7 @@
   import { xtermTheme } from '$lib/theme/terminalTheme';
   import { sessions, type Session } from '$lib/stores/sessions';
   import { hosts } from '$lib/stores/hosts';
+  import { isOnePasswordReference } from './onePasswordRef';
   import { closeSession } from '$lib/stores/navigation';
   import { terminalDidExit } from '$lib/ipc/router';
   import { lastError } from '$lib/stores/notifications';
@@ -227,7 +228,9 @@
       // SftpTerminalDrawer.svelte: queued by the pty until the shell is ready to read
       // it, no race with the shell's own startup.
       const host = get(hosts).find((h) => h.name === session.hostName);
-      if (host?.defaultPath) sendInput(ENCODER.encode(`cd ${shellQuote(host.defaultPath)}\n`));
+      // A 1Password reference can't be typed as a path; the backend read it and
+      // started the shell there already.
+      if (host?.defaultPath && !isOnePasswordReference(host.defaultPath)) sendInput(ENCODER.encode(`cd ${shellQuote(host.defaultPath)}\n`));
       // The host's startup command, typed in after that `cd` — visible in the terminal and
       // its history, exactly as if the user had entered it.
       if (host?.startupCommand) sendInput(ENCODER.encode(`${host.startupCommand}\n`));

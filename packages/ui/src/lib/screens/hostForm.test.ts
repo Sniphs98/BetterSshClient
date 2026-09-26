@@ -256,6 +256,17 @@ describe('1Password reference', () => {
     expect(formFromHost(host({ portRef: 'op://S/web-1/port' }))).toMatchObject({ portFrom1P: true, portRef: 'op://S/web-1/port' });
   });
 
+  it('takes the default path from 1Password, the reference in the field itself', () => {
+    const r = formToInput(fields({ name: 'n', hostname: 'h', defaultPath: '"op://S/web 1/path"', defaultPathFrom1P: true }));
+    expect(r.ok && r.input.defaultPath).toBe('op://S/web 1/path');
+    expect(formToInput(fields({ name: 'n', hostname: 'h', defaultPath: '/var/www', defaultPathFrom1P: true }))).toEqual({
+      ok: false,
+      error: 'Default path: 1Password reference must look like op://vault/item/field'
+    });
+    expect(formFromHost(host({ defaultPath: 'op://S/web-1/path' })).defaultPathFrom1P).toBe(true);
+    expect(formFromHost(host({ defaultPath: '/var/www' })).defaultPathFrom1P).toBe(false);
+  });
+
   it('seeds the edit form with the stored references, switched on', () => {
     const f = formFromHost(host({ passwordRef: 'op://a/b/c', hostname: 'op://a/b/host', user: 'deploy' }));
     expect(f).toMatchObject({ passwordRef: 'op://a/b/c', passwordFrom1P: true, hostnameFrom1P: true, userFrom1P: false });

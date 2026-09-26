@@ -102,13 +102,13 @@ test('a default path set on add is there again when the host is reopened for edi
   let editor = page.getByRole('dialog', { name: 'Add host' });
   await editor.getByLabel('Name', { exact: true }).fill('db-1');
   await editor.getByLabel('Hostname / IP').fill('db-1.example.com');
-  await editor.getByLabel('Default path').fill('/var/lib/postgresql');
+  await editor.getByLabel('Default path', { exact: true }).fill('/var/lib/postgresql');
   await editor.getByRole('button', { name: 'Add host' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Edit db-1' }).click();
   editor = page.getByRole('dialog', { name: 'Edit host' });
-  await expect(editor.getByLabel('Default path')).toHaveValue('/var/lib/postgresql');
+  await expect(editor.getByLabel('Default path', { exact: true })).toHaveValue('/var/lib/postgresql');
 });
 
 test('edits a manual host in place', async ({ page }) => {

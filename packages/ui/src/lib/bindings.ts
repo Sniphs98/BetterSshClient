@@ -48,6 +48,9 @@ export const commands = {
   async sftpOpen(hostName: string): Promise<Result<number, CommandError>> {
     return call('sftp_open', hostName);
   },
+  async sftpDefaultPath(hostName: string): Promise<Result<string | null, CommandError>> {
+    return call('sftp_default_path', hostName);
+  },
   async sftpList(sessionId: number, path: string): Promise<Result<null, CommandError>> {
     return call('sftp_list', sessionId, path);
   },

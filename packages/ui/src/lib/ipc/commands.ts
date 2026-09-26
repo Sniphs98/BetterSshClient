@@ -85,6 +85,13 @@ export async function sftpOpen(hostName: string): Promise<number> {
 }
 
 /** List a remote directory; the result arrives as `sftp-dir-listed`. */
+/** The host's default path, read from 1Password when it is a reference; null if none. */
+export async function sftpDefaultPath(hostName: string): Promise<string | null> {
+  const res = await commands.sftpDefaultPath(hostName);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
 export async function sftpList(sessionId: number, path: string): Promise<void> {
   const res = await commands.sftpList(sessionId, path);
   if (res.status === 'error') throw new Error(res.error.message);

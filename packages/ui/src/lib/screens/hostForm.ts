@@ -34,6 +34,8 @@ export interface HostFormFields {
   hostnameFrom1P: boolean;
   userFrom1P: boolean;
   portFrom1P: boolean;
+  /** The default path from 1Password — the reference in the field itself. */
+  defaultPathFrom1P: boolean;
   passwordFrom1P: boolean;
 }
 
@@ -58,6 +60,7 @@ export function emptyForm(): HostFormFields {
     hostnameFrom1P: false,
     userFrom1P: false,
     portFrom1P: false,
+    defaultPathFrom1P: false,
     passwordFrom1P: false
   };
 }
@@ -84,6 +87,7 @@ export function formFromHost(h: HostDto): HostFormFields {
     userFrom1P: isOnePasswordReference(h.user),
     portRef: h.portRef ?? '',
     portFrom1P: Boolean(h.portRef),
+    defaultPathFrom1P: isOnePasswordReference(h.defaultPath ?? ''),
     passwordFrom1P: Boolean(h.passwordRef)
   };
 }
@@ -152,7 +156,8 @@ export function formToInput(f: HostFormFields): HostFormResult {
   const password = f.password.trim();
   const notes = f.notes.trim();
   const tags = splitCsv(f.tags);
-  const defaultPath = f.defaultPath.trim();
+  const defaultPath = fieldValue(f.defaultPath, f.defaultPathFrom1P);
+  if (f.defaultPathFrom1P && !isOnePasswordReference(defaultPath)) return { ok: false, error: referenceError('Default path') };
   const startupCommand = f.startupCommand.trim();
   // Switched back to typing, the password's reference is dropped.
   const passwordRef = f.passwordFrom1P ? normalizeReference(f.passwordRef) : '';

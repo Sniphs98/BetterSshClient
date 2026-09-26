@@ -187,7 +187,7 @@
         {/if}
       </div>
 
-      {#if fields.hostnameFrom1P || fields.userFrom1P || fields.portFrom1P || fields.passwordFrom1P}
+      {#if fields.hostnameFrom1P || fields.userFrom1P || fields.portFrom1P || fields.passwordFrom1P || fields.defaultPathFrom1P}
         <p class="-mt-2.5 text-xs text-faint">
           Fields marked 1Password take a secret reference and are read from 1Password when connecting (needs the
           1Password CLI). In 1Password: right-click a field → Copy Secret Reference.
@@ -195,14 +195,19 @@
         <OnePasswordCliHint />
       {/if}
 
-      <label class={label}>
-        <span>Default path</span>
+      <div class={label}>
+        <div class={labelRow}>
+          <label for="host-default-path">Default path</label>
+          <OnePasswordToggle bind:on={fields.defaultPathFrom1P} field="Default path" />
+        </div>
         <input
+          id="host-default-path"
           bind:value={fields.defaultPath}
           class="{field} font-mono"
-          placeholder="/var/www (optional)"
+          placeholder={fields.defaultPathFrom1P ? 'op://Servers/web-1/path' : '/var/www (optional)'}
+          spellcheck="false"
         />
-      </label>
+      </div>
       <p class="-mt-2.5 text-xs text-faint">
         Opens a terminal or the SFTP browser already here, instead of the login directory /
         server root.
