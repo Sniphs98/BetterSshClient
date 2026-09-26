@@ -4,6 +4,7 @@
 // so both frontends produce the same `hosts.toml` shape and error messages.
 
 import type { HostDto, HostInputDto, MonitorModeDto } from '$lib/bindings';
+import { isOnePasswordReference, ONE_PASSWORD_REFERENCE_ERROR } from './onePasswordRef';
 
 /** The editable form fields — all raw text (tags are comma-separated, port a string). */
 export interface HostFormFields {
@@ -121,8 +122,8 @@ export function formToInput(f: HostFormFields): HostFormResult {
   const startupCommand = f.startupCommand.trim();
   // Same shape the app's 1Password reader accepts: op://vault/item[/section]/field.
   const passwordRef = f.passwordRef.trim();
-  if (passwordRef !== '' && !/^op:\/\/[^/\s]+\/[^/\s]+(\/[^/\s]+){1,2}$/.test(passwordRef)) {
-    return { ok: false, error: '1Password reference must look like op://vault/item/field' };
+  if (passwordRef !== '' && !isOnePasswordReference(passwordRef)) {
+    return { ok: false, error: ONE_PASSWORD_REFERENCE_ERROR };
   }
   return {
     ok: true,

@@ -66,3 +66,25 @@ export async function readSecret(reference: string): Promise<string> {
     throw new OnePasswordError(`1Password: ${detail || 'could not read the secret'}`);
   }
 }
+
+/** How long a secret read from 1Password is kept in memory, so new tabs and
+ *  reconnects within that window don't prompt again. The same trade-off as a
+ *  stored password, which is held decrypted in memory for the whole session. */
+export const SECRET_CACHE_MS = 10 * 60_000;
+const secretCache = new Map<string, { value: string; expires: number }>();
+
+/** `readSecret`, remembered for `SECRET_CACHE_MS` — shared by SSH hosts and remote
+ *  desktop connections, so one reference prompts once however it's used. */
+export async function readSecretCached(reference: string): Promise<string> {
+  const ref = reference.trim();
+  const cached = secretCache.get(ref);
+  if (cached && cached.expires > Date.now()) return cached.value;
+  const value = await readSecret(ref);
+  secretCache.set(ref, { value, expires: Date.now() + SECRET_CACHE_MS });
+  return value;
+}
+
+/** Forgets every remembered secret (tests). */
+export function clearSecretCache(): void {
+  secretCache.clear();
+}

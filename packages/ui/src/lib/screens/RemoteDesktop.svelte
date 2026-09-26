@@ -147,7 +147,15 @@
                     class="shrink-0 rounded-full border border-default px-1.5 py-0.5 text-[10px] uppercase text-faint"
                     >{connection.protocol}</span
                   >
-                  {#if connection.hasPassword}
+                  {#if connection.passwordRef}
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
+                      title="Password read from 1Password when connecting"
+                    >
+                      <Icon name="key" size={10} />
+                      1Password
+                    </span>
+                  {:else if connection.hasPassword}
                     <span
                       class="inline-flex shrink-0 items-center gap-1 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
                       title="Password saved — signs in by itself"

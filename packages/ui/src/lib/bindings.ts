@@ -479,6 +479,8 @@ export type RemoteDesktopConnectionDto = RdpSettingsDto & {
   viewOnly?: boolean | null;
   /** Name of the SSH host the connection is tunnelled through. */
   viaHost?: string | null;
+  /** A 1Password reference the password is read from at connect time. */
+  passwordRef?: string | null;
 };
 /** Inbound form payload for `save_remote_desktop_connection`. Omitting `password`
  *  means "keep the stored value" on an edit. */
@@ -494,6 +496,8 @@ export type RemoteDesktopConnectionInputDto = RdpSettingsDto & {
   viewOnly?: boolean | null;
   /** Name of the SSH host the connection is tunnelled through. */
   viaHost?: string | null;
+  /** A 1Password reference the password is read from at connect time. */
+  passwordRef?: string | null;
 };
 /** Only `'rdp'` is reachable from the UI for now — `'vnc'` exists so a later pass is
  *  additive, not a migration. */

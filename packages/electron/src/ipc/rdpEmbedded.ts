@@ -5,6 +5,7 @@ import { app, BrowserWindow, dialog, shell, type IpcMain } from 'electron';
 import { loadRemoteDesktopConnections } from '../core/config/remoteDesktop.js';
 import { RdpGateway } from '../core/rdp/gateway.js';
 import { checkCertificate, forgetCertificate } from '../core/rdp/knownCerts.js';
+import { connectionPassword } from '../core/rdp/password.js';
 import { saveReceivedFile } from '../core/rdp/savedFiles.js';
 import { SshSession } from '../core/ssh/session.js';
 import { toCommandError, type RdpCredentialsDto, type RdpEmbeddedOpenDto, type RdpEmbeddedStatusDto } from '../dto.js';
@@ -49,7 +50,8 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
       // A profile without a stored password (or user) asks in the tab; what's typed
       // there is used for this connection only.
       const username = typed?.username || connection.username;
-      const password = typed?.password || connection.password;
+      // Typed in the tab wins; else 1Password or the stored password.
+      const password = typed?.password || (await connectionPassword(connection));
       const domain = typed ? typed.domain || undefined : connection.domain;
       if (!username || !password) {
         return { kind: 'credentials', username: connection.username, domain: connection.domain };

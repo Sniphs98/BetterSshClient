@@ -152,6 +152,21 @@
         />
       </label>
 
+      <label class={label}>
+        <span>1Password reference</span>
+        <input
+          bind:value={fields.passwordRef}
+          class="{field} font-mono"
+          placeholder="op://Servers/office-pc/password (optional)"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <p class="-mt-2 text-xs text-faint">
+        Reads the password from 1Password when connecting instead of storing it (needs the 1Password CLI). In
+        1Password: right-click the password field → Copy Secret Reference.
+      </p>
+
       <section class="rounded-xl border border-default bg-surface-inset/40">
         <button
           type="button"

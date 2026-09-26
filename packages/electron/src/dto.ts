@@ -228,6 +228,8 @@ export interface RemoteDesktopConnectionDto extends RdpSettings {
   viewOnly?: boolean;
   /** SSH host the connection is tunnelled through. */
   viaHost?: string;
+  /** A 1Password reference — not a secret itself, so it travels both ways. */
+  passwordRef?: string;
 }
 
 /** Inbound form payload for `save_remote_desktop_connection`. `password` arrives here
@@ -245,6 +247,8 @@ export interface RemoteDesktopConnectionInputDto extends RdpSettings {
   viewOnly?: boolean;
   /** SSH host the connection is tunnelled through. */
   viaHost?: string;
+  /** A 1Password reference — not a secret itself, so it travels both ways. */
+  passwordRef?: string;
 }
 
 /** Credentials typed in the embedded viewer for a profile that doesn't store them;
@@ -298,6 +302,7 @@ export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection
     domain: connection.domain,
     viewOnly: connection.viewOnly,
     viaHost: connection.viaHost,
+    passwordRef: connection.passwordRef,
     ...rdpSettingsFrom(connection as unknown as Record<string, unknown>)
   };
 }
@@ -317,6 +322,7 @@ export function remoteDesktopConnectionFromInputDto(input: RemoteDesktopConnecti
     domain: input.domain,
     viewOnly: input.viewOnly,
     viaHost: input.viaHost,
+    passwordRef: input.passwordRef || undefined,
     ...rdpSettingsFrom(input as unknown as Record<string, unknown>)
   };
 }

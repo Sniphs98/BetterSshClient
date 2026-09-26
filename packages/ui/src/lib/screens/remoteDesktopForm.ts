@@ -6,6 +6,7 @@
 // small diff, not a rewrite.
 
 import type { RemoteDesktopConnectionDto, RemoteDesktopConnectionInputDto, RemoteDesktopProtocolDto } from '$lib/bindings';
+import { isOnePasswordReference, ONE_PASSWORD_REFERENCE_ERROR } from './onePasswordRef';
 
 export function defaultPort(protocol: RemoteDesktopProtocolDto): number {
   return protocol === 'vnc' ? 5900 : 3389;
@@ -24,6 +25,8 @@ export interface RemoteDesktopFormFields {
   domain: string;
   /** Name of the SSH host to tunnel through; blank connects directly. */
   viaHost: string;
+  /** 1Password reference the password is read from at connect time. Blank means none. */
+  passwordRef: string;
   /** Blank leaves it to the client. */
   display: '' | 'fullscreen' | 'window' | 'fit';
   /** Window size; both blank leaves it to the client. */
@@ -60,6 +63,7 @@ export function emptyForm(): RemoteDesktopFormFields {
     password: '',
     domain: '',
     viaHost: '',
+    passwordRef: '',
     ...SETTING_DEFAULTS
   };
 }
@@ -79,6 +83,7 @@ export function formFromConnection(c: RemoteDesktopConnectionDto): RemoteDesktop
     password: '',
     domain: c.domain ?? '',
     viaHost: c.viaHost ?? '',
+    passwordRef: c.passwordRef ?? '',
     display: c.display ?? SETTING_DEFAULTS.display,
     width: c.width ? String(c.width) : '',
     height: c.height ? String(c.height) : '',
@@ -117,6 +122,10 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
   const password = f.password.trim();
   const domain = f.domain.trim();
   const viaHost = f.viaHost.trim();
+  const passwordRef = f.passwordRef.trim();
+  if (passwordRef !== '' && !isOnePasswordReference(passwordRef)) {
+    return { ok: false, error: ONE_PASSWORD_REFERENCE_ERROR };
+  }
 
   let width: number | undefined;
   let height: number | undefined;
@@ -143,6 +152,7 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       password: password || undefined,
       domain: domain || undefined,
       viaHost: viaHost || undefined,
+      passwordRef: passwordRef || undefined,
       display: f.display || undefined,
       width,
       height,

@@ -77,6 +77,9 @@ export interface RemoteDesktopConnection extends RdpSettings {
   /** Name of an SSH host to tunnel the connection through; `hostname`/`port` are
    *  then as seen from that host. */
   viaHost?: string;
+  /** A 1Password secret reference (`op://vault/item/field`) the password is read
+   *  from at connect time instead of being stored. Takes precedence over `password`. */
+  passwordRef?: string;
 }
 
 interface RemoteDesktopFile {
@@ -109,6 +112,7 @@ function connectionFromToml(raw: Record<string, unknown>): RemoteDesktopConnecti
     domain: typeof raw.domain === 'string' ? raw.domain : undefined,
     viewOnly: typeof raw.viewOnly === 'boolean' ? raw.viewOnly : undefined,
     viaHost: typeof raw.viaHost === 'string' ? raw.viaHost : undefined,
+    passwordRef: typeof raw.passwordRef === 'string' ? raw.passwordRef : undefined,
     ...rdpSettingsFrom(raw)
   });
 }
@@ -127,6 +131,7 @@ function connectionToToml(connection: RemoteDesktopConnection): Record<string, u
   if (encrypted.domain !== undefined) out.domain = encrypted.domain;
   if (encrypted.viewOnly !== undefined) out.viewOnly = encrypted.viewOnly;
   if (encrypted.viaHost !== undefined) out.viaHost = encrypted.viaHost;
+  if (encrypted.passwordRef !== undefined) out.passwordRef = encrypted.passwordRef;
   for (const key of RDP_SETTING_KEYS) {
     if (encrypted[key] !== undefined) out[key] = encrypted[key];
   }

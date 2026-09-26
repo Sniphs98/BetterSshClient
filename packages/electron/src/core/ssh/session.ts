@@ -9,7 +9,7 @@ import { ConnectionPool, type Lease } from './connectionPool.js';
 import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
-import { readSecret } from '../secrets/onePassword.js';
+import { readSecretCached } from '../secrets/onePassword.js';
 
 /**
  * SSH session management via `ssh2`. Ported from
@@ -380,22 +380,12 @@ async function connectTunnelled(via: Client, host: Host): Promise<Client> {
   return authenticate(host, { sock: stream });
 }
 
-/** How long a password read from 1Password is kept in memory, so new tabs and
- *  reconnects within that window don't prompt again. The same trade-off as a
- *  stored password, which is held decrypted in memory for the whole session. */
-const SECRET_CACHE_MS = 10 * 60_000;
-const secretCache = new Map<string, { value: string; expires: number }>();
-
 /** The password for `host`: resolved from its 1Password reference if it has one,
  *  else the stored one. Resolved before connecting — a Windows Hello or Touch ID
  *  prompt can take longer than the connect timeout allows mid-handshake. */
 async function hostPassword(host: Host): Promise<string | undefined> {
   if (host.passwordRef === undefined) return host.password;
-  const cached = secretCache.get(host.passwordRef);
-  if (cached && cached.expires > Date.now()) return cached.value;
-  const value = await readSecret(host.passwordRef);
-  secretCache.set(host.passwordRef, { value, expires: Date.now() + SECRET_CACHE_MS });
-  return value;
+  return readSecretCached(host.passwordRef);
 }
 
 /** The auth methods to offer `host`, in priority order: agent → explicit

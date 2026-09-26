@@ -183,3 +183,23 @@ describe('describeSettings', () => {
     expect(describeSettings({ clipboard: false, audio: 'local' })).toEqual(['Client defaults']);
   });
 });
+
+describe('1Password reference', () => {
+  it('is kept when it looks like one, dropped when blank', () => {
+    const r = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: ' op://Servers/pc/password ' }));
+    expect(r.ok && r.input.passwordRef).toBe('op://Servers/pc/password');
+    const blank = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: '  ' }));
+    expect(blank.ok && blank.input.passwordRef).toBeUndefined();
+  });
+
+  it('is refused when it does not', () => {
+    expect(formToInput(fields({ name: 'n', hostname: 'h', passwordRef: 'Servers/pc/password' }))).toEqual({
+      ok: false,
+      error: '1Password reference must look like op://vault/item/field'
+    });
+  });
+
+  it('comes back from a saved connection', () => {
+    expect(formFromConnection(connection({ passwordRef: 'op://Servers/pc/password' })).passwordRef).toBe('op://Servers/pc/password');
+  });
+});
