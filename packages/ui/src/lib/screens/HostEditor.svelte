@@ -11,6 +11,8 @@
   import OnePasswordToggle from '$lib/components/OnePasswordToggle.svelte';
   import Select from '$lib/components/Select.svelte';
   import { formToInput, type HostFormFields } from './hostForm';
+  import { folderNames } from './dashboardSections';
+  import { hosts } from '$lib/stores/hosts';
 
   let {
     mode,
@@ -63,6 +65,9 @@
   // On edit the DTO omits identity/password (§3.4), so the fields start blank and mean
   // "keep the stored value"; on add they mean "none".
   const secretHint = $derived(mode === 'edit' ? 'Leave blank to keep the current value' : undefined);
+
+  // The folders already in use, offered as suggestions; typing a new name makes a new one.
+  const folders = $derived(folderNames($hosts));
 
   const label = 'block space-y-1 text-xs font-medium text-muted';
   const labelRow = 'flex items-center justify-between gap-2';
@@ -226,6 +231,22 @@
       <p class="-mt-2.5 text-xs text-faint">
         Runs in every new terminal on this host, right after it connects.
       </p>
+
+      <label class={label}>
+        <span>Folder</span>
+        <input
+          bind:value={fields.folder}
+          list="host-folders"
+          class={field}
+          placeholder="Optional — groups the card on the dashboard"
+          autocomplete="off"
+        />
+        <datalist id="host-folders">
+          {#each folders as name (name)}
+            <option value={name}></option>
+          {/each}
+        </datalist>
+      </label>
 
       <label class={label}>
         <span>Tags</span>

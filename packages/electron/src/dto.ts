@@ -22,6 +22,8 @@ export interface HostDto {
   port: number;
   tags: string[];
   notes?: string;
+  /** The dashboard folder; unset means none. */
+  folder?: string;
   source: HostSourceDto;
   hasKey: boolean;
   passwordAuthDisabled?: boolean;
@@ -48,6 +50,8 @@ export interface HostInputDto {
   proxyJump?: string;
   tags: string[];
   notes?: string;
+  /** The dashboard folder; blank or unset means none. */
+  folder?: string;
   monitoring?: MonitorModeDto;
   monitorPort?: number;
   defaultPath?: string;
@@ -83,6 +87,7 @@ export function hostToDto(host: Host): HostDto {
     port: host.port,
     tags: host.tags,
     notes: host.notes,
+    folder: host.folder,
     source: sourceToDto(host.source),
     hasKey: host.identityFile !== undefined,
     passwordAuthDisabled: host.passwordAuthDisabled,
@@ -109,6 +114,7 @@ export function hostFromInputDto(input: HostInputDto): Host {
     proxyJump: input.proxyJump,
     tags: input.tags,
     notes: input.notes,
+    folder: input.folder?.trim() || undefined,
     source: 'manual',
     monitoring: input.monitoring !== undefined ? monitorModeFromDto(input.monitoring) : 'ssh',
     monitorPort: input.monitorPort,
@@ -142,6 +148,8 @@ export interface AutomationNodeDto {
   snippetId: string;
   /** Set for an upload node: a local file to copy to the automation's host. */
   upload?: { from: string; to: string };
+  /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
+  wslDistro?: string;
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;

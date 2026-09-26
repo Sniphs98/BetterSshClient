@@ -36,9 +36,9 @@ export interface AutomationParam {
   default?: string;
 }
 
-/** Where a node's snippet runs: on this machine, or on the host the automation's
- *  `'host'` param resolves at run time. */
-export type NodeTarget = 'local' | 'remote';
+/** Where a node's snippet runs: on this machine, in a WSL distribution on it (Windows),
+ *  or on the host the automation's `'host'` param resolves at run time. */
+export type NodeTarget = 'local' | 'wsl' | 'remote';
 
 /** A built-in step instead of a snippet: copies a file from this machine to the
  *  automation's host over the app's own SFTP connection (its saved password,
@@ -66,6 +66,8 @@ export interface AutomationNode {
   /** Also a wiring concern rather than the snippet's own: the same command may belong
    *  on this machine in one automation and on a server in another. */
   target: NodeTarget;
+  /** For `target: 'wsl'`: which distribution; unset means WSL's default one. */
+  wslDistro?: string;
   /** Unused by the v1 (non-canvas) UI; round-tripped so a future Svelte Automation canvas
    *  needs no data migration. */
   position?: { x: number; y: number };

@@ -27,6 +27,13 @@ describe('hostFromToml / hostToToml round trip', () => {
     expect(written).not.toHaveProperty('monitor_port');
   });
 
+  it('a dashboard folder round-trips, and a host without one writes none', () => {
+    const inFolder = hostFromToml({ name: 'nas', hostname: '10.0.0.2', folder: 'Homelab' });
+    expect(inFolder.folder).toBe('Homelab');
+    expect(hostToToml(inFolder).folder).toBe('Homelab');
+    expect(hostToToml(hostFromToml({ name: 'web', hostname: '10.0.0.1', folder: '  ' }))).not.toHaveProperty('folder');
+  });
+
   it('a reachability host persists its mode and probe port', () => {
     const host = { ...defaultHost(), name: 'fw', hostname: '10.0.0.9', monitoring: 'tcp_port' as const, monitorPort: 8443 };
     const written = hostToToml(host);

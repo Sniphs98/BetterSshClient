@@ -20,6 +20,13 @@ export function spawnRdpSession(connectionId: string, name: string): Session {
   return session;
 }
 
+/** Opens a local terminal tab — a shell on this machine — for `profile`. */
+export function spawnLocalTerminal(profile: { id: string; label: string }): Session {
+  const session = sessions.spawn('terminal', profile.label, { localProfileId: profile.id });
+  activeEntity.activateSession(session.id);
+  return session;
+}
+
 export function closeSession(id: number): void {
   const active = get(activeEntity);
   if (active.kind === 'session' && active.id === id) {

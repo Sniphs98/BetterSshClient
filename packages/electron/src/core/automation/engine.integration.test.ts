@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runLocalCommand } from './localExec.js';
 import { uploadOverSession } from './upload.js';
+import { runWslCommand } from './wslExec.js';
 import type { Snippet, Automation } from './types.js';
 import { SshSession } from '../ssh/session.js';
 import { testTargetHost } from '../../testSupport/sshTestTarget.js';
@@ -18,6 +19,7 @@ import { testTargetHost } from '../../testSupport/sshTestTarget.js';
 function deps(): RunAutomationDeps {
   return {
     runLocal: runLocalCommand,
+    runWsl: runWslCommand,
     connectHost: async (hostName) => {
       const session = await SshSession.connect(testTargetHost());
       return {

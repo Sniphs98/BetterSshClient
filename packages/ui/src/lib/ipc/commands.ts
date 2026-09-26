@@ -4,6 +4,7 @@
 import { commands, type Channel } from '$lib/bindings';
 import type {
   SnippetDto,
+  TerminalProfileDto,
   FileEntryDto,
   AutomationDto,
   HostDto,
@@ -47,6 +48,24 @@ export async function deleteHost(name: string): Promise<void> {
 
 /** Open a terminal for `hostName`, streaming raw output into `onOutput`; returns the
  *  public session id used by the write/resize/close wrappers (tech-gui.md §3.3/§4.2). */
+/** The shells a local terminal tab can open here. */
+export async function terminalProfiles(): Promise<TerminalProfileDto[]> {
+  const res = await commands.terminalProfiles();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+export async function terminalOpenLocal(
+  profileId: string,
+  cols: number,
+  rows: number,
+  onOutput: Channel<TerminalBytes>
+): Promise<number> {
+  const res = await commands.terminalOpenLocal(profileId, cols, rows, onOutput);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
 export async function terminalOpen(
   hostName: string,
   cols: number,
@@ -260,6 +279,13 @@ export async function deleteSnippet(id: string): Promise<void> {
 }
 
 /** Read the saved Automations. */
+/** The WSL distributions on this machine; [] off Windows or without WSL. */
+export async function wslDistros(): Promise<string[]> {
+  const res = await commands.wslDistros();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
 export async function listAutomations(): Promise<AutomationDto[]> {
   const res = await commands.listAutomations();
   if (res.status === 'error') throw new Error(res.error.message);

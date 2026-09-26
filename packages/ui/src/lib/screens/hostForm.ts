@@ -16,6 +16,8 @@ export interface HostFormFields {
   password: string;
   tags: string;
   notes: string;
+  /** The dashboard folder the card sits in; blank means none. */
+  folder: string;
   monitoring: MonitorModeDto;
   /** Probe port; blank means "the host's SSH port". Only read for `tcpPort`. */
   monitorPort: string;
@@ -51,6 +53,7 @@ export function emptyForm(): HostFormFields {
     password: '',
     tags: '',
     notes: '',
+    folder: '',
     monitoring: 'ssh',
     monitorPort: '',
     defaultPath: '',
@@ -78,6 +81,7 @@ export function formFromHost(h: HostDto): HostFormFields {
     password: '',
     tags: h.tags.join(', '),
     notes: h.notes ?? '',
+    folder: h.folder ?? '',
     monitoring: h.monitoring,
     monitorPort: h.monitorPort == null ? '' : String(h.monitorPort),
     defaultPath: h.defaultPath ?? '',
@@ -173,6 +177,7 @@ export function formToInput(f: HostFormFields): HostFormResult {
       password: password || undefined,
       tags,
       notes: notes || undefined,
+      folder: f.folder.trim() || undefined,
       monitoring: f.monitoring,
       monitorPort,
       defaultPath: defaultPath || undefined,

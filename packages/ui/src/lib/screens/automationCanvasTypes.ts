@@ -13,6 +13,8 @@ export interface SnippetNodeData extends Record<string, unknown> {
   snippetName: string;
   /** Where this placement runs — the node's own call, not the snippet's. */
   target: NodeTargetDto;
+  /** For `target: 'wsl'`: the distribution; '' means WSL's default one. */
+  wslDistro: string;
 }
 
 export type SnippetNode = Node<SnippetNodeData, 'snippet'>;
@@ -83,6 +85,9 @@ export const AUTOMATION_PARAMS_CONTEXT = 'automation-params';
  *  itself. */
 export interface AutomationNodeActionsContext {
   editSnippet: (snippetId: string) => void;
+  /** The WSL distributions a node can run in — [] where there is no WSL, in which case
+   *  a node offers no WSL option (unless it already runs in WSL). */
+  wslDistros: () => string[];
 }
 
 export const AUTOMATION_NODE_ACTIONS_CONTEXT = 'automation-node-actions';

@@ -42,8 +42,17 @@ extraResources:
   - from: build/icons/256x256.png
     to: icon.png
 
+# Native modules are rebuilt for Electron by our own hook rather than electron-builder's,
+# which can't leave out node-pty (prebuilt, N-API) — see the file for why.
+npmRebuild: false
+beforePack: build/rebuild-native.cjs
+
 asarUnpack:
   - "**/*.node"
+  # Local terminals: node-pty starts helper programs (conpty.dll, OpenConsole.exe,
+  # winpty-agent.exe, spawn-helper on macOS) from its own folder, which they can't be
+  # inside the asar archive.
+  - "**/node_modules/node-pty/**"
 
 mac:
   # The zip is what electron-updater installs on macOS; the dmg is for first installs.

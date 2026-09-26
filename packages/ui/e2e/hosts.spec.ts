@@ -43,13 +43,19 @@ async function boot(page: Page): Promise<void> {
                 notes: h.notes,
                 source: 'manual',
                 hasKey: !!h.identityFile,
-                defaultPath: h.defaultPath
+                defaultPath: h.defaultPath,
+                folder: h.folder
               };
               const i = state.hosts.findIndex((x) => (x as { name: string }).name === view.name);
               if (i >= 0) state.hosts[i] = { ...state.hosts[i], ...view };
               else state.hosts.push(view);
               return Promise.resolve(null);
             }
+            // The shells for the dashboard's "This computer" section.
+            case 'terminal_profiles':
+              return Promise.resolve([{ id: 'pwsh', label: 'PowerShell', kind: 'powershell' }]);
+            case 'terminal_open_local':
+              return Promise.resolve(99);
             case 'delete_host':
               state.hosts = state.hosts.filter((x) => (x as { name: string }).name !== args[0]);
               return Promise.resolve(null);
@@ -177,4 +183,37 @@ test('rejects a new host whose name already exists', async ({ page }) => {
   // The editor stays open with an inline error rather than clobbering the existing host.
   await expect(editor).toBeVisible();
   await expect(editor.getByText('A host named "web-1" already exists')).toBeVisible();
+});
+
+test('folders group the cards into sections under "This computer"; dragging a card moves it', async ({ page }) => {
+  await boot(page);
+  const section = (title: string) => page.getByRole('button', { name: new RegExp(`^${title} \\d+$`) });
+
+  // The local shells come first, then — with no folders yet — every host under "Hosts".
+  await expect(section('This computer')).toBeVisible();
+  await expect(page.getByTitle('Open PowerShell in a tab')).toBeVisible();
+  await expect(section('Hosts')).toBeVisible();
+
+  // A folder, from the editor.
+  await page.getByRole('button', { name: 'Edit web-1' }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit host' });
+  await editor.getByLabel('Folder').fill('Homelab');
+  await editor.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(section('Homelab')).toBeVisible();
+  await expect(section('Other hosts')).toBeVisible();
+
+  // Collapsing a section hides its cards, and is remembered for next time.
+  await section('Homelab').click();
+  await expect(section('Homelab')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByText('web-1', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem('better-ssh-client-dashboard-collapsed'))).toBe('["folder:Homelab"]');
+  await section('Homelab').click();
+  await expect(page.getByText('web-1', { exact: true })).toBeVisible();
+
+  // Dragging the imported host's card onto Homelab moves it there.
+  const importedCard = page.locator('[draggable="true"]', { hasText: 'imported' });
+  await importedCard.dragTo(section('Homelab'));
+  await expect(section('Homelab')).toContainText('2');
+  await expect(section('Other hosts')).toHaveCount(0);
 });

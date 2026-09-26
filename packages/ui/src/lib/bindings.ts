@@ -36,6 +36,21 @@ export const commands = {
       return { status: 'error', error: e as CommandError };
     }
   },
+  /** The shells a local terminal tab can open on this machine. */
+  async terminalProfiles(): Promise<Result<TerminalProfileDto[], CommandError>> {
+    return call('terminal_profiles');
+  },
+  /** Opens a local terminal (profile `profileId`); output streams like an SSH tab's. */
+  async terminalOpenLocal(
+    profileId: string,
+    cols: number,
+    rows: number,
+    onOutput: Channel<TerminalBytes>
+  ): Promise<Result<number, CommandError>> {
+    const res = await call<number>('terminal_open_local', profileId, cols, rows);
+    if (res.status === 'ok') onOutput.attach(`terminal-output-${res.data}`);
+    return res;
+  },
   async terminalWrite(sessionId: number, data: Uint8Array): Promise<Result<null, CommandError>> {
     return call('terminal_write', sessionId, data);
   },
@@ -122,6 +137,9 @@ export const commands = {
   },
   async deleteSnippet(id: string): Promise<Result<null, CommandError>> {
     return call('delete_snippet', id);
+  },
+  async wslDistros(): Promise<Result<string[], CommandError>> {
+    return call('wsl_distros');
   },
   async listAutomations(): Promise<Result<AutomationDto[], CommandError>> {
     return call('list_automations');
@@ -296,7 +314,8 @@ export type AutomationFailed = { automationName: string; error: string };
 export type AutomationStarted = { automationName: string };
 /** Where a node's snippet runs: on this machine, or on the host the automation's
  *  `'host'` param resolves at run time. */
-export type NodeTargetDto = 'local' | 'remote';
+/** Where a node runs: this machine, a WSL distribution on it, or the automation's host. */
+export type NodeTargetDto = 'local' | 'wsl' | 'remote';
 /** One node's result within a running automation. */
 export type AutomationNodeResult = NodeResultDto & { automationName: string };
 /** A node started executing. */
@@ -338,6 +357,8 @@ export type AutomationNodeDto = {
   snippetId: string;
   /** Set for an upload step: a file on this machine copied to the automation's host. */
   upload?: { from: string; to: string } | null;
+  /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
+  wslDistro?: string | null;
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;
@@ -357,6 +378,8 @@ export type HostDto = {
   port: number;
   tags: string[];
   notes?: string | null;
+  /** The dashboard folder the card sits in; unset means none. */
+  folder?: string | null;
   source: HostSourceDto;
   hasKey: boolean;
   passwordAuthDisabled?: boolean | null;
@@ -380,6 +403,8 @@ export type HostInputDto = {
   proxyJump?: string | null;
   tags: string[];
   notes?: string | null;
+  /** The dashboard folder the card sits in; unset means none. */
+  folder?: string | null;
   monitoring?: MonitorModeDto | null;
   monitorPort?: number | null;
   defaultPath?: string | null;
@@ -565,6 +590,14 @@ export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error:
  *  `new Channel<TerminalBytes>()`, then set `.onmessage`. Internally subscribes
  *  to the per-session `terminal-output-<id>` event once `terminalOpen` resolves
  *  a session id (see `commands.terminalOpen` above). */
+/** A shell a local terminal tab can open: PowerShell, Command Prompt, a WSL distribution, zsh, … */
+export type TerminalProfileDto = {
+  /** Stable across runs: `pwsh`, `cmd`, `wsl:Ubuntu`, `shell:/bin/zsh`, … */
+  id: string;
+  label: string;
+  kind: 'powershell' | 'cmd' | 'bash' | 'wsl' | 'shell';
+};
+
 export class Channel<T> {
   onmessage: (payload: T) => void = () => {};
   private off: UnlistenFn | undefined;

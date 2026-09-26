@@ -6,19 +6,22 @@
   // (add/edit/delete, §4.1) lives here — there is no separate Hosts screen (§2).
   // Editing an SSH-config host adopts it into hosts.toml; the file itself is never
   // written, so only Delete stays manual-only.
+  import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import type { HostDto, HostInputDto } from '$lib/bindings';
+  import type { HostDto, HostInputDto, TerminalProfileDto } from '$lib/bindings';
   import { Surface, Chip, StatusDot, Icon, Button, statusToken } from '$lib/theme';
-  import { serverCards, filterHosts, QUICK_ACTIONS } from './serverCard';
-  import { spawnSession } from '$lib/stores/navigation';
+  import { serverCards, filterHosts, QUICK_ACTIONS, type ServerCard } from './serverCard';
+  import { groupCards, LOCAL_KEY } from './dashboardSections';
+  import { collapsedSections } from '$lib/stores/dashboardLayout';
+  import { spawnSession, spawnLocalTerminal } from '$lib/stores/navigation';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import { addressLine } from './onePasswordRef';
   import { hosts } from '$lib/stores/hosts';
   import { lastError } from '$lib/stores/notifications';
-  import { saveHost, deleteHost, reloadHosts, startKeySetup, refreshMetrics } from '$lib/ipc/commands';
+  import { saveHost, deleteHost, reloadHosts, startKeySetup, refreshMetrics, terminalProfiles } from '$lib/ipc/commands';
   import { isRefreshHotkey } from '$lib/stores/ui';
   import { beginKeySetup, dismissKeySetup } from '$lib/stores/keySetup';
-  import { emptyForm, formFromHost } from './hostForm';
+  import { emptyForm, formFromHost, formToInput } from './hostForm';
   import HostEditor from './HostEditor.svelte';
   import Modal from '$lib/components/Modal.svelte';
 
@@ -39,6 +42,64 @@
   let searchOpen = $state(false);
   let searchInput = $state<HTMLInputElement>();
   const visibleCards = $derived(filterHosts($serverCards, query));
+  // Accordion sections: a folder each, then the hosts in none (dashboardSections.ts).
+  const sections = $derived(groupCards(visibleCards));
+
+  // The local shells for the fixed "This computer" section, found once per visit.
+  let localShells = $state<TerminalProfileDto[]>([]);
+  onMount(() => {
+    terminalProfiles().then(
+      (list) => (localShells = Array.isArray(list) ? list : []),
+      () => (localShells = [])
+    );
+  });
+  const visibleLocal = $derived(
+    query.trim() ? localShells.filter((s) => s.label.toLowerCase().includes(query.trim().toLowerCase())) : localShells
+  );
+  // The tile's second line: what kind of thing it opens (the label already names it).
+  const shellKind = (kind: TerminalProfileDto['kind']): string => (kind === 'wsl' ? 'WSL distribution' : 'Local shell');
+
+  // Every section is open while searching, so a match is never hidden in a closed one.
+  function isCollapsed(key: string): boolean {
+    return !query.trim() && $collapsedSections.has(key);
+  }
+
+  // Dragging a card onto another section moves the host into that folder (or out of
+  // every folder, for the "no folder" one) — the same save its editor's Folder field does.
+  const HOST_DRAG = 'application/x-better-ssh-client-host';
+  let dropTarget = $state<string | null>(null);
+
+  function onDragStart(e: DragEvent, hostName: string): void {
+    e.dataTransfer?.setData(HOST_DRAG, hostName);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onDragOver(e: DragEvent, key: string): void {
+    if (!e.dataTransfer?.types.includes(HOST_DRAG)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    dropTarget = key;
+  }
+
+  async function onDrop(e: DragEvent, folder: string): Promise<void> {
+    const hostName = e.dataTransfer?.getData(HOST_DRAG);
+    dropTarget = null;
+    if (!hostName) return;
+    e.preventDefault();
+    const host = get(hosts).find((h) => h.name === hostName);
+    if (!host || (host.folder ?? '') === folder) return;
+    const result = formToInput({ ...formFromHost(host), folder });
+    if (!result.ok) {
+      lastError.set(result.error);
+      return;
+    }
+    try {
+      await saveHost(result.input);
+      await reloadHosts();
+    } catch (err) {
+      lastError.set(message(err));
+    }
+  }
 
   function toggleSearch(): void {
     searchOpen = !searchOpen;
@@ -188,6 +249,31 @@
     </div>
   </div>
 
+  <!-- This computer: the local shells, always first (a fixed section, not a folder). -->
+  {#if visibleLocal.length > 0}
+    {@render sectionHeader(LOCAL_KEY, 'This computer', visibleLocal.length, null)}
+    {#if !isCollapsed(LOCAL_KEY)}
+      <div class="mb-6 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(12rem,1fr))]">
+        {#each visibleLocal as shell (shell.id)}
+          <button
+            type="button"
+            class="flex items-center gap-3 rounded-xl border border-default bg-surface px-4 py-3 text-left transition hover:border-strong hover:bg-surface-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+            title="Open {shell.label} in a tab"
+            onclick={() => spawnLocalTerminal(shell)}
+          >
+            <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted">
+              <Icon name="terminal" size={15} />
+            </span>
+            <span class="min-w-0">
+              <span class="block truncate text-sm font-medium">{shell.label}</span>
+              <span class="block truncate text-xs text-faint">{shellKind(shell.kind)}</span>
+            </span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+  {/if}
+
   {#if $serverCards.length === 0}
     <div class="flex flex-col items-center justify-center gap-2 py-20 text-center">
       <p class="font-medium">No servers yet</p>
@@ -202,177 +288,224 @@
       <p class="text-sm text-muted">No hosts match “{query}”.</p>
     </div>
   {:else}
-    <div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
-      {#each visibleCards as card, i (i)}
-        <Surface class="flex flex-col gap-4 p-5">
-          <!-- Identity, then the actions on their own row so the name and address
-               stay readable at any card width (a full row instead of sharing it). -->
-          <div class="flex flex-col gap-3">
-            <div class="flex min-w-0 items-start gap-2.5">
-              <span class="mt-1 shrink-0">
-                <StatusDot status={card.overall} size={9} label="{card.host.name} status" />
-              </span>
-              <div class="min-w-0">
-                <div class="flex min-w-0 items-center gap-2">
-                  <span class="truncate font-medium" title={card.host.name}>{card.host.name}</span>
-                  {#if card.host.source === 'sshConfig'}
-                    <span
-                      class="shrink-0 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
-                      title="Imported from ~/.ssh/config — editing saves your own copy, which takes priority"
-                    >
-                      ssh config
-                    </span>
-                  {/if}
-                  <!-- Auth-state reflection (tech-gui.md §4.2): key-only once password
-                       auth is disabled, otherwise a plain key badge when a key exists. -->
-                  {#if card.host.passwordAuthDisabled}
-                    <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
-                      title="Password authentication disabled — key only"
-                    >
-                      <Icon name="shield" size={10} />
-                      key-only
-                    </span>
-                  {:else if card.host.hasKey}
-                    <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
-                      title="Key authentication configured"
-                    >
-                      <Icon name="key" size={10} />
-                      key
-                    </span>
-                  {/if}
-                </div>
-                <div class="truncate font-mono text-xs text-faint">
-                  {addressLine(card.host, displayHostname(card.host.hostname, $streamerMode))}
-                </div>
+    {#each sections as section (section.key)}
+      <!-- svelte-ignore a11y_no_static_element_interactions -- a drop zone for dragged
+           cards; moving a host is also possible from its editor's Folder field. -->
+      <div
+        class="mb-6 rounded-xl transition {dropTarget === section.key ? 'bg-surface-inset/60 ring-2 ring-focus' : ''}"
+        ondragover={(e) => onDragOver(e, section.key)}
+        ondragleave={() => (dropTarget = dropTarget === section.key ? null : dropTarget)}
+        ondrop={(e) => onDrop(e, section.folder)}
+      >
+        {@render sectionHeader(section.key, section.title, section.cards.length, section.folder)}
+        {#if !isCollapsed(section.key)}
+          <div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
+            {#each section.cards as card (card.host.name)}
+              <div draggable="true" ondragstart={(e) => onDragStart(e, card.host.name)} ondragend={() => (dropTarget = null)} role="listitem">
+                {@render hostCard(card)}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/each}
+  {/if}
+</section>
+
+{#snippet sectionHeader(key: string, title: string, count: number, folder: string | null)}
+  <button
+    type="button"
+    class="mb-3 flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-sm font-semibold text-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+    aria-expanded={!isCollapsed(key)}
+    title={query ? 'Showing every section while searching' : isCollapsed(key) ? `Show ${title}` : `Hide ${title}`}
+    onclick={() => collapsedSections.toggle(key)}
+  >
+    <svg
+      class="h-3 w-3 shrink-0 transition-transform {isCollapsed(key) ? '-rotate-90' : ''}"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 4.5 6 7.5 9 4.5" />
+    </svg>
+    {#if folder}<Icon name="folder" size={14} />{/if}
+    <span class="truncate">{title}</span>
+    <span class="rounded-full bg-surface-inset px-1.5 text-[11px] font-medium text-faint">{count}</span>
+  </button>
+{/snippet}
+
+{#snippet hostCard(card: ServerCard)}
+      <Surface class="flex flex-col gap-4 p-5">
+        <!-- Drag handle: the whole card; dropped on another section it moves there. -->
+        <!-- Identity, then the actions on their own row so the name and address
+             stay readable at any card width (a full row instead of sharing it). -->
+        <div class="flex flex-col gap-3">
+          <div class="flex min-w-0 items-start gap-2.5">
+            <span class="mt-1 shrink-0">
+              <StatusDot status={card.overall} size={9} label="{card.host.name} status" />
+            </span>
+            <div class="min-w-0">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="truncate font-medium" title={card.host.name}>{card.host.name}</span>
+                {#if card.host.source === 'sshConfig'}
+                  <span
+                    class="shrink-0 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
+                    title="Imported from ~/.ssh/config — editing saves your own copy, which takes priority"
+                  >
+                    ssh config
+                  </span>
+                {/if}
+                <!-- Auth-state reflection (tech-gui.md §4.2): key-only once password
+                     auth is disabled, otherwise a plain key badge when a key exists. -->
+                {#if card.host.passwordAuthDisabled}
+                  <span
+                    class="inline-flex shrink-0 items-center gap-1 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
+                    title="Password authentication disabled — key only"
+                  >
+                    <Icon name="shield" size={10} />
+                    key-only
+                  </span>
+                {:else if card.host.hasKey}
+                  <span
+                    class="inline-flex shrink-0 items-center gap-1 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
+                    title="Key authentication configured"
+                  >
+                    <Icon name="key" size={10} />
+                    key
+                  </span>
+                {/if}
+              </div>
+              <div class="truncate font-mono text-xs text-faint">
+                {addressLine(card.host, displayHostname(card.host.hostname, $streamerMode))}
               </div>
             </div>
-            <div class="flex flex-wrap items-center gap-1.5">
-              {#each QUICK_ACTIONS as action (action.id)}
-                <button
-                  type="button"
-                  class={pill}
-                  title="{action.label} on {card.host.name}"
-                  onclick={() => spawnSession(action.kind, card.host.name)}
-                >
-                  <Icon name={action.kind} size={13} />
-                  {action.label}
-                </button>
-              {/each}
-              <!-- Key setup stays manual-only even though edit no longer is: it records
-                   `key_setup_date`/`password_auth_disabled` through `save_hosts`, which
-                   keeps manual entries only — on an import that outcome would be dropped.
-                   Adopt the host first, then set up its key. -->
-              {#if card.host.source === 'manual' && !card.host.hasKey}
-                <button
-                  type="button"
-                  class={iconBtn}
-                  title="Set up an SSH key for {card.host.name}"
-                  aria-label="Set up an SSH key for {card.host.name}"
-                  onclick={() => {
-                    disablePasswordAuth = true;
-                    dialog = { kind: 'keySetupConfirm', host: card.host };
-                  }}
-                >
-                  <Icon name="key" size={14} />
-                </button>
-              {/if}
-              <!-- Editing an import adopts it into hosts.toml (§4.2); ~/.ssh/config is
-                   never written, so the action is offered whatever the source. Delete
-                   stays manual-only: there is nothing of an import to remove here. -->
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            {#each QUICK_ACTIONS as action (action.id)}
+              <button
+                type="button"
+                class={pill}
+                title="{action.label} on {card.host.name}"
+                onclick={() => spawnSession(action.kind, card.host.name)}
+              >
+                <Icon name={action.kind} size={13} />
+                {action.label}
+              </button>
+            {/each}
+            <!-- Key setup stays manual-only even though edit no longer is: it records
+                 `key_setup_date`/`password_auth_disabled` through `save_hosts`, which
+                 keeps manual entries only — on an import that outcome would be dropped.
+                 Adopt the host first, then set up its key. -->
+            {#if card.host.source === 'manual' && !card.host.hasKey}
               <button
                 type="button"
                 class={iconBtn}
-                title="Edit {card.host.name}"
-                aria-label="Edit {card.host.name}"
-                onclick={() => (dialog = { kind: 'edit', host: card.host })}
+                title="Set up an SSH key for {card.host.name}"
+                aria-label="Set up an SSH key for {card.host.name}"
+                onclick={() => {
+                  disablePasswordAuth = true;
+                  dialog = { kind: 'keySetupConfirm', host: card.host };
+                }}
               >
-                <Icon name="edit" size={14} />
+                <Icon name="key" size={14} />
               </button>
-              {#if card.host.source === 'manual'}
-                <button
-                  type="button"
-                  class={iconBtn}
-                  title="Delete {card.host.name}"
-                  aria-label="Delete {card.host.name}"
-                  onclick={() => (dialog = { kind: 'delete', host: card.host })}
+            {/if}
+            <!-- Editing an import adopts it into hosts.toml (§4.2); ~/.ssh/config is
+                 never written, so the action is offered whatever the source. Delete
+                 stays manual-only: there is nothing of an import to remove here. -->
+            <button
+              type="button"
+              class={iconBtn}
+              title="Edit {card.host.name}"
+              aria-label="Edit {card.host.name}"
+              onclick={() => (dialog = { kind: 'edit', host: card.host })}
+            >
+              <Icon name="edit" size={14} />
+            </button>
+            {#if card.host.source === 'manual'}
+              <button
+                type="button"
+                class={iconBtn}
+                title="Delete {card.host.name}"
+                aria-label="Delete {card.host.name}"
+                onclick={() => (dialog = { kind: 'delete', host: card.host })}
+              >
+                <Icon name="trash" size={14} />
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Reachability, live metrics, or an offline state -->
+        {#if card.reachability}
+          <div
+            class="rounded-lg bg-surface-inset px-3 py-3 text-center text-xs"
+            style="color: {statusToken(card.overall)};"
+          >
+            {card.reachability}{card.host.monitorPort ? ` · port ${card.host.monitorPort}` : ''}
+          </div>
+        {:else if card.offline}
+          <div class="rounded-lg bg-surface-inset px-3 py-3 text-center text-xs text-faint">offline</div>
+        {:else}
+          <div class="space-y-2">
+            {#each card.metricRows as row (row.label)}
+              <div class="flex items-center gap-3">
+                <span class="w-9 shrink-0 text-[11px] uppercase tracking-wider text-faint">{row.label}</span>
+                <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-inset">
+                  {#if row.percent != null}
+                    <div
+                      class="h-full rounded-full"
+                      style="width: {Math.min(row.percent, 100)}%; background-color: {statusToken(row.status)};"
+                    ></div>
+                  {/if}
+                </div>
+                <span
+                  class="w-10 shrink-0 text-right text-xs tabular-nums {row.percent == null
+                    ? 'text-faint'
+                    : 'text-muted'}"
                 >
-                  <Icon name="trash" size={14} />
-                </button>
-              {/if}
-            </div>
+                  {row.percent != null ? `${Math.round(row.percent)}%` : '—'}
+                </span>
+              </div>
+            {/each}
           </div>
 
-          <!-- Reachability, live metrics, or an offline state -->
-          {#if card.reachability}
-            <div
-              class="rounded-lg bg-surface-inset px-3 py-3 text-center text-xs"
-              style="color: {statusToken(card.overall)};"
-            >
-              {card.reachability}{card.host.monitorPort ? ` · port ${card.host.monitorPort}` : ''}
+          {#if card.uptime || card.osInfo}
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+              {#if card.uptime}<span>up {card.uptime}</span>{/if}
+              {#if card.uptime && card.osInfo}<span class="text-faint">·</span>{/if}
+              {#if card.osInfo}<span class="min-w-0 truncate">{card.osInfo}</span>{/if}
             </div>
-          {:else if card.offline}
-            <div class="rounded-lg bg-surface-inset px-3 py-3 text-center text-xs text-faint">offline</div>
-          {:else}
-            <div class="space-y-2">
-              {#each card.metricRows as row (row.label)}
-                <div class="flex items-center gap-3">
-                  <span class="w-9 shrink-0 text-[11px] uppercase tracking-wider text-faint">{row.label}</span>
-                  <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-inset">
-                    {#if row.percent != null}
-                      <div
-                        class="h-full rounded-full"
-                        style="width: {Math.min(row.percent, 100)}%; background-color: {statusToken(row.status)};"
-                      ></div>
-                    {/if}
-                  </div>
-                  <span
-                    class="w-10 shrink-0 text-right text-xs tabular-nums {row.percent == null
-                      ? 'text-faint'
-                      : 'text-muted'}"
-                  >
-                    {row.percent != null ? `${Math.round(row.percent)}%` : '—'}
-                  </span>
-                </div>
-              {/each}
-            </div>
-
-            {#if card.uptime || card.osInfo}
-              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                {#if card.uptime}<span>up {card.uptime}</span>{/if}
-                {#if card.uptime && card.osInfo}<span class="text-faint">·</span>{/if}
-                {#if card.osInfo}<span class="min-w-0 truncate">{card.osInfo}</span>{/if}
-              </div>
-            {/if}
-
-            {#if card.topProcesses.length}
-              <ul class="space-y-1">
-                {#each card.topProcesses as proc, p (p)}
-                  <li class="flex items-center justify-between gap-3 text-xs">
-                    <span class="min-w-0 truncate font-mono text-muted">{proc.name}</span>
-                    <span class="shrink-0 tabular-nums text-faint">{Math.round(proc.cpuPercent)}%</span>
-                  </li>
-                {/each}
-              </ul>
-            {/if}
           {/if}
 
-          <!-- Detected services -->
-          {#if card.detectedServices.length}
-            <div class="flex flex-wrap gap-1.5">
-              {#each card.detectedServices as service (service.kind)}
-                <Chip>{service.detail ? `${service.name} · ${service.detail}` : service.name}</Chip>
+          {#if card.topProcesses.length}
+            <ul class="space-y-1">
+              {#each card.topProcesses as proc, p (p)}
+                <li class="flex items-center justify-between gap-3 text-xs">
+                  <span class="min-w-0 truncate font-mono text-muted">{proc.name}</span>
+                  <span class="shrink-0 tabular-nums text-faint">{Math.round(proc.cpuPercent)}%</span>
+                </li>
               {/each}
-            </div>
-          {:else if card.servicesError}
-            <div class="text-xs text-faint">Service scan unavailable</div>
+            </ul>
           {/if}
-        </Surface>
-      {/each}
-    </div>
-  {/if}
-</section>
+        {/if}
+
+        <!-- Detected services -->
+        {#if card.detectedServices.length}
+          <div class="flex flex-wrap gap-1.5">
+            {#each card.detectedServices as service (service.kind)}
+              <Chip>{service.detail ? `${service.name} · ${service.detail}` : service.name}</Chip>
+            {/each}
+          </div>
+        {:else if card.servicesError}
+          <div class="text-xs text-faint">Service scan unavailable</div>
+        {/if}
+      </Surface>
+{/snippet}
 
 {#if dialog?.kind === 'add'}
   <HostEditor mode="add" initial={emptyForm()} onSubmit={submit} onCancel={() => (dialog = null)} />

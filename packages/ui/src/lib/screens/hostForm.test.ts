@@ -221,6 +221,16 @@ describe('formToInput — monitoring mode', () => {
   });
 });
 
+describe('folder', () => {
+  it('is saved trimmed, blank meaning none, and comes back on edit', () => {
+    const inFolder = formToInput(fields({ name: 'n', hostname: 'h', folder: ' Homelab ' }));
+    expect(inFolder.ok && inFolder.input.folder).toBe('Homelab');
+    const none = formToInput(fields({ name: 'n', hostname: 'h', folder: '  ' }));
+    expect(none.ok && none.input.folder).toBeUndefined();
+    expect(formFromHost(host({ folder: 'Homelab' })).folder).toBe('Homelab');
+  });
+});
+
 describe('1Password reference', () => {
   it('passes the password reference through, trimmed, while the password is switched to 1Password', () => {
     const set = formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: true, passwordRef: ' op://Servers/web-1/password ' }));

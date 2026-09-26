@@ -17,7 +17,7 @@
   import { closeSession } from '$lib/stores/navigation';
   import { terminalDidExit } from '$lib/ipc/router';
   import { lastError } from '$lib/stores/notifications';
-  import { terminalOpen, terminalWrite, terminalResize, terminalClose } from '$lib/ipc/commands';
+  import { terminalOpen, terminalOpenLocal, terminalWrite, terminalResize, terminalClose } from '$lib/ipc/commands';
   import { shouldFadeTop } from './terminalFade';
   import { chunkBytes } from './terminalInput';
   import { shellQuote } from './shellQuote';
@@ -209,7 +209,10 @@
 
       // Fit before opening so the remote PTY starts at the visible size.
       safeFit();
-      const id = await terminalOpen(session.hostName, term.cols || 80, term.rows || 24, channel);
+      // A local tab is a shell on this machine (its profile), not a host.
+      const id = session.localProfileId
+        ? await terminalOpenLocal(session.localProfileId, term.cols || 80, term.rows || 24, channel)
+        : await terminalOpen(session.hostName, term.cols || 80, term.rows || 24, channel);
       if (destroyed) {
         void terminalClose(id).catch(() => {});
         return;
@@ -227,7 +230,7 @@
       // there; a fresh terminal cd's into it too), same technique as
       // SftpTerminalDrawer.svelte: queued by the pty until the shell is ready to read
       // it, no race with the shell's own startup.
-      const host = get(hosts).find((h) => h.name === session.hostName);
+      const host = session.localProfileId ? undefined : get(hosts).find((h) => h.name === session.hostName);
       // A 1Password reference can't be typed as a path; the backend read it and
       // started the shell there already.
       if (host?.defaultPath && !isOnePasswordReference(host.defaultPath)) sendInput(ENCODER.encode(`cd ${shellQuote(host.defaultPath)}\n`));
