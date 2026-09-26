@@ -215,6 +215,8 @@ export interface RunAutomationDeps {
    *  fakeable in tests. */
   connectHost: (hostName: string) => Promise<RunAutomationConnection>;
   runLocal: (command: string, timeoutMs: number) => Promise<{ output: string; ok: boolean; error?: string }>;
+  /** A `'wsl'` node: `command` in WSL distribution `distro` (its default one when unset). */
+  runWsl: (distro: string | undefined, command: string, timeoutMs: number) => Promise<{ output: string; ok: boolean; error?: string }>;
 }
 
 export type AutomationProgressEvent =
@@ -303,6 +305,9 @@ export async function runAutomation(
         } else if (node.target === 'local') {
           const command = substituteTemplate(snippet!.command, predecessorsByLabel, paramValues);
           exec = await deps.runLocal(command, snippet!.timeoutSecs * 1000);
+        } else if (node.target === 'wsl') {
+          const command = substituteTemplate(snippet!.command, predecessorsByLabel, paramValues);
+          exec = await deps.runWsl(node.wslDistro || undefined, command, snippet!.timeoutSecs * 1000);
         } else {
           const command = substituteTemplate(snippet!.command, predecessorsByLabel, paramValues);
           const connection = await connectionFor(nodeHostName!);

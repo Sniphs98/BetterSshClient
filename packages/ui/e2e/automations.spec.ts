@@ -58,6 +58,8 @@ async function boot(page: Page): Promise<void> {
             state.snippets = state.snippets.filter((x) => x.id !== args[0]);
             return Promise.resolve(null);
           }
+          case 'wsl_distros':
+            return Promise.resolve(['Ubuntu']);
           case 'list_automations':
             return Promise.resolve([...state.automations]);
           case 'save_automation': {
@@ -423,6 +425,42 @@ test('an upload step: added from the "+" menu, saved as a node without a snippet
   const reopened = page.locator('.svelte-flow__node', { hasText: 'Upload a file to the host' });
   await expect(reopened.getByLabel('From this computer')).toHaveValue('image.tar.gz');
   await expect(reopened.getByLabel('To on the host')).toHaveValue('/tmp/');
+});
+
+test('a node can run in WSL, in a chosen distribution, without needing a host', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  await page.getByRole('button', { name: 'New snippet' }).first().click();
+  const snippetEditor = page.getByRole('dialog', { name: 'New snippet' });
+  await snippetEditor.getByLabel('Name').fill('Save image');
+  await snippetEditor.getByLabel('Command').fill('docker save -o image.tar nginx');
+  await snippetEditor.getByRole('button', { name: 'Add snippet' }).click();
+
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('in-wsl');
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Save image/ }).click();
+
+  const node = page.locator('.svelte-flow__node', { hasText: 'Save image' });
+  await expect(node.getByLabel('WSL distribution')).toHaveCount(0);
+  await node.getByRole('button', { name: 'WSL' }).click();
+  await expect(node.getByRole('button', { name: 'WSL' })).toHaveAttribute('aria-pressed', 'true');
+  await node.getByLabel('WSL distribution').selectOption('Ubuntu');
+
+  // No host parameter needed: WSL is on this machine.
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  const saved = await page.evaluate(
+    () => (window as unknown as { __automationState: { automations: Array<{ nodes: unknown[] }> } }).__automationState.automations[0].nodes[0]
+  );
+  expect(saved).toMatchObject({ target: 'wsl', wslDistro: 'Ubuntu' });
+
+  await page.getByText('in-wsl', { exact: true }).click();
+  const reopened = page.locator('.svelte-flow__node', { hasText: 'Save image' });
+  await expect(reopened.getByRole('button', { name: 'WSL' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(reopened.getByLabel('WSL distribution')).toHaveValue('Ubuntu');
 });
 
 test('the "+" menu can create a brand new snippet inline and drops it straight onto the canvas', async ({

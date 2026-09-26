@@ -25,7 +25,7 @@
   import type { SnippetDto, AutomationDto, AutomationParamDto, AutomationParamKindDto } from '$lib/bindings';
   import { Button, Icon } from '$lib/theme';
   import { snippets, automations } from '$lib/stores/automations';
-  import { listSnippets, listAutomations, saveSnippet, saveAutomation } from '$lib/ipc/commands';
+  import { listSnippets, listAutomations, saveSnippet, saveAutomation, wslDistros } from '$lib/ipc/commands';
   import { activeEntity } from '$lib/stores/activeEntity';
   import { palette } from '$lib/stores/palette';
   import { theme } from '$lib/stores/theme';
@@ -113,7 +113,8 @@
           label: n.label,
           continueOnError: n.continueOnError,
           snippetName: snippet?.name ?? 'unknown snippet',
-          target: n.target
+          target: n.target,
+          wslDistro: n.wslDistro ?? ''
         }
       };
     })
@@ -165,10 +166,20 @@
   let editingSnippetId = $state<string | null>(null);
   const editingSnippet = $derived($snippets.find((a) => a.id === editingSnippetId) ?? null);
 
+  // Asked once per editor: which WSL distributions a node could run in.
+  let distros = $state<string[]>([]);
+  onMount(() => {
+    wslDistros().then(
+      (list) => (distros = Array.isArray(list) ? list : []),
+      () => (distros = [])
+    );
+  });
+
   setContext<AutomationNodeActionsContext>(AUTOMATION_NODE_ACTIONS_CONTEXT, {
     editSnippet: (snippetId: string) => {
       editingSnippetId = snippetId;
-    }
+    },
+    wslDistros: () => distros
   });
 
   async function submitSnippetEdit(snippet: SnippetDto): Promise<void> {
@@ -207,7 +218,8 @@
           continueOnError: false,
           snippetName: snippet.name,
           // A new node runs locally until the user flips it on the node itself.
-          target: 'local' as const
+          target: 'local' as const,
+          wslDistro: ''
         }
       }
     ];
@@ -400,7 +412,11 @@
         id: n.id,
         ...(n.type === 'upload'
           ? { snippetId: '', upload: { from: n.data.from.trim(), to: n.data.to.trim() }, target: 'remote' as const }
-          : { snippetId: n.data.snippetId, target: n.data.target }),
+          : {
+              snippetId: n.data.snippetId,
+              target: n.data.target,
+              wslDistro: n.data.target === 'wsl' && n.data.wslDistro ? n.data.wslDistro : undefined
+            }),
         label: n.data.label.trim(),
         continueOnError: n.data.continueOnError,
         position: { x: n.position.x, y: n.position.y }

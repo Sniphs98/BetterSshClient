@@ -98,8 +98,9 @@ function parseSnippet(raw: unknown, ctx: string): Snippet {
 
 function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
   const o = obj(raw, ctx);
-  const target: NodeTarget | undefined = o.target === 'local' ? 'local' : o.target === 'remote' ? 'remote' : undefined;
-  if (target === undefined) throw new Error(`${ctx}.target: must be "local" or "remote"`);
+  const target: NodeTarget | undefined =
+    o.target === 'local' ? 'local' : o.target === 'wsl' ? 'wsl' : o.target === 'remote' ? 'remote' : undefined;
+  if (target === undefined) throw new Error(`${ctx}.target: must be "local", "wsl" or "remote"`);
   let position: { x: number; y: number } | undefined;
   if (o.position !== undefined && o.position !== null) {
     const p = obj(o.position, `${ctx}.position`);
@@ -114,6 +115,7 @@ function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
     id: str(o.id, `${ctx}.id`),
     snippetId: upload !== undefined && o.snippetId === undefined ? '' : str(o.snippetId, `${ctx}.snippetId`),
     upload,
+    wslDistro: target === 'wsl' ? optionalStr(o.wslDistro, `${ctx}.wslDistro`) || undefined : undefined,
     label: str(o.label, `${ctx}.label`),
     continueOnError: bool(o.continueOnError, `${ctx}.continueOnError`),
     target,

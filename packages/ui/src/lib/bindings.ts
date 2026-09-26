@@ -123,6 +123,9 @@ export const commands = {
   async deleteSnippet(id: string): Promise<Result<null, CommandError>> {
     return call('delete_snippet', id);
   },
+  async wslDistros(): Promise<Result<string[], CommandError>> {
+    return call('wsl_distros');
+  },
   async listAutomations(): Promise<Result<AutomationDto[], CommandError>> {
     return call('list_automations');
   },
@@ -296,7 +299,8 @@ export type AutomationFailed = { automationName: string; error: string };
 export type AutomationStarted = { automationName: string };
 /** Where a node's snippet runs: on this machine, or on the host the automation's
  *  `'host'` param resolves at run time. */
-export type NodeTargetDto = 'local' | 'remote';
+/** Where a node runs: this machine, a WSL distribution on it, or the automation's host. */
+export type NodeTargetDto = 'local' | 'wsl' | 'remote';
 /** One node's result within a running automation. */
 export type AutomationNodeResult = NodeResultDto & { automationName: string };
 /** A node started executing. */
@@ -338,6 +342,8 @@ export type AutomationNodeDto = {
   snippetId: string;
   /** Set for an upload step: a file on this machine copied to the automation's host. */
   upload?: { from: string; to: string } | null;
+  /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
+  wslDistro?: string | null;
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;

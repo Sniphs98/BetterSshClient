@@ -241,6 +241,7 @@ describe('runAutomation', () => {
   function deps(overrides: Partial<RunAutomationDeps> = {}): RunAutomationDeps {
     return {
       runLocal: async (command) => ({ output: `ran: ${command}`, ok: true }),
+      runWsl: async (_distro, command) => ({ output: `wsl: ${command}`, ok: true }),
       connectHost: async () => ({ runShell: async () => ({ output: '', ok: true }), upload: async () => {}, disconnect: () => {} }),
       ...overrides
     };
@@ -575,5 +576,40 @@ describe('uploadDestination', () => {
     expect(uploadDestination('C:\\Users\\me\\image.tar.gz', '/tmp/')).toBe('/tmp/image.tar.gz');
     expect(uploadDestination('~/build/app.tgz', '/srv/')).toBe('/srv/app.tgz');
     expect(uploadDestination('image.tar.gz', '/tmp/renamed.tar.gz')).toBe('/tmp/renamed.tar.gz');
+  });
+});
+
+describe('wsl nodes', () => {
+  it('run through runWsl with their distribution, and feed later nodes like any other', async () => {
+    const save = snippet({ id: 'save', name: 'Save', command: 'docker save -o image.tar {{params.image}} && echo image.tar' });
+    const flow = automation(
+      [
+        node({ id: 'n1', snippetId: 'save', label: 'save', target: 'wsl', wslDistro: 'Ubuntu' }),
+        node({ id: 'n2', snippetId: 'save', label: 'again', target: 'wsl' })
+      ],
+      [],
+      [{ name: 'image', kind: 'text' }]
+    );
+    const calls: Array<[string | undefined, string]> = [];
+    const results = await runAutomation(flow, new Map([['save', save]]), { image: 'nginx' }, {
+      runLocal: async () => ({ output: 'wrong runner', ok: false }),
+      runWsl: async (distro, command) => {
+        calls.push([distro, command]);
+        return { output: 'image.tar\n', ok: true };
+      },
+      connectHost: async () => {
+        throw new Error('no host needed');
+      }
+    });
+    expect(calls).toEqual([
+      ['Ubuntu', 'docker save -o image.tar nginx && echo image.tar'],
+      [undefined, 'docker save -o image.tar nginx && echo image.tar']
+    ]);
+    expect(results.map((r) => r.status)).toEqual(['success', 'success']);
+  });
+
+  it('need no host parameter', () => {
+    const f = automation([node({ id: 'n1', snippetId: 'x', target: 'wsl' })]);
+    expect(validateAutomation(f, new Map([['x', snippet({ id: 'x', name: 'X' })]]))).toEqual([]);
   });
 });

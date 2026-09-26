@@ -260,6 +260,13 @@ export async function deleteSnippet(id: string): Promise<void> {
 }
 
 /** Read the saved Automations. */
+/** The WSL distributions on this machine; [] off Windows or without WSL. */
+export async function wslDistros(): Promise<string[]> {
+  const res = await commands.wslDistros();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
 export async function listAutomations(): Promise<AutomationDto[]> {
   const res = await commands.listAutomations();
   if (res.status === 'error') throw new Error(res.error.message);

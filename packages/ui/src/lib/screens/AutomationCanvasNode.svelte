@@ -11,6 +11,7 @@
   import { getContext } from 'svelte';
   import { Handle, Position, useSvelteFlow, type NodeProps } from '@xyflow/svelte';
   import { Icon } from '$lib/theme';
+  import Select from '$lib/components/Select.svelte';
   import { AUTOMATION_NODE_ACTIONS_CONTEXT, type SnippetNode, type AutomationNodeActionsContext } from './automationCanvasTypes';
 
   let { id, data, selected }: NodeProps<SnippetNode> = $props();
@@ -25,6 +26,21 @@
   function edit(): void {
     actions.editSnippet(data.snippetId);
   }
+
+  // WSL is offered where this machine has it — and kept on a node that already runs
+  // there (an automation opened elsewhere), so opening it never silently changes it.
+  const targets = $derived([
+    { value: 'local' as const, label: 'local', title: 'Runs on this machine' },
+    ...(actions.wslDistros().length > 0 || data.target === 'wsl'
+      ? [{ value: 'wsl' as const, label: 'WSL', title: 'Runs in WSL on this machine (bash), in your Windows home folder' }]
+      : []),
+    { value: 'remote' as const, label: 'on host', title: 'Runs on the host chosen when the automation runs (its host parameter)' }
+  ]);
+  // The saved distribution stays choosable even if it isn't installed here.
+  const distroChoices = $derived.by(() => {
+    const list = actions.wslDistros();
+    return data.wslDistro && !list.includes(data.wslDistro) ? [data.wslDistro, ...list] : list;
+  });
 </script>
 
 <div
@@ -82,8 +98,8 @@
        snippet can be a local step in one automation and a remote one in another. -->
   <div class="nodrag nopan flex items-center gap-1.5 text-[11px] text-muted">
     <span class="shrink-0">Runs</span>
-    <div class="ml-auto grid grid-cols-2 gap-0.5 rounded bg-surface-inset p-0.5">
-      {#each [{ value: 'local', label: 'local', title: 'Runs on this machine' }, { value: 'remote', label: 'on host', title: "Runs on the host chosen when the automation runs (its host parameter)" }] as option (option.value)}
+    <div class="ml-auto flex gap-0.5 rounded bg-surface-inset p-0.5">
+      {#each targets as option (option.value)}
         <button
           type="button"
           class="rounded px-1.5 py-0.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus {data.target ===
@@ -99,6 +115,25 @@
       {/each}
     </div>
   </div>
+
+  {#if data.target === 'wsl'}
+    <label class="nodrag nopan flex items-center gap-1.5 text-[11px] text-muted">
+      <span class="shrink-0">Distribution</span>
+      <div class="ml-auto min-w-0 flex-1">
+        <Select
+          value={data.wslDistro}
+          onchange={(e: Event) => updateNodeData(id, { wslDistro: (e.currentTarget as HTMLSelectElement).value })}
+          class="w-full rounded bg-surface-inset px-1.5 py-0.5 text-[11px] text-fg outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          aria-label="WSL distribution"
+        >
+          <option value="">Default</option>
+          {#each distroChoices as distro (distro)}
+            <option value={distro}>{distro}</option>
+          {/each}
+        </Select>
+      </div>
+    </label>
+  {/if}
 
   <label class="nodrag flex items-center gap-1.5 text-[11px] text-muted">
     <input

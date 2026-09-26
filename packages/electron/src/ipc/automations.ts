@@ -5,6 +5,7 @@ import { loadSnippets, saveSnippets } from '../core/config/snippets.js';
 import { loadAutomations, saveAutomations } from '../core/config/automations.js';
 import { runLocalCommand } from '../core/automation/localExec.js';
 import { uploadOverSession } from '../core/automation/upload.js';
+import { listWslDistros, runWslCommand } from '../core/automation/wslExec.js';
 import { missingParamValues, runAutomation, validateAutomation, type RunAutomationDeps } from '../core/automation/engine.js';
 import {
   buildSnippetBundle,
@@ -96,6 +97,9 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
       throw toCommandError(err);
     }
   });
+
+  // The WSL distributions a node can run in — [] off Windows or without WSL.
+  ipcMain.handle('wsl_distros', () => listWslDistros());
 
   ipcMain.handle('list_automations', async () => {
     try {
@@ -246,6 +250,7 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
     state.emit('automation-started', { automationName });
     const deps: RunAutomationDeps = {
       runLocal: runLocalCommand,
+      runWsl: runWslCommand,
       connectHost: async (hostName) => {
         const host = state.hostByName(hostName);
         if (host === undefined) throw new Error(`unknown host '${hostName}'`);

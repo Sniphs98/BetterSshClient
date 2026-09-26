@@ -142,6 +142,8 @@ export interface AutomationNodeDto {
   snippetId: string;
   /** Set for an upload node: a local file to copy to the automation's host. */
   upload?: { from: string; to: string };
+  /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
+  wslDistro?: string;
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;

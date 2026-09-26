@@ -18,7 +18,8 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
   if (typeof raw.id !== 'string') throw new Error(`automation "${automationName}" has a node missing "id"`);
   if (typeof raw.snippetId !== 'string') throw new Error(`automation "${automationName}" node "${raw.id}" is missing "snippetId"`);
   if (typeof raw.label !== 'string') throw new Error(`automation "${automationName}" node "${raw.id}" is missing "label"`);
-  const target: NodeTarget | undefined = raw.target === 'local' ? 'local' : raw.target === 'remote' ? 'remote' : undefined;
+  const target: NodeTarget | undefined =
+    raw.target === 'local' ? 'local' : raw.target === 'wsl' ? 'wsl' : raw.target === 'remote' ? 'remote' : undefined;
   if (target === undefined) throw new Error(`automation "${automationName}" node "${raw.id}" has an invalid target`);
   const position =
     raw.position !== undefined && typeof raw.position === 'object' && raw.position !== null
@@ -36,6 +37,7 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
     id: raw.id,
     snippetId: raw.snippetId,
     upload,
+    wslDistro: target === 'wsl' && typeof raw.wslDistro === 'string' && raw.wslDistro !== '' ? raw.wslDistro : undefined,
     label: raw.label,
     continueOnError: raw.continueOnError === true,
     target,
@@ -55,6 +57,7 @@ function automationNodeToToml(node: AutomationNode): Record<string, unknown> {
     target: node.target
   };
   if (node.upload !== undefined) out.upload = { from: node.upload.from, to: node.upload.to };
+  if (node.target === 'wsl' && node.wslDistro) out.wslDistro = node.wslDistro;
   if (node.position !== undefined) out.position = { x: node.position.x, y: node.position.y };
   return out;
 }

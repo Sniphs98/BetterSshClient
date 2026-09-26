@@ -71,6 +71,17 @@ describe('saveAutomations / loadAutomations round trip', () => {
     expect(await loadAutomations(path)).toEqual(original);
   });
 
+  it('round-trips a WSL node with its distribution', async () => {
+    const original = [
+      automation({
+        nodes: [{ id: 'w', snippetId: 'a1', label: 'save', continueOnError: false, target: 'wsl', wslDistro: 'Ubuntu' }],
+        edges: []
+      })
+    ];
+    await saveAutomations(original, path);
+    expect(await loadAutomations(path)).toEqual(original);
+  });
+
   it('round-trips a node position', async () => {
     const original = [automation({ nodes: [{ id: 'n1', snippetId: 'a1', label: 'build', continueOnError: false, target: 'local', position: { x: 12, y: 34 } }] })];
     await saveAutomations(original, path);
