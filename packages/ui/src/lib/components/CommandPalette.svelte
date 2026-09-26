@@ -13,6 +13,7 @@
   import { activeEntity } from '$lib/stores/activeEntity';
   import { spawnSession } from '$lib/stores/navigation';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
+  import { displayReference } from '$lib/screens/onePasswordRef';
   import { isPaletteChord } from '$lib/stores/ui';
 
   let inputEl = $state<HTMLInputElement>();
@@ -225,7 +226,7 @@
                   <StatusDot status={hostStatusDot($statuses.get(item.host.name))} />
                   <span class="min-w-0 flex-1 truncate font-medium">{item.host.name}</span>
                   <span class="shrink-0 truncate font-mono text-xs {selected === i ? '' : 'text-faint'}">
-                    {item.host.user}@{displayHostname(item.host.hostname, $streamerMode)}
+                    {displayReference(item.host.user)}@{displayHostname(item.host.hostname, $streamerMode)}
                   </span>
                 {:else if item.kind === 'snippet'}
                   <Icon name="automations" size={16} />

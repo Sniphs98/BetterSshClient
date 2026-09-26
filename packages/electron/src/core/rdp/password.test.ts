@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { clearSecretCache, setOpRunner } from '../secrets/onePassword.js';
-import { connectionPassword } from './password.js';
+import { connectionPassword, resolveConnection } from './password.js';
 
 describe('connectionPassword', () => {
   afterEach(() => {
@@ -27,6 +27,35 @@ describe('connectionPassword', () => {
     await connectionPassword({ passwordRef: 'op://Servers/win11/password' });
     await connectionPassword({ passwordRef: 'op://Servers/win11/password' });
     expect(op).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves address, user and password — only the fields that are references', async () => {
+    const values: Record<string, string> = {
+      'op://Servers/win11/host': '10.0.0.7',
+      'op://Servers/win11/password': 'pw'
+    };
+    const op = vi.fn(async (args: string[]) => ({ stdout: values[args[2]], stderr: '' }));
+    setOpRunner(op);
+    const resolved = await resolveConnection({
+      hostname: 'op://Servers/win11/host',
+      username: 'admin',
+      passwordRef: 'op://Servers/win11/password',
+      port: 3389
+    });
+    expect(resolved).toEqual({ hostname: '10.0.0.7', username: 'admin', password: 'pw', passwordRef: undefined, port: 3389 });
+    expect(op).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves a connection without references as it is, without asking 1Password', async () => {
+    const op = vi.fn();
+    setOpRunner(op);
+    expect(await resolveConnection({ hostname: 'win11.lan', username: 'admin', password: 'pw' })).toEqual({
+      hostname: 'win11.lan',
+      username: 'admin',
+      password: 'pw',
+      passwordRef: undefined
+    });
+    expect(op).not.toHaveBeenCalled();
   });
 
   it("says what's wrong when 1Password can't be asked", async () => {

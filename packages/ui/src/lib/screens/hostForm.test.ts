@@ -222,19 +222,32 @@ describe('formToInput — monitoring mode', () => {
 });
 
 describe('1Password reference', () => {
-  it('passes a well-formed reference through, trimmed; blank means none', () => {
-    const set = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: ' op://Servers/web-1/password ' }));
+  it('passes the password reference through, trimmed, while the password is switched to 1Password', () => {
+    const set = formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: true, passwordRef: ' op://Servers/web-1/password ' }));
     expect(set.ok && set.input.passwordRef).toBe('op://Servers/web-1/password');
-    const blank = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: '  ' }));
-    expect(blank.ok && blank.input.passwordRef).toBeUndefined();
   });
 
-  it('refuses something that is not a reference', () => {
-    const r = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: 'hunter2' }));
-    expect(r).toEqual({ ok: false, error: '1Password reference must look like op://vault/item/field' });
+  it('drops the password reference once switched back to typing', () => {
+    const off = formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: false, passwordRef: 'op://Servers/web-1/password' }));
+    expect(off.ok && off.input.passwordRef).toBeUndefined();
   });
 
-  it('seeds the edit form with the stored reference', () => {
-    expect(formFromHost(host({ passwordRef: 'op://a/b/c' })).passwordRef).toBe('op://a/b/c');
+  it('refuses a field switched to 1Password that holds no reference', () => {
+    const error = (field: string) => ({ ok: false, error: `${field}: 1Password reference must look like op://vault/item/field` });
+    expect(formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: true, passwordRef: 'hunter2' }))).toEqual(error('Password'));
+    expect(formToInput(fields({ name: 'n', hostname: '10.0.0.1', hostnameFrom1P: true }))).toEqual(error('Hostname / IP'));
+    expect(formToInput(fields({ name: 'n', hostname: 'h', user: '', userFrom1P: true }))).toEqual(error('User'));
+  });
+
+  it('keeps a hostname and user reference in the field itself', () => {
+    const r = formToInput(
+      fields({ name: 'n', hostname: 'op://Servers/web-1/hostname', hostnameFrom1P: true, user: 'op://Servers/web-1/username', userFrom1P: true })
+    );
+    expect(r.ok && [r.input.hostname, r.input.user]).toEqual(['op://Servers/web-1/hostname', 'op://Servers/web-1/username']);
+  });
+
+  it('seeds the edit form with the stored references, switched on', () => {
+    const f = formFromHost(host({ passwordRef: 'op://a/b/c', hostname: 'op://a/b/host', user: 'deploy' }));
+    expect(f).toMatchObject({ passwordRef: 'op://a/b/c', passwordFrom1P: true, hostnameFrom1P: true, userFrom1P: false });
   });
 });

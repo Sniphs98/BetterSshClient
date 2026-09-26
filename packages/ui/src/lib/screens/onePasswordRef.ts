@@ -9,3 +9,10 @@ export const ONE_PASSWORD_REFERENCE_ERROR = '1Password reference must look like 
 export function isOnePasswordReference(value: string): boolean {
   return REFERENCE.test(value.trim());
 }
+
+/** A field that may be a reference, for tiles and lists: a reference shows as its
+ *  1Password item, ‹web-1› — the full op://… is too long and says little there. */
+export function displayReference(value: string): string {
+  if (!isOnePasswordReference(value)) return value;
+  return `‹${value.trim().split('/')[3]}›`;
+}

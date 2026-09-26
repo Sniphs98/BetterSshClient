@@ -49,7 +49,7 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **One-click SSH key setup** | Generates an Ed25519 key, installs it, verifies it, and optionally turns off password login, with automatic rollback if anything fails. |
 | ✅ | **ProxyJump** | Hosts behind one or more bastions work everywhere: dashboard, terminal, SFTP. |
 | ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
-| ✅ | **1Password** | Read the password of a host or a remote desktop connection from 1Password when connecting instead of storing it, and use SSH keys from the 1Password SSH agent. [How](#using-1password) |
+| ✅ | **1Password** | Read the password, address or user of a host or a remote desktop connection from 1Password when connecting instead of storing it, and use SSH keys from the 1Password SSH agent. [How](#using-1password) |
 | ✅ | **Light & dark theme** | |
 | 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally or on a host, with parameters and the output of earlier steps. Usable, but still changing. |
 | 🚧 | **Remote desktop (RDP)** *(in progress)* | RDP sessions as tabs inside the app, next to your terminals (IronRDP, no extra window), or in the OS's own client (Remote Desktop on Windows, FreeRDP on Linux and macOS), signed in automatically either way. Drag files onto the session to copy them there, and save files copied on the remote desktop. Can tunnel through any SSH host, so machines behind a bastion work without exposing port 3389. Display, monitor, clipboard, drive and sound settings per profile. |
@@ -101,12 +101,14 @@ own data in `%APPDATA%\better-ssh-client\` (Windows), `~/Library/Application Sup
 
 ### Using 1Password
 
-**Passwords:** install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/)
-and turn on *Settings → Developer → Integrate with 1Password CLI* in the 1Password app. Then, in
-a host's or a remote desktop connection's settings, put the item's secret reference into **1Password reference** (in 1Password:
-right-click the password → *Copy Secret Reference*, e.g. `op://Servers/web-1/password`). The app
-reads the password when it connects — 1Password may ask for Windows Hello or Touch ID — keeps it
-in memory for 10 minutes, and never writes it to disk.
+**Passwords, addresses, user names:** install the [1Password CLI](https://developer.1password.com/docs/cli/get-started/)
+(on Windows: `winget install AgileBits.1Password.CLI`) and turn on *Settings → Developer →
+Integrate with 1Password CLI* in the 1Password app. Then, in a host's or a remote desktop
+connection's settings, click **1Password** next to the hostname, the user or the password, and
+put the item's secret reference into that field (in 1Password: right-click the field → *Copy
+Secret Reference*, e.g. `op://Servers/web-1/password`). The app reads them when it connects —
+1Password may ask for Windows Hello or Touch ID — keeps them in memory for 10 minutes, and never
+writes the values to disk.
 
 **SSH keys:** turn on *Settings → Developer → Use the SSH agent* in the 1Password app. The app
 asks the SSH agent for keys before anything else, so your 1Password keys just work. On Windows,

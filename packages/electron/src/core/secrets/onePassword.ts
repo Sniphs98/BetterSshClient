@@ -116,6 +116,12 @@ export async function readSecretCached(reference: string): Promise<string> {
   return value;
 }
 
+/** A field that may hold either its value or a 1Password reference to it (a host's
+ *  address or user name): the value, read from 1Password when it is a reference. */
+export async function resolveReference(value: string): Promise<string> {
+  return isSecretReference(value) ? readSecretCached(value) : value;
+}
+
 /** Forgets every remembered secret (tests). */
 export function clearSecretCache(): void {
   secretCache.clear();

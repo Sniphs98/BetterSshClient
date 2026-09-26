@@ -85,7 +85,7 @@ test('adds a host and it appears as a card', async ({ page }) => {
 
   await editor.getByLabel('Name', { exact: true }).fill('db-1');
   await editor.getByLabel('Hostname / IP').fill('db-1.example.com');
-  await editor.getByLabel('User').fill('postgres');
+  await editor.getByLabel('User', { exact: true }).fill('postgres');
   await editor.getByRole('button', { name: 'Add host' }).click();
 
   await expect(page.getByRole('dialog')).toHaveCount(0);

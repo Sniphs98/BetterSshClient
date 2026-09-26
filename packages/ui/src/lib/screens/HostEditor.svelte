@@ -8,6 +8,7 @@
   import { Button } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
   import OnePasswordCliHint from '$lib/components/OnePasswordCliHint.svelte';
+  import OnePasswordToggle from '$lib/components/OnePasswordToggle.svelte';
   import Select from '$lib/components/Select.svelte';
   import { formToInput, type HostFormFields } from './hostForm';
 
@@ -64,6 +65,7 @@
   const secretHint = $derived(mode === 'edit' ? 'Leave blank to keep the current value' : undefined);
 
   const label = 'block space-y-1 text-xs font-medium text-muted';
+  const labelRow = 'flex items-center justify-between gap-2';
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
@@ -101,16 +103,35 @@
         />
       </label>
 
-      <label class={label}>
-        <span>Hostname / IP</span>
-        <input bind:this={hostnameEl} bind:value={fields.hostname} class="{field} font-mono" placeholder="10.0.0.1" />
-      </label>
+      <div class={label}>
+        <div class={labelRow}>
+          <label for="host-hostname">Hostname / IP</label>
+          <OnePasswordToggle bind:on={fields.hostnameFrom1P} field="Hostname" />
+        </div>
+        <input
+          id="host-hostname"
+          bind:this={hostnameEl}
+          bind:value={fields.hostname}
+          class="{field} font-mono"
+          placeholder={fields.hostnameFrom1P ? 'op://Servers/web-1/hostname' : '10.0.0.1'}
+          spellcheck="false"
+        />
+      </div>
 
       <div class="grid grid-cols-[1fr,7rem] gap-3">
-        <label class={label}>
-          <span>User</span>
-          <input bind:value={fields.user} class={field} placeholder="root" />
-        </label>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="host-user">User</label>
+            <OnePasswordToggle bind:on={fields.userFrom1P} field="User" />
+          </div>
+          <input
+            id="host-user"
+            bind:value={fields.user}
+            class="{field} {fields.userFrom1P ? 'font-mono' : ''}"
+            placeholder={fields.userFrom1P ? 'op://Servers/web-1/username' : 'root'}
+            spellcheck="false"
+          />
+        </div>
         <label class={label}>
           <span>Port</span>
           <input bind:value={fields.port} inputmode="numeric" class={field} placeholder="22" />
@@ -126,32 +147,37 @@
         />
       </label>
 
-      <label class={label}>
-        <span>Password</span>
-        <input
-          type="password"
-          bind:value={fields.password}
-          class={field}
-          placeholder={secretHint ?? 'For initial key setup only'}
-          autocomplete="off"
-        />
-      </label>
+      <div class={label}>
+        <div class={labelRow}>
+          <label for="host-password">Password</label>
+          <OnePasswordToggle bind:on={fields.passwordFrom1P} field="Password" />
+        </div>
+        {#if fields.passwordFrom1P}
+          <input
+            id="host-password"
+            bind:value={fields.passwordRef}
+            class="{field} font-mono"
+            placeholder="op://Servers/web-1/password"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        {:else}
+          <input
+            id="host-password"
+            type="password"
+            bind:value={fields.password}
+            class={field}
+            placeholder={secretHint ?? 'For initial key setup only'}
+            autocomplete="off"
+          />
+        {/if}
+      </div>
 
-      <label class={label}>
-        <span>1Password reference</span>
-        <input
-          bind:value={fields.passwordRef}
-          class="{field} font-mono"
-          placeholder="op://Servers/web-1/password (optional)"
-          autocomplete="off"
-          spellcheck="false"
-        />
-      </label>
-      <p class="-mt-2.5 text-xs text-faint">
-        Reads the password from 1Password when connecting instead of storing it (needs the 1Password
-        CLI). In 1Password: right-click the password field → Copy Secret Reference.
-      </p>
-      {#if fields.passwordRef.trim()}
+      {#if fields.hostnameFrom1P || fields.userFrom1P || fields.passwordFrom1P}
+        <p class="-mt-2.5 text-xs text-faint">
+          Fields marked 1Password take a secret reference and are read from 1Password when connecting (needs the
+          1Password CLI). In 1Password: right-click a field → Copy Secret Reference.
+        </p>
         <OnePasswordCliHint />
       {/if}
 

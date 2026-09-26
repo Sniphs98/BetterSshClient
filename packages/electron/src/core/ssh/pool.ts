@@ -13,7 +13,7 @@ import {
   parseUptime,
   type ProcessInfo
 } from './metrics.js';
-import { SshSession } from './session.js';
+import { resolveHostAddress, SshSession } from './session.js';
 import { quickScan } from './discovery.js';
 import type { CoreEvent, Metrics } from '../../event.js';
 
@@ -249,7 +249,10 @@ async function runTcpPoller(
       emit({ type: 'hostStatusChanged', hostName: host.name, status: { kind: 'connecting' } });
     }
 
-    const status = await tcpProbe(host.hostname, port);
+    const status = await resolveHostAddress(host).then(
+      (resolved) => tcpProbe(resolved.hostname, port),
+      (err: Error): ConnectionStatusResult => ({ kind: 'failed', message: err.message })
+    );
     const reachable = status.kind === 'connected';
 
     // Only on a change: re-announcing every cycle flickers the card between

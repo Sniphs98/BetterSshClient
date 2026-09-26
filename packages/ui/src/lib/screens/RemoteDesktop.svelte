@@ -17,7 +17,8 @@
   import { activeEntity } from '$lib/stores/activeEntity';
   import { spawnRdpSession } from '$lib/stores/navigation';
   import { lastError } from '$lib/stores/notifications';
-  import { describeSettings, filterConnections, emptyForm, formFromConnection } from './remoteDesktopForm';
+  import { describeSettings, filterConnections, emptyForm, formFromConnection, fromOnePassword } from './remoteDesktopForm';
+  import { displayReference } from './onePasswordRef';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import RemoteDesktopEditor from './RemoteDesktopEditor.svelte';
   import Modal from '$lib/components/Modal.svelte';
@@ -147,10 +148,10 @@
                     class="shrink-0 rounded-full border border-default px-1.5 py-0.5 text-[10px] uppercase text-faint"
                     >{connection.protocol}</span
                   >
-                  {#if connection.passwordRef}
+                  {#if fromOnePassword(connection)}
                     <span
                       class="inline-flex shrink-0 items-center gap-1 rounded-full border border-default px-1.5 py-0.5 text-[10px] text-faint"
-                      title="Password read from 1Password when connecting"
+                      title="{fromOnePassword(connection)} read from 1Password when connecting"
                     >
                       <Icon name="key" size={10} />
                       1Password
@@ -166,7 +167,7 @@
                   {/if}
                 </div>
                 <div class="truncate font-mono text-xs text-faint">
-                  {connection.username ? `${connection.domain ? `${connection.domain}\\` : ''}${connection.username}@` : ''}{displayHostname(
+                  {connection.username ? `${connection.domain ? `${connection.domain}\\` : ''}${displayReference(connection.username)}@` : ''}{displayHostname(
                     connection.hostname,
                     $streamerMode
                   )}:{connection.port}

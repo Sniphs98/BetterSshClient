@@ -2,10 +2,10 @@ import { connect } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { app, BrowserWindow, dialog, shell, type IpcMain } from 'electron';
 
-import { loadRemoteDesktopConnections } from '../core/config/remoteDesktop.js';
+import { loadRemoteDesktopConnections, type RemoteDesktopConnection } from '../core/config/remoteDesktop.js';
 import { RdpGateway } from '../core/rdp/gateway.js';
 import { checkCertificate, forgetCertificate } from '../core/rdp/knownCerts.js';
-import { connectionPassword } from '../core/rdp/password.js';
+import { resolveConnection } from '../core/rdp/password.js';
 import { saveReceivedFile } from '../core/rdp/savedFiles.js';
 import { SshSession } from '../core/ssh/session.js';
 import { toCommandError, type RdpCredentialsDto, type RdpEmbeddedOpenDto, type RdpEmbeddedStatusDto } from '../dto.js';
@@ -44,14 +44,15 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
     'rdp_embedded_open',
     async (_event, connectionId: string, typed?: RdpCredentialsDto): Promise<RdpEmbeddedOpenDto> => {
     try {
-      const connection = (await loadRemoteDesktopConnections()).find((c) => c.id === connectionId);
-      if (!connection) throw new Error(`unknown remote desktop connection '${connectionId}'`);
-      if (connection.protocol !== 'rdp') throw new Error(`connection '${connection.name}' is not an RDP connection`);
+      const saved = (await loadRemoteDesktopConnections()).find((c) => c.id === connectionId);
+      if (!saved) throw new Error(`unknown remote desktop connection '${connectionId}'`);
+      if (saved.protocol !== 'rdp') throw new Error(`connection '${saved.name}' is not an RDP connection`);
+      // Address, user and password from 1Password where the profile says so.
+      const connection = await resolveConnection(saved);
       // A profile without a stored password (or user) asks in the tab; what's typed
-      // there is used for this connection only.
+      // there is used for this connection only, and wins over the profile's.
       const username = typed?.username || connection.username;
-      // Typed in the tab wins; else 1Password or the stored password.
-      const password = typed?.password || (await connectionPassword(connection));
+      const password = typed?.password || connection.password;
       const domain = typed ? typed.domain || undefined : connection.domain;
       if (!username || !password) {
         return { kind: 'credentials', username: connection.username, domain: connection.domain };
@@ -70,8 +71,8 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
         session.ssh = ssh;
       }
 
-      // Certificates are remembered per target as the SSH host (if any) sees it.
-      const certKey = `${connection.viaHost ? `${connection.viaHost}>` : ''}${connection.hostname}:${connection.port}`;
+      // Keyed by the saved address, so a 1Password reference keeps its certificate.
+      const certKey = certificateKey(saved);
       const token = gateway.register({
         host: connection.hostname,
         port: connection.port,
@@ -153,11 +154,17 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
     try {
       const connection = (await loadRemoteDesktopConnections()).find((c) => c.id === connectionId);
       if (!connection) throw new Error(`unknown remote desktop connection '${connectionId}'`);
-      await forgetCertificate(`${connection.viaHost ? `${connection.viaHost}>` : ''}${connection.hostname}:${connection.port}`);
+      await forgetCertificate(certificateKey(connection));
     } catch (err) {
       throw toCommandError(err);
     }
   });
+}
+
+/** Where a profile's certificate is remembered: its target as the SSH host (if any)
+ *  sees it, as saved. */
+function certificateKey(connection: RemoteDesktopConnection): string {
+  return `${connection.viaHost ? `${connection.viaHost}>` : ''}${connection.hostname}:${connection.port}`;
 }
 
 function closeSession(token: string): void {

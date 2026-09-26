@@ -27,6 +27,12 @@ export interface RemoteDesktopFormFields {
   viaHost: string;
   /** 1Password reference the password is read from at connect time. Blank means none. */
   passwordRef: string;
+  /** Per field: read from 1Password when connecting. The address and user then hold
+   *  the reference themselves; the password's goes in `passwordRef` (the stored
+   *  password is never sent back to the form, so the two can't share a field). */
+  hostnameFrom1P: boolean;
+  usernameFrom1P: boolean;
+  passwordFrom1P: boolean;
   /** Blank leaves it to the client. */
   display: '' | 'fullscreen' | 'window' | 'fit';
   /** Window size; both blank leaves it to the client. */
@@ -64,6 +70,9 @@ export function emptyForm(): RemoteDesktopFormFields {
     domain: '',
     viaHost: '',
     passwordRef: '',
+    hostnameFrom1P: false,
+    usernameFrom1P: false,
+    passwordFrom1P: false,
     ...SETTING_DEFAULTS
   };
 }
@@ -84,6 +93,9 @@ export function formFromConnection(c: RemoteDesktopConnectionDto): RemoteDesktop
     domain: c.domain ?? '',
     viaHost: c.viaHost ?? '',
     passwordRef: c.passwordRef ?? '',
+    hostnameFrom1P: isOnePasswordReference(c.hostname),
+    usernameFrom1P: isOnePasswordReference(c.username ?? ''),
+    passwordFrom1P: Boolean(c.passwordRef),
     display: c.display ?? SETTING_DEFAULTS.display,
     width: c.width ? String(c.width) : '',
     height: c.height ? String(c.height) : '',
@@ -108,6 +120,7 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
   if (!name) return { ok: false, error: 'Name cannot be empty' };
   const hostname = f.hostname.trim();
   if (!hostname) return { ok: false, error: 'Hostname / IP cannot be empty' };
+  if (f.hostnameFrom1P && !isOnePasswordReference(hostname)) return { ok: false, error: referenceError('Hostname / IP') };
 
   const portRaw = f.port.trim();
   let port = defaultPort(f.protocol);
@@ -122,10 +135,10 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
   const password = f.password.trim();
   const domain = f.domain.trim();
   const viaHost = f.viaHost.trim();
-  const passwordRef = f.passwordRef.trim();
-  if (passwordRef !== '' && !isOnePasswordReference(passwordRef)) {
-    return { ok: false, error: ONE_PASSWORD_REFERENCE_ERROR };
-  }
+  if (f.usernameFrom1P && !isOnePasswordReference(username)) return { ok: false, error: referenceError('Username') };
+  // Switched back to typing, the password's reference is dropped.
+  const passwordRef = f.passwordFrom1P ? f.passwordRef.trim() : '';
+  if (f.passwordFrom1P && !isOnePasswordReference(passwordRef)) return { ok: false, error: referenceError('Password') };
 
   let width: number | undefined;
   let height: number | undefined;
@@ -163,6 +176,23 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       audio: f.audio
     }
   };
+}
+
+/** What of a profile comes from 1Password, for the tile's badge ("Address and
+ *  password"), or '' when nothing does. */
+export function fromOnePassword(c: Pick<RemoteDesktopConnectionDto, 'hostname' | 'username' | 'passwordRef'>): string {
+  const parts = [
+    isOnePasswordReference(c.hostname) && 'address',
+    isOnePasswordReference(c.username ?? '') && 'user',
+    Boolean(c.passwordRef) && 'password'
+  ].filter((p): p is string => Boolean(p));
+  if (parts.length === 0) return '';
+  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return list[0].toUpperCase() + list.slice(1);
+}
+
+function referenceError(field: string): string {
+  return `${field}: ${ONE_PASSWORD_REFERENCE_ERROR}`;
 }
 
 /** Case-insensitive substring filter over name / hostname.

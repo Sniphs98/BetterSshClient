@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RemoteDesktopConnectionDto } from '$lib/bindings';
-import { defaultPort, describeSettings, emptyForm, filterConnections, formFromConnection, formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
+import { defaultPort, describeSettings, emptyForm, filterConnections, formFromConnection, formToInput, fromOnePassword, type RemoteDesktopFormFields } from './remoteDesktopForm';
 
 function fields(partial: Partial<RemoteDesktopFormFields>): RemoteDesktopFormFields {
   return { ...emptyForm(), ...partial };
@@ -185,21 +185,30 @@ describe('describeSettings', () => {
 });
 
 describe('1Password reference', () => {
-  it('is kept when it looks like one, dropped when blank', () => {
-    const r = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: ' op://Servers/pc/password ' }));
-    expect(r.ok && r.input.passwordRef).toBe('op://Servers/pc/password');
-    const blank = formToInput(fields({ name: 'n', hostname: 'h', passwordRef: '  ' }));
-    expect(blank.ok && blank.input.passwordRef).toBeUndefined();
+  it('keeps the password reference while the password is switched to 1Password, drops it after', () => {
+    const on = formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: true, passwordRef: ' op://Servers/pc/password ' }));
+    expect(on.ok && on.input.passwordRef).toBe('op://Servers/pc/password');
+    const off = formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: false, passwordRef: 'op://Servers/pc/password' }));
+    expect(off.ok && off.input.passwordRef).toBeUndefined();
   });
 
-  it('is refused when it does not', () => {
-    expect(formToInput(fields({ name: 'n', hostname: 'h', passwordRef: 'Servers/pc/password' }))).toEqual({
-      ok: false,
-      error: '1Password reference must look like op://vault/item/field'
-    });
+  it('refuses a field switched to 1Password that holds no reference', () => {
+    const error = (field: string) => ({ ok: false, error: `${field}: 1Password reference must look like op://vault/item/field` });
+    expect(formToInput(fields({ name: 'n', hostname: 'h', passwordFrom1P: true, passwordRef: 'Servers/pc/password' }))).toEqual(error('Password'));
+    expect(formToInput(fields({ name: 'n', hostname: '10.0.0.5', hostnameFrom1P: true }))).toEqual(error('Hostname / IP'));
+    expect(formToInput(fields({ name: 'n', hostname: 'h', username: 'admin', usernameFrom1P: true }))).toEqual(error('Username'));
   });
 
-  it('comes back from a saved connection', () => {
-    expect(formFromConnection(connection({ passwordRef: 'op://Servers/pc/password' })).passwordRef).toBe('op://Servers/pc/password');
+  it('comes back from a saved connection, each field switched on as saved', () => {
+    const f = formFromConnection(connection({ passwordRef: 'op://Servers/pc/password', username: 'op://Servers/pc/username' }));
+    expect(f).toMatchObject({ passwordRef: 'op://Servers/pc/password', passwordFrom1P: true, usernameFrom1P: true, hostnameFrom1P: false });
+  });
+
+  it('names what comes from 1Password, for the tile', () => {
+    expect(fromOnePassword({ hostname: 'pc.lan' })).toBe('');
+    expect(fromOnePassword({ hostname: 'pc.lan', passwordRef: 'op://a/b/c' })).toBe('Password');
+    expect(fromOnePassword({ hostname: 'op://a/b/host', username: 'op://a/b/user', passwordRef: 'op://a/b/c' })).toBe(
+      'Address, user and password'
+    );
   });
 });

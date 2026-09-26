@@ -25,6 +25,12 @@ export interface HostFormFields {
   startupCommand: string;
   /** 1Password reference the password is read from at connect time. Blank means none. */
   passwordRef: string;
+  /** Per field: read from 1Password when connecting. Hostname and user then hold the
+   *  reference themselves; the password's goes in `passwordRef` (the stored password
+   *  never comes back to the form, so the two can't share a field). */
+  hostnameFrom1P: boolean;
+  userFrom1P: boolean;
+  passwordFrom1P: boolean;
 }
 
 export function emptyForm(): HostFormFields {
@@ -43,7 +49,10 @@ export function emptyForm(): HostFormFields {
     monitorPort: '',
     defaultPath: '',
     startupCommand: '',
-    passwordRef: ''
+    passwordRef: '',
+    hostnameFrom1P: false,
+    userFrom1P: false,
+    passwordFrom1P: false
   };
 }
 
@@ -64,7 +73,10 @@ export function formFromHost(h: HostDto): HostFormFields {
     monitorPort: h.monitorPort == null ? '' : String(h.monitorPort),
     defaultPath: h.defaultPath ?? '',
     startupCommand: h.startupCommand ?? '',
-    passwordRef: h.passwordRef ?? ''
+    passwordRef: h.passwordRef ?? '',
+    hostnameFrom1P: isOnePasswordReference(h.hostname),
+    userFrom1P: isOnePasswordReference(h.user),
+    passwordFrom1P: Boolean(h.passwordRef)
   };
 }
 
@@ -73,6 +85,10 @@ function splitCsv(raw: string): string[] {
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean);
+}
+
+function referenceError(field: string): string {
+  return `${field}: ${ONE_PASSWORD_REFERENCE_ERROR}`;
 }
 
 export type HostFormResult = { ok: true; input: HostInputDto } | { ok: false; error: string };
@@ -88,6 +104,8 @@ export function formToInput(f: HostFormFields): HostFormResult {
   if (!name) return { ok: false, error: 'Name cannot be empty' };
   const hostname = f.hostname.trim();
   if (!hostname) return { ok: false, error: 'Hostname / IP cannot be empty' };
+  if (f.hostnameFrom1P && !isOnePasswordReference(hostname)) return { ok: false, error: referenceError('Hostname / IP') };
+  if (f.userFrom1P && !isOnePasswordReference(f.user)) return { ok: false, error: referenceError('User') };
   const user = f.user.trim() || 'root';
 
   const portRaw = f.port.trim();
@@ -120,11 +138,9 @@ export function formToInput(f: HostFormFields): HostFormResult {
   const tags = splitCsv(f.tags);
   const defaultPath = f.defaultPath.trim();
   const startupCommand = f.startupCommand.trim();
-  // Same shape the app's 1Password reader accepts: op://vault/item[/section]/field.
-  const passwordRef = f.passwordRef.trim();
-  if (passwordRef !== '' && !isOnePasswordReference(passwordRef)) {
-    return { ok: false, error: ONE_PASSWORD_REFERENCE_ERROR };
-  }
+  // Switched back to typing, the password's reference is dropped.
+  const passwordRef = f.passwordFrom1P ? f.passwordRef.trim() : '';
+  if (f.passwordFrom1P && !isOnePasswordReference(passwordRef)) return { ok: false, error: referenceError('Password') };
   return {
     ok: true,
     input: {

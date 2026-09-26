@@ -9,7 +9,7 @@ import { ConnectionPool, type Lease } from './connectionPool.js';
 import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
-import { readSecretCached } from '../secrets/onePassword.js';
+import { readSecretCached, resolveReference } from '../secrets/onePassword.js';
 
 /**
  * SSH session management via `ssh2`. Ported from
@@ -359,15 +359,24 @@ async function connectAndAuth(host: Host): Promise<SshConnection> {
   return new SshConnection(target, jumps);
 }
 
+/** `host` with its address and user read from 1Password where they are references
+ *  (`op://…` in the field itself). Done per hop, before dialling it. */
+export async function resolveHostAddress(host: Host): Promise<Host> {
+  const hostname = await resolveReference(host.hostname);
+  const user = await resolveReference(host.user);
+  return hostname === host.hostname && user === host.user ? host : { ...host, hostname, user };
+}
+
 /** Opens a TCP connection to `host` and authenticates. */
 async function connectDirect(host: Host): Promise<Client> {
-  return authenticate(host, {});
+  return authenticate(await resolveHostAddress(host), {});
 }
 
 /** Reaches `host` through the already-connected bastion `via`: a
  *  `direct-tcpip` channel on the bastion carries a second SSH session to
  *  the target, which is verified and authenticated in its own right. */
-async function connectTunnelled(via: Client, host: Host): Promise<Client> {
+async function connectTunnelled(via: Client, saved: Host): Promise<Client> {
+  const host = await resolveHostAddress(saved);
   const stream = await new Promise<import('ssh2').ClientChannel>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('SSH connection timed out (10 s)')), CONNECT_TIMEOUT_MS);
     // The originator address is informational; servers only log it.

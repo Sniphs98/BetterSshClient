@@ -124,7 +124,7 @@ test('create, edit, connect to, and delete an RDP connection', async ({ page }) 
   // `exact` — a substring match on "Name" would also hit "Hostname / IP" and "Username".
   await editor.getByLabel('Name', { exact: true }).fill('office-pc');
   await editor.getByLabel('Hostname / IP').fill('10.0.0.5');
-  await editor.getByLabel('Username').fill('admin');
+  await editor.getByLabel('Username', { exact: true }).fill('admin');
   await editor.getByRole('button', { name: 'Add connection' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -150,6 +150,48 @@ test('create, edit, connect to, and delete an RDP connection', async ({ page }) 
   await page.getByRole('dialog', { name: 'Delete connection' }).getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByText('office-pc', { exact: true })).toHaveCount(0);
   await expect(page.getByText('No connections yet')).toBeVisible();
+});
+
+test('address, user and password can each come from 1Password, switched per field', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Switch to Remote Desktop' }).click();
+  await page.getByRole('button', { name: 'New connection' }).first().click();
+  const editor = page.getByRole('dialog', { name: 'New RDP connection' });
+  await editor.getByLabel('Name', { exact: true }).fill('office-pc');
+
+  // Switched on, a field wants a reference.
+  await editor.getByRole('button', { name: 'Hostname from 1Password' }).click();
+  await expect(editor.getByRole('button', { name: 'Hostname from 1Password' })).toHaveAttribute('aria-pressed', 'true');
+  await editor.getByLabel('Hostname / IP').fill('10.0.0.5');
+  await editor.getByRole('button', { name: 'Add connection' }).click();
+  await expect(editor.getByText('Hostname / IP: 1Password reference must look like op://vault/item/field')).toBeVisible();
+  await editor.getByLabel('Hostname / IP').fill('op://Servers/office-pc/hostname');
+
+  // The password's switch swaps the password box for a reference box.
+  await editor.getByRole('button', { name: 'Password from 1Password' }).click();
+  await expect(editor.getByLabel('Password', { exact: true })).toHaveAttribute('placeholder', 'op://Servers/office-pc/password');
+  await editor.getByLabel('Password', { exact: true }).fill('op://Servers/office-pc/password');
+  await editor.getByLabel('Username', { exact: true }).fill('admin');
+  await editor.getByRole('button', { name: 'Add connection' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  const saved = await page.evaluate(() => (window as unknown as { __rdpConnections: { connections: Rec[] } }).__rdpConnections.connections[0]);
+  expect(saved).toMatchObject({ hostname: 'op://Servers/office-pc/hostname', username: 'admin', passwordRef: 'op://Servers/office-pc/password' });
+  // The tile names the item instead of the whole reference, and says what comes from 1Password.
+  await expect(page.getByText('admin@‹office-pc›:3389')).toBeVisible();
+  await expect(page.getByTitle('Address and password read from 1Password when connecting')).toBeVisible();
+
+  // Reopened, the switches are as saved; switching the password back drops its reference.
+  await page.getByRole('button', { name: 'Edit office-pc' }).click();
+  const edit = page.getByRole('dialog', { name: 'Edit RDP connection' });
+  await expect(edit.getByRole('button', { name: 'Hostname from 1Password' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(edit.getByRole('button', { name: 'Username from 1Password' })).toHaveAttribute('aria-pressed', 'false');
+  await edit.getByRole('button', { name: 'Password from 1Password' }).click();
+  await edit.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const resaved = await page.evaluate(() => (window as unknown as { __rdpConnections: { connections: Rec[] } }).__rdpConnections.connections[0]);
+  expect(resaved.passwordRef).toBeUndefined();
+  await expect(page.getByTitle('Address read from 1Password when connecting')).toBeVisible();
 });
 
 test('a connection through an SSH host, with display and device settings', async ({ page }) => {
