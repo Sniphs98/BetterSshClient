@@ -27,6 +27,8 @@ export interface Host {
   proxyJump?: string;
   tags: string[];
   notes?: string;
+  /** The dashboard folder the host's card sits in; unset means none. */
+  folder?: string;
   source: HostSource;
   originalSshHost?: string;
   monitoring: MonitorMode;
@@ -89,6 +91,7 @@ export function hostFromToml(raw: Record<string, unknown>): Host {
     proxyJump: typeof raw.proxy_jump === 'string' ? raw.proxy_jump : undefined,
     tags: Array.isArray(raw.tags) ? raw.tags.filter((t): t is string => typeof t === 'string') : [],
     notes: typeof raw.notes === 'string' ? raw.notes : undefined,
+    folder: typeof raw.folder === 'string' && raw.folder.trim() !== '' ? raw.folder : undefined,
     source,
     originalSshHost: typeof raw.original_ssh_host === 'string' ? raw.original_ssh_host : undefined,
     monitoring: raw.monitoring === undefined ? 'ssh' : normalizeMonitorMode(raw.monitoring),
@@ -121,6 +124,7 @@ export function hostToToml(host: Host): Record<string, unknown> {
   if (host.proxyJump !== undefined) out.proxy_jump = host.proxyJump;
   if (host.tags.length > 0) out.tags = host.tags;
   if (host.notes !== undefined) out.notes = host.notes;
+  if (host.folder !== undefined) out.folder = host.folder;
   out.source = host.source;
   if (host.originalSshHost !== undefined) out.original_ssh_host = host.originalSshHost;
   if (host.monitoring !== 'ssh') out.monitoring = host.monitoring;

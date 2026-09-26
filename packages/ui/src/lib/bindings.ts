@@ -378,6 +378,8 @@ export type HostDto = {
   port: number;
   tags: string[];
   notes?: string | null;
+  /** The dashboard folder the card sits in; unset means none. */
+  folder?: string | null;
   source: HostSourceDto;
   hasKey: boolean;
   passwordAuthDisabled?: boolean | null;
@@ -401,6 +403,8 @@ export type HostInputDto = {
   proxyJump?: string | null;
   tags: string[];
   notes?: string | null;
+  /** The dashboard folder the card sits in; unset means none. */
+  folder?: string | null;
   monitoring?: MonitorModeDto | null;
   monitorPort?: number | null;
   defaultPath?: string | null;

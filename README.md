@@ -42,7 +42,7 @@ for what works, what's in progress, and what's still planned.
 
 | | Feature | What it does |
 |:-:|---|---|
-| ✅ | **Live dashboard** | A card per server with CPU, RAM, disk, uptime, OS and top processes. Detects running services (Docker, nginx, Node.js, PostgreSQL, Redis). Appliances without a shell can be watched with a plain TCP port check. |
+| ✅ | **Live dashboard** | A card per server with CPU, RAM, disk, uptime, OS and top processes. Detects running services (Docker, nginx, Node.js, PostgreSQL, Redis). Appliances without a shell can be watched with a plain TCP port check. Cards sort into folders you can collapse (drag a card to move it), under a section with the shells on this computer. |
 | ✅ | **Terminals** | Real PTY sessions in tabs, GPU-rendered with xterm.js. Copy on select, `Ctrl+Shift+C`/`V`, configurable right-click (menu or PuTTY-style paste). |
 | ✅ | **Local terminals** | Shells on your own computer in the same tabs, no SSH needed: PowerShell, Command Prompt, Git Bash and every WSL distribution on Windows, your login shell and the other installed ones on macOS and Linux. |
 | ✅ | **Two-panel SFTP** | Local and remote side by side, drag & drop (also from your file manager), parallel transfers, smooth even in folders with thousands of files. |
