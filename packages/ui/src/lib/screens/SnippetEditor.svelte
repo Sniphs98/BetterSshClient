@@ -99,6 +99,11 @@
         parameter's value as {'{{params.<name>}}'}. Whether this runs on this machine or
         on a host is set per node in the automation, so the same snippet works either way.
       </p>
+      <p class="text-[11px] text-faint">
+        In the SFTP browser: right-click a file → Run snippet with this file, and {'{{file}}'} becomes its path
+        (quoted for you). Snippets without {'{{file}}'} are also under Run snippet here… on a folder's empty
+        space, and run in that folder.
+      </p>
 
       {#if error}
         <p class="text-xs text-status-crit">{error}</p>

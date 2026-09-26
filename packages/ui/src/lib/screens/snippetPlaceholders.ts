@@ -17,6 +17,12 @@ export function fillFilePlaceholder(command: string, path: string): string {
   return command.split(FILE_PLACEHOLDER).join(shellQuote(path));
 }
 
+/** A snippet run from a folder rather than a file (`docker system prune`, `git pull`):
+ *  it runs in the folder being browsed, so "here" means what the user is looking at. */
+export function commandInFolder(command: string, folder: string): string {
+  return folder ? `cd ${shellQuote(folder)} && ${command}` : command;
+}
+
 /** Whether this snippet actually wants a file — drives the wording of the menu entry,
  *  so the user can tell which snippets will use what they right-clicked. */
 export function usesFilePlaceholder(command: string): boolean {
