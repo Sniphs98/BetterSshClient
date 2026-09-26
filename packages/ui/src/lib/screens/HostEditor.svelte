@@ -7,6 +7,7 @@
   import type { HostInputDto } from '$lib/bindings';
   import { Button } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
+  import OnePasswordCliHint from '$lib/components/OnePasswordCliHint.svelte';
   import Select from '$lib/components/Select.svelte';
   import { formToInput, type HostFormFields } from './hostForm';
 
@@ -150,6 +151,9 @@
         Reads the password from 1Password when connecting instead of storing it (needs the 1Password
         CLI). In 1Password: right-click the password field → Copy Secret Reference.
       </p>
+      {#if fields.passwordRef.trim()}
+        <OnePasswordCliHint />
+      {/if}
 
       <label class={label}>
         <span>Default path</span>

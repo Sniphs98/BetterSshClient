@@ -9,6 +9,7 @@ import type {
   HostDto,
   HostInputDto,
   ImportResultDto,
+  OnePasswordStatusDto,
   RdpCredentialsDto,
   RdpEmbeddedOpenDto,
   RdpEmbeddedStatusDto,
@@ -375,6 +376,13 @@ export async function rdpSaveFile(folder: string, relativePath: string | undefin
 export async function rdpShowSaved(path: string): Promise<void> {
   const res = await commands.rdpShowSaved(path);
   if (res.status === 'error') throw new Error(res.error.message);
+}
+
+/** Whether the 1Password CLI is installed, and how to install it if not. */
+export async function onePasswordStatus(): Promise<OnePasswordStatusDto> {
+  const res = await commands.onePasswordStatus();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
 }
 
 /** Forgets the remembered certificate of a connection's server (trust on first use). */

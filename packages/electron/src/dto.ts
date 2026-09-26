@@ -199,6 +199,14 @@ export function nodeResultToDto(result: NodeResult): NodeResultDto {
  *  silently. */
 export type ImportResultDto = ImportResult;
 
+/** Whether the 1Password CLI is installed (`onepassword_status`), and how to get it. */
+export interface OnePasswordStatusDto {
+  installed: boolean;
+  version?: string;
+  command?: string;
+  docsUrl: string;
+}
+
 export interface CommandError {
   message: string;
 }

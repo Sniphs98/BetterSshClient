@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * 1Password secret references (`op://<vault>/<item>/<field>`) for host
@@ -25,13 +27,43 @@ export type OpRunner = (args: string[]) => Promise<{ stdout: string; stderr: str
 /** Waits long enough for a biometric prompt to be answered. */
 const OP_TIMEOUT_MS = 90_000;
 
-const defaultRunner: OpRunner = (args) =>
-  new Promise((resolve, reject) => {
-    execFile('op', args, { timeout: OP_TIMEOUT_MS, windowsHide: true }, (err, stdout, stderr) => {
+/**
+ * Where the CLI's usual installers put `op`, tried when it isn't on this process's
+ * PATH: an app started from the Finder or Dock gets a PATH without Homebrew's folder,
+ * and on Windows a CLI just installed with winget is on the user's PATH only for
+ * processes started afterwards — this finds it without restarting the app.
+ */
+export function opLocations(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[] {
+  if (platform === 'win32') {
+    return [
+      env.LOCALAPPDATA && join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', 'op.exe'),
+      env.ProgramFiles && join(env.ProgramFiles, '1Password CLI', 'op.exe'),
+      env.LOCALAPPDATA && join(env.LOCALAPPDATA, '1Password CLI', 'op.exe')
+    ].filter((p): p is string => Boolean(p));
+  }
+  if (platform === 'darwin') return ['/opt/homebrew/bin/op', '/usr/local/bin/op'];
+  return ['/usr/local/bin/op', '/usr/bin/op'];
+}
+
+function run(command: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { timeout: OP_TIMEOUT_MS, windowsHide: true }, (err, stdout, stderr) => {
       if (err) reject(Object.assign(err, { stderr: String(stderr) }));
       else resolve({ stdout: String(stdout), stderr: String(stderr) });
     });
   });
+}
+
+const defaultRunner: OpRunner = async (args) => {
+  try {
+    return await run('op', args);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    const found = opLocations(process.platform, process.env).find((p) => existsSync(p));
+    if (!found) throw err;
+    return run(found, args);
+  }
+};
 
 let runner: OpRunner = defaultRunner;
 
@@ -87,4 +119,31 @@ export async function readSecretCached(reference: string): Promise<string> {
 /** Forgets every remembered secret (tests). */
 export function clearSecretCache(): void {
   secretCache.clear();
+}
+
+/** The installed 1Password CLI's version, or undefined when `op` isn't there (or
+ *  doesn't answer) — for telling the user to install it before a connection fails. */
+export async function cliVersion(): Promise<string | undefined> {
+  try {
+    const { stdout } = await runner(['--version']);
+    return stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface InstallHint {
+  /** A command that installs the CLI, when there is a usual one for this OS. */
+  command?: string;
+  docsUrl: string;
+}
+
+const CLI_DOCS = 'https://developer.1password.com/docs/cli/get-started/';
+
+/** How to install the 1Password CLI here. */
+export function installHint(platform: NodeJS.Platform): InstallHint {
+  if (platform === 'win32') return { command: 'winget install AgileBits.1Password.CLI', docsUrl: CLI_DOCS };
+  if (platform === 'darwin') return { command: 'brew install 1password-cli', docsUrl: CLI_DOCS };
+  // Linux: per-distro package repositories — the docs walk through them.
+  return { docsUrl: CLI_DOCS };
 }

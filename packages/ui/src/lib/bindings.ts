@@ -165,6 +165,9 @@ export const commands = {
   async rdpEmbeddedClose(token: string): Promise<Result<null, CommandError>> {
     return call('rdp_embedded_close', token);
   },
+  async onePasswordStatus(): Promise<Result<OnePasswordStatusDto, CommandError>> {
+    return call('onepassword_status');
+  },
   async rdpForgetCertificate(connectionId: string): Promise<Result<null, CommandError>> {
     return call('rdp_forget_certificate', connectionId);
   },
@@ -296,6 +299,8 @@ export type AutomationNodeResult = NodeResultDto & { automationName: string };
 /** A node started executing. */
 export type AutomationNodeStarted = { automationName: string; nodeId: string; label: string };
 export type CommandError = { message: string };
+/** Whether the 1Password CLI is installed, and how to get it. */
+export type OnePasswordStatusDto = { installed: boolean; version?: string | null; command?: string | null; docsUrl: string };
 /** Live connection state for a host. Internally tagged so the frontend
  *  consumes a discriminated union keyed on `kind`. */
 export type ConnectionStatusDto =

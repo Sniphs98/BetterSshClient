@@ -9,6 +9,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import Select from '$lib/components/Select.svelte';
   import Switch from '$lib/components/Switch.svelte';
+  import OnePasswordCliHint from '$lib/components/OnePasswordCliHint.svelte';
   import { hosts } from '$lib/stores/hosts';
   import { describeSettings, formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
 
@@ -166,6 +167,9 @@
         Reads the password from 1Password when connecting instead of storing it (needs the 1Password CLI). In
         1Password: right-click the password field → Copy Secret Reference.
       </p>
+      {#if fields.passwordRef.trim()}
+        <OnePasswordCliHint />
+      {/if}
 
       <section class="rounded-xl border border-default bg-surface-inset/40">
         <button
