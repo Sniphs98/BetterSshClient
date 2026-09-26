@@ -47,7 +47,7 @@
     sftpDefaultPath
   } from '$lib/ipc/commands';
   import { isOnePasswordReference } from './onePasswordRef';
-  import { fillFilePlaceholder, usesFilePlaceholder } from './snippetPlaceholders';
+  import { commandInFolder, fillFilePlaceholder, usesFilePlaceholder } from './snippetPlaceholders';
 
   let { session, active }: { session: Session; active: boolean } = $props();
 
@@ -623,8 +623,43 @@
     ];
   }
 
-  function remoteEmptyMenuItems(currentView: NonNullable<typeof view>): ContextMenuItem[] {
+  /** Offers the snippets that don't take a file (`docker system prune`, `git pull`) for
+   *  the folder being browsed, and runs the chosen one in the drawer terminal there —
+   *  the same way as a file snippet, just with a `cd` into the folder first. */
+  async function openFolderSnippetPicker(folder: string, x: number, y: number): Promise<void> {
+    let snippets: SnippetDto[];
+    try {
+      snippets = (await listSnippets()).filter((s) => !usesFilePlaceholder(s.command));
+    } catch (err) {
+      lastError.set(errMsg(err));
+      return;
+    }
+    contextMenu = {
+      side: 'remote',
+      x,
+      y,
+      items:
+        snippets.length === 0
+          ? [{ label: 'No snippets without {{file}} saved yet', onSelect: () => {}, disabled: true }]
+          : snippets.map((snippet) => ({
+              label: snippet.name,
+              icon: 'play' as const,
+              onSelect: () => {
+                const command = commandInFolder(snippet.command, folder);
+                showTerminal = true;
+                void tick().then(() => terminalDrawer?.runCommand(command));
+              }
+            }))
+    };
+  }
+
+  function remoteEmptyMenuItems(currentView: NonNullable<typeof view>, event: MouseEvent): ContextMenuItem[] {
     return [
+      {
+        label: 'Run snippet here…',
+        icon: 'play',
+        onSelect: () => void openFolderSnippetPicker(currentView.remote.path, event.clientX, event.clientY)
+      },
       { label: 'New folder', icon: 'plus', onSelect: () => openPrompt('mkdir') },
       { label: 'Refresh', icon: 'refresh', onSelect: () => refreshRemote(currentView.remote.path) }
     ];
@@ -727,7 +762,7 @@
 
   function openEmptyContextMenu(side: PaneSide, event: MouseEvent): void {
     if (!view) return;
-    const items = side === 'remote' ? remoteEmptyMenuItems(view) : localEmptyMenuItems(view);
+    const items = side === 'remote' ? remoteEmptyMenuItems(view, event) : localEmptyMenuItems(view);
     contextMenu = { side, x: event.clientX, y: event.clientY, items };
   }
 

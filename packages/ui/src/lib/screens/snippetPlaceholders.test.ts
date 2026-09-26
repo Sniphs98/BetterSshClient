@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fillFilePlaceholder, usesFilePlaceholder, FILE_PLACEHOLDER } from './snippetPlaceholders';
+import { commandInFolder, fillFilePlaceholder, usesFilePlaceholder, FILE_PLACEHOLDER } from './snippetPlaceholders';
 
 describe('fillFilePlaceholder', () => {
   it('substitutes the path, shell-quoted', () => {
@@ -27,5 +27,15 @@ describe('usesFilePlaceholder', () => {
   it('is true only when the placeholder is present', () => {
     expect(usesFilePlaceholder(`tar -xf ${FILE_PLACEHOLDER}`)).toBe(true);
     expect(usesFilePlaceholder('tar -xf archive.tar')).toBe(false);
+  });
+});
+
+describe('commandInFolder', () => {
+  it('runs the command in the folder being browsed, quoted', () => {
+    expect(commandInFolder('docker system prune -f', '/srv/my app')).toBe("cd '/srv/my app' && docker system prune -f");
+  });
+
+  it('runs it as it is without a folder', () => {
+    expect(commandInFolder('uptime', '')).toBe('uptime');
   });
 });

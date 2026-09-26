@@ -636,6 +636,28 @@ test('a snippet without the file placeholder still runs, in the current director
   expect(commands.some((c) => c.startsWith('cd '))).toBe(true);
 });
 
+test('"Run snippet here" on empty space offers the snippets without a file and runs one in this folder', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('files on web-1').click();
+  const remotePane = page.getByRole('region', { name: 'web-1', exact: true });
+  await expect(remotePane.getByText('config.yml')).toBeVisible();
+
+  const region = page.getByRole('region', { name: 'web-1 file list' });
+  const box = await region.boundingBox();
+  await region.click({ button: 'right', position: { x: 10, y: (box?.height ?? 200) - 10 } });
+  await page.getByRole('menu').getByRole('menuitem', { name: 'Run snippet here…' }).click();
+
+  // Only what doesn't need a file: "extract" wants {{file}}, so it isn't offered here.
+  const snippetMenu = page.getByRole('menu');
+  await expect(snippetMenu.getByRole('menuitem', { name: 'disk free' })).toBeVisible();
+  await expect(snippetMenu.getByRole('menuitem', { name: /extract/ })).toHaveCount(0);
+  await snippetMenu.getByRole('menuitem', { name: 'disk free' }).click();
+
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __terminalCommands: string[] }).__terminalCommands))
+    .toContain("cd '/' && df -h");
+});
+
 test('each entry gets its file-type icon, and an unknown type falls back', async ({ page }) => {
   const failedIconRequests: string[] = [];
   page.on('response', (r) => {
