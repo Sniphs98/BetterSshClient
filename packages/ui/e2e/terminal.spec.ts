@@ -180,13 +180,13 @@ test('action-first: the Terminal spawner opens the host picker, then a live term
   await expect(page.locator('.xterm-rows')).toContainText('better-ssh-client-ready');
 });
 
-test('Local terminal offers the shells on this computer and opens one without a host', async ({ page }) => {
+test("the dashboard's This computer tiles open a local shell without a host", async ({ page }) => {
   await boot(page);
 
-  await page.getByRole('button', { name: /Local terminal/ }).click();
-  const menu = page.getByRole('menu');
-  await expect(menu.getByRole('menuitem')).toHaveText(['PowerShell', 'Ubuntu (WSL)']);
-  await menu.getByRole('menuitem', { name: 'Ubuntu (WSL)' }).click();
+  // The sidebar has no local-terminal row: the dashboard's tiles are the way in.
+  await expect(page.getByRole('button', { name: /Local terminal/ })).toHaveCount(0);
+  await expect(page.getByTitle(/^Open .* in a tab$/)).toHaveCount(2);
+  await page.getByTitle('Open Ubuntu (WSL) in a tab').click();
 
   // A tab named after the shell, marked local, streaming like any terminal.
   await expect(page.getByRole('button', { name: 'Ubuntu (WSL) · local terminal', exact: true })).toBeVisible();

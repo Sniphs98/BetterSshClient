@@ -21,10 +21,7 @@
   import { sidebarCollapsed } from '$lib/stores/ui';
   import { sidebarMode, type SidebarMode } from '$lib/stores/sidebarMode';
   import { automationsTab } from '$lib/stores/automations';
-  import { spawnSession, spawnLocalTerminal, closeSession } from '$lib/stores/navigation';
-  import { terminalProfiles } from '$lib/ipc/commands';
-  import { lastError } from '$lib/stores/notifications';
-  import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
+  import { spawnSession, closeSession } from '$lib/stores/navigation';
   import { palette } from '$lib/stores/palette';
 
   // The running version, shown beside the Settings gear (or in its tooltip when the
@@ -53,27 +50,6 @@
   async function pickAndSpawn(kind: SessionKind): Promise<void> {
     const host = await palette.pickHost();
     if (host) spawnSession(kind, host.name);
-  }
-
-  // Local terminal: a shell on this machine rather than a host — PowerShell, Command
-  // Prompt, a WSL distribution, zsh … (whatever core/local/profiles.ts finds here),
-  // picked from a small menu beside the row, the way VS Code's terminal "+" offers them.
-  let localMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
-
-  async function openLocalMenu(event: MouseEvent): Promise<void> {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    let items: ContextMenuItem[];
-    try {
-      const profiles = await terminalProfiles();
-      items =
-        profiles.length > 0
-          ? profiles.map((p) => ({ label: p.label, icon: 'terminal' as const, onSelect: () => spawnLocalTerminal(p) }))
-          : [{ label: 'No shells found on this computer', onSelect: () => {}, disabled: true }];
-    } catch (err) {
-      lastError.set(err instanceof Error ? err.message : String(err));
-      return;
-    }
-    localMenu = { x: rect.right + 4, y: rect.top, items };
   }
 
   // Automations and Snippets are two entry points into the same screen — it already
@@ -216,18 +192,6 @@
             </button>
           </li>
         {/each}
-        <li>
-          <button
-            type="button"
-            class="{rowBase} {focusRing} {rowState(false)} {$sidebarCollapsed ? 'justify-center' : ''}"
-            title="Local terminal — a shell on this computer (PowerShell, cmd, WSL, …)"
-            aria-haspopup="menu"
-            onclick={openLocalMenu}
-          >
-            <Icon name="terminal" />
-            {#if !$sidebarCollapsed}<span class="truncate">Local terminal</span>{/if}
-          </button>
-        </li>
       {/if}
     </ul>
 
@@ -314,7 +278,3 @@
     {/if}
   </footer>
 </aside>
-
-{#if localMenu}
-  <ContextMenu x={localMenu.x} y={localMenu.y} items={localMenu.items} onClose={() => (localMenu = null)} />
-{/if}
