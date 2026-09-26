@@ -5,6 +5,7 @@ import {
   runAutomation,
   substituteTemplate,
   topoOrder,
+  uploadDestination,
   validateAutomation,
   type RunAutomationDeps
 } from './engine.js';
@@ -240,7 +241,7 @@ describe('runAutomation', () => {
   function deps(overrides: Partial<RunAutomationDeps> = {}): RunAutomationDeps {
     return {
       runLocal: async (command) => ({ output: `ran: ${command}`, ok: true }),
-      connectHost: async () => ({ runShell: async () => ({ output: '', ok: true }), disconnect: () => {} }),
+      connectHost: async () => ({ runShell: async () => ({ output: '', ok: true }), upload: async () => {}, disconnect: () => {} }),
       ...overrides
     };
   }
@@ -488,5 +489,91 @@ describe('runAutomation', () => {
     const results = await runAutomation(f, new Map([['remote', remote]]), {}, deps());
     expect(results[0].status).toBe('failed');
     expect(results[0].error).toMatch(/no host parameter value/);
+  });
+});
+
+describe('upload nodes', () => {
+  const pack = snippet({ id: 'pack', name: 'Pack', command: 'docker save -o image.tar {{params.image}} && tar -czf image.tar.gz image.tar' });
+  const load = snippet({ id: 'load', name: 'Load', command: 'docker load < {{nodes.upload.output}}' });
+  const params: AutomationParam[] = [...hostParam, { name: 'image', kind: 'text' }, { name: 'dir', kind: 'text' }];
+  const flow = automation(
+    [
+      node({ id: 'n1', snippetId: 'pack', label: 'pack' }),
+      node({ id: 'n2', snippetId: '', label: 'upload', target: 'remote', upload: { from: 'image.tar.gz', to: '{{params.dir}}/' } }),
+      node({ id: 'n3', snippetId: 'load', label: 'load', target: 'remote' })
+    ],
+    [
+      ['n1', 'n2'],
+      ['n2', 'n3']
+    ],
+    params
+  );
+  const library = new Map([
+    ['pack', pack],
+    ['load', load]
+  ]);
+
+  it('validates: needs no snippet, but both paths, the host, and known references', () => {
+    expect(validateAutomation(flow, library)).toEqual([]);
+    const bad = automation(
+      [node({ id: 'u', snippetId: '', label: 'u', target: 'local', upload: { from: ' ', to: '{{params.nope}}' } })],
+      [],
+      hostParam
+    );
+    expect(validateAutomation(bad, library)).toEqual([
+      'upload "u" needs a file to upload',
+      'upload "u" must target the host',
+      'node "u" references unknown parameter "nope"'
+    ]);
+  });
+
+  it('uploads over the host connection, and its output is where the file landed', async () => {
+    const uploads: Array<[string, string]> = [];
+    const commands: string[] = [];
+    let connects = 0;
+    const results = await runAutomation(flow, library, { host: 'web-1', image: 'nginx:1.27', dir: '/tmp' }, {
+      runLocal: async () => ({ output: '', ok: true }),
+      connectHost: async () => {
+        connects += 1;
+        return {
+          runShell: async (cmd) => {
+            commands.push(cmd);
+            return { output: 'Loaded image', ok: true };
+          },
+          upload: async (from, to) => {
+            uploads.push([from, to]);
+          },
+          disconnect: () => {}
+        };
+      }
+    });
+    expect(uploads).toEqual([['image.tar.gz', '/tmp/image.tar.gz']]);
+    expect(results.map((r) => r.status)).toEqual(['success', 'success', 'success']);
+    expect(results[1].output).toBe('/tmp/image.tar.gz');
+    expect(commands).toEqual(['docker load < /tmp/image.tar.gz']);
+    expect(connects).toBe(1);
+  });
+
+  it('fails the node with the reason, and skips what depends on it', async () => {
+    const results = await runAutomation(flow, library, { host: 'web-1', image: 'nginx', dir: '/tmp' }, {
+      runLocal: async () => ({ output: '', ok: true }),
+      connectHost: async () => ({
+        runShell: async () => ({ output: '', ok: true }),
+        upload: async () => {
+          throw new Error('no such file on this computer: C:\\Users\\me\\image.tar.gz');
+        },
+        disconnect: () => {}
+      })
+    });
+    expect(results.map((r) => r.status)).toEqual(['success', 'failed', 'skipped']);
+    expect(results[1].error).toMatch(/no such file on this computer/);
+  });
+});
+
+describe('uploadDestination', () => {
+  it('keeps the file name for a folder ending in /, from either kind of local path', () => {
+    expect(uploadDestination('C:\\Users\\me\\image.tar.gz', '/tmp/')).toBe('/tmp/image.tar.gz');
+    expect(uploadDestination('~/build/app.tgz', '/srv/')).toBe('/srv/app.tgz');
+    expect(uploadDestination('image.tar.gz', '/tmp/renamed.tar.gz')).toBe('/tmp/renamed.tar.gz');
   });
 });

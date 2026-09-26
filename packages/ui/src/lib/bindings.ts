@@ -331,10 +331,13 @@ export type AutomationDto = {
 };
 /** `to` depends on `from` — `from` must complete before `to` can start. */
 export type AutomationEdgeDto = { from: string; to: string };
-/** One placement of a reusable Snippet into an Automation. */
+/** One placement of a reusable Snippet into an Automation — or a built-in upload step. */
 export type AutomationNodeDto = {
   id: string;
+  /** `''` for an upload step. */
   snippetId: string;
+  /** Set for an upload step: a file on this machine copied to the automation's host. */
+  upload?: { from: string; to: string } | null;
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;

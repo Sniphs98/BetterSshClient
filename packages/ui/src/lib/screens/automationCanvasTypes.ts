@@ -16,6 +16,22 @@ export interface SnippetNodeData extends Record<string, unknown> {
 }
 
 export type SnippetNode = Node<SnippetNodeData, 'snippet'>;
+
+/** A built-in upload step (no snippet): a file on this machine to the automation's host.
+ *  Always runs "on host" — it needs the host's connection — so it has no target switch. */
+export interface UploadNodeData extends Record<string, unknown> {
+  label: string;
+  continueOnError: boolean;
+  /** A file on this machine; relative paths are from the home folder. */
+  from: string;
+  /** On the host: a file path, or a folder ending in `/` to keep the name. */
+  to: string;
+}
+
+export type UploadNode = Node<UploadNodeData, 'upload'>;
+
+/** A node that becomes an `AutomationNode` when saved — everything but Start. */
+export type StepNode = SnippetNode | UploadNode;
 export type AutomationCanvasEdge = Edge;
 
 /** The one, permanent "Start" node — the automation's parameters, drawn as a node instead of
@@ -38,7 +54,7 @@ export const START_NODE_ID = '__start__';
 export type StartNodeData = Record<string, never>;
 export type StartNode = Node<StartNodeData, 'start'>;
 
-export type AnyCanvasNode = SnippetNode | StartNode;
+export type AnyCanvasNode = SnippetNode | UploadNode | StartNode;
 
 /** Passed via `setContext(AUTOMATION_PARAMS_CONTEXT, …)` from AutomationEditor.svelte down to the
  *  Start node so it can read/mutate `params` without that state needing to travel

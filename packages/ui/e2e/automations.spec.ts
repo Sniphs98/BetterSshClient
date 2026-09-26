@@ -20,6 +20,7 @@ async function boot(page: Page): Promise<void> {
     const win = window as unknown as Record<string, unknown>;
     const listeners: Record<string, Array<(payload: unknown) => void>> = {};
     const state: { snippets: Rec[]; automations: Rec[] } = { snippets: [], automations: [] };
+    win.__automationState = state;
     // Every export_* call, recorded for assertions — real Electron shows a native save
     // dialog here, which Playwright can't drive, so the test instead checks the right
     // channel/id or name reached the (stubbed) IPC boundary.
@@ -389,6 +390,39 @@ test('a node set to run on a host carries no host itself — the automation asks
   await expect(progress.getByRole('button', { name: 'Done' })).toBeVisible();
   // Proof the picked host — not something baked into the snippet — reached the run.
   await expect(progress.locator('li', { hasText: 'Deploy' })).toContainText('ok on web-1');
+});
+
+test('an upload step: added from the "+" menu, saved as a node without a snippet, there again on reopen', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('ship-image');
+
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Upload a file to the host/ }).click();
+  const upload = page.locator('.svelte-flow__node', { hasText: 'Upload a file to the host' });
+  await expect(upload.getByLabel('Label')).toHaveValue('upload');
+  await upload.getByLabel('From this computer').fill('image.tar.gz');
+  await upload.getByLabel('To on the host').fill('/tmp/');
+
+  // An upload always goes to the host, so the automation needs a host parameter first.
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByText('This automation runs something on a host — add a host parameter on the Start node')).toBeVisible();
+  await page.getByRole('button', { name: 'Add parameter' }).click();
+  await page.getByLabel('Parameter 1 name').fill('host');
+  await page.getByRole('combobox', { name: 'Parameter 1 kind' }).selectOption('host');
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+
+  const saved = await page.evaluate(
+    () => (window as unknown as { __automationState: { automations: Array<{ nodes: unknown[] }> } }).__automationState.automations[0].nodes[0]
+  );
+  expect(saved).toMatchObject({ snippetId: '', upload: { from: 'image.tar.gz', to: '/tmp/' }, target: 'remote', label: 'upload' });
+
+  await page.getByText('ship-image', { exact: true }).click();
+  const reopened = page.locator('.svelte-flow__node', { hasText: 'Upload a file to the host' });
+  await expect(reopened.getByLabel('From this computer')).toHaveValue('image.tar.gz');
+  await expect(reopened.getByLabel('To on the host')).toHaveValue('/tmp/');
 });
 
 test('the "+" menu can create a brand new snippet inline and drops it straight onto the canvas', async ({

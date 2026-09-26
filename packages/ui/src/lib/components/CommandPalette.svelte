@@ -106,6 +106,9 @@
       case 'newSnippet':
         palette.chooseSnippet('new');
         break;
+      case 'uploadStep':
+        palette.chooseSnippet('upload');
+        break;
     }
   }
 
@@ -231,6 +234,9 @@
                 {:else if item.kind === 'snippet'}
                   <Icon name="automations" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">{item.snippet.name}</span>
+                {:else if item.kind === 'uploadStep'}
+                  <Icon name="upload" size={16} />
+                  <span class="min-w-0 flex-1 truncate font-medium">Upload a file to the host…</span>
                 {:else}
                   <Icon name="plus" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">New snippet…</span>

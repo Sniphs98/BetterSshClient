@@ -51,6 +51,22 @@ describe('buildAutomationBundle', () => {
   });
 });
 
+describe('upload nodes in bundles', () => {
+  it('bundle no snippet for an upload node, and come back through JSON', () => {
+    const a = snippet({ id: 'a1', name: 'Load' });
+    const f = automation({
+      params: [{ name: 'host', kind: 'host' }],
+      nodes: [
+        node({ id: 'u', snippetId: '', upload: { from: 'image.tar.gz', to: '/tmp/' }, target: 'remote' }),
+        node({ id: 'n1', snippetId: 'a1', target: 'remote' })
+      ]
+    });
+    const bundle = buildAutomationBundle(f, new Map([['a1', a]]));
+    expect(bundle.snippets).toEqual([a]);
+    expect(parseBundle(JSON.parse(JSON.stringify(bundle)))).toEqual(bundle);
+  });
+});
+
 describe('parseBundle', () => {
   it('round-trips a built snippet bundle through JSON', () => {
     const a = snippet({ id: 'a1', name: 'Build' });

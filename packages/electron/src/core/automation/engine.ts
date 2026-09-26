@@ -68,6 +68,22 @@ function hostParamOf(automation: Automation): { name: string } | undefined {
   return automation.params.find((p) => p.kind === 'host');
 }
 
+/** Everything in a node that templates are substituted into: its snippet's command, or
+ *  an upload's two paths. Undefined for a node whose snippet is gone. */
+function templatedText(node: AutomationNode, snippetsById: Map<string, Snippet>): string | undefined {
+  if (node.upload !== undefined) return `${node.upload.from}\n${node.upload.to}`;
+  return snippetsById.get(node.snippetId)?.command;
+}
+
+/** Where an upload lands: `to` itself, or — when `to` ends in `/` — that folder plus the
+ *  local file's name. The host is POSIX; the local path may use either separator. */
+export function uploadDestination(from: string, to: string): string {
+  const dest = to.trim();
+  if (!dest.endsWith('/')) return dest;
+  const name = from.trim().split(/[\\/]/).filter(Boolean).pop() ?? '';
+  return `${dest}${name}`;
+}
+
 /** Save-time structural validation — not execution. Returns a list of problem
  *  strings (empty means valid): an unknown `snippetId`, a duplicate label or
  *  parameter name, more than one `'host'`-kind parameter, a remote node with no host
@@ -84,8 +100,11 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
   const labelCounts = new Map<string, number>();
 
   for (const node of automation.nodes) {
-    const snippet = snippetsById.get(node.snippetId);
-    if (snippet === undefined) {
+    if (node.upload !== undefined) {
+      if (!node.upload.from.trim()) problems.push(`upload "${node.label}" needs a file to upload`);
+      if (!node.upload.to.trim()) problems.push(`upload "${node.label}" needs a destination on the host`);
+      if (node.target !== 'remote') problems.push(`upload "${node.label}" must target the host`);
+    } else if (snippetsById.get(node.snippetId) === undefined) {
       problems.push(`node "${node.label}" references an unknown snippet`);
     }
     labelCounts.set(node.label, (labelCounts.get(node.label) ?? 0) + 1);
@@ -122,12 +141,12 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
 
   const predecessorsOf = predecessorMap(automation);
   for (const node of automation.nodes) {
-    const snippet = snippetsById.get(node.snippetId);
-    if (snippet === undefined) continue;
+    const text = templatedText(node, snippetsById);
+    if (text === undefined) continue;
     const directPredecessorLabels = new Set(
       (predecessorsOf.get(node.id) ?? []).map((id) => nodeById.get(id)?.label)
     );
-    for (const match of snippet.command.matchAll(TEMPLATE_REF)) {
+    for (const match of text.matchAll(TEMPLATE_REF)) {
       const ref = match[1];
       if (!labelToNode.has(ref)) {
         problems.push(`node "${node.label}" references unknown label "${ref}"`);
@@ -135,7 +154,7 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
         problems.push(`node "${node.label}" references "${ref}", which is not a direct dependency (add an edge from it)`);
       }
     }
-    for (const match of snippet.command.matchAll(PARAM_REF)) {
+    for (const match of text.matchAll(PARAM_REF)) {
       const ref = match[1];
       if (!paramNames.has(ref)) {
         problems.push(`node "${node.label}" references unknown parameter "${ref}"`);
@@ -186,6 +205,8 @@ export function substituteTemplate(
 
 export interface RunAutomationConnection {
   runShell(cmd: string, timeoutMs: number): Promise<{ output: string; ok: boolean; error?: string }>;
+  /** Copies the local file `from` to `to` on the host; rejects with why it failed. */
+  upload(from: string, to: string): Promise<void>;
   disconnect(): void;
 }
 
@@ -225,6 +246,16 @@ export async function runAutomation(
   const resultsById = new Map<string, NodeResult>();
   const connections = new Map<string, RunAutomationConnection>();
 
+  /** The host's connection, opened on first use and shared by every node after. */
+  async function connectionFor(hostName: string): Promise<RunAutomationConnection> {
+    let connection = connections.get(hostName);
+    if (connection === undefined) {
+      connection = await deps.connectHost(hostName);
+      connections.set(hostName, connection);
+    }
+    return connection;
+  }
+
   function settle(nodeId: string, result: NodeResult): void {
     resultsById.set(nodeId, result);
     onProgress?.({ kind: 'nodeResult', result });
@@ -235,7 +266,7 @@ export async function runAutomation(
       const node = nodeById.get(nodeId)!;
       const snippet = snippetsById.get(node.snippetId);
 
-      if (snippet === undefined) {
+      if (snippet === undefined && node.upload === undefined) {
         settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'snippet no longer exists', durationMs: 0 });
         continue;
       }
@@ -255,22 +286,27 @@ export async function runAutomation(
 
       onProgress?.({ kind: 'nodeStarted', nodeId, label: node.label });
       const predecessorsByLabel = new Map(predecessorIds.map((id) => [nodeById.get(id)!.label, resultsById.get(id)!]));
-      const timeoutMs = snippet.timeoutSecs * 1000;
       const startedAt = Date.now();
 
       let exec: { output: string; ok: boolean; error?: string };
       try {
-        const command = substituteTemplate(snippet.command, predecessorsByLabel, paramValues);
-        if (node.target === 'local') {
-          exec = await deps.runLocal(command, timeoutMs);
+        if (node.upload !== undefined) {
+          // No timeout: a big image takes as long as the line allows, and a stalled
+          // transfer fails on the SSH connection's own keepalive.
+          const from = substituteTemplate(node.upload.from, predecessorsByLabel, paramValues).trim();
+          const to = uploadDestination(from, substituteTemplate(node.upload.to, predecessorsByLabel, paramValues));
+          const connection = await connectionFor(nodeHostName!);
+          await connection.upload(from, to);
+          // The output is where it landed, so the next node can use it as is:
+          // `docker load < {{nodes.upload.output}}`.
+          exec = { output: to, ok: true };
+        } else if (node.target === 'local') {
+          const command = substituteTemplate(snippet!.command, predecessorsByLabel, paramValues);
+          exec = await deps.runLocal(command, snippet!.timeoutSecs * 1000);
         } else {
-          const hostName = nodeHostName!;
-          let connection = connections.get(hostName);
-          if (connection === undefined) {
-            connection = await deps.connectHost(hostName);
-            connections.set(hostName, connection);
-          }
-          exec = await connection.runShell(command, timeoutMs);
+          const command = substituteTemplate(snippet!.command, predecessorsByLabel, paramValues);
+          const connection = await connectionFor(nodeHostName!);
+          exec = await connection.runShell(command, snippet!.timeoutSecs * 1000);
         }
       } catch (e) {
         exec = { output: '', ok: false, error: (e as Error).message };
