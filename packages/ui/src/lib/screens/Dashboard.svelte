@@ -11,8 +11,8 @@
   import type { HostDto, HostInputDto, TerminalProfileDto } from '$lib/bindings';
   import { Surface, Chip, StatusDot, Icon, Button, statusToken } from '$lib/theme';
   import { serverCards, filterHosts, QUICK_ACTIONS, type ServerCard } from './serverCard';
-  import { groupCards, LOCAL_KEY } from './dashboardSections';
-  import { collapsedSections } from '$lib/stores/dashboardLayout';
+  import { folderNameProblem, folderNames, groupCards, LOCAL_KEY } from './dashboardSections';
+  import { collapsedSections, keptFolders } from '$lib/stores/dashboardLayout';
   import { spawnSession, spawnLocalTerminal } from '$lib/stores/navigation';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import { addressLine } from './onePasswordRef';
@@ -29,7 +29,8 @@
     | { kind: 'add' }
     | { kind: 'edit'; host: HostDto }
     | { kind: 'delete'; host: HostDto }
-    | { kind: 'keySetupConfirm'; host: HostDto };
+    | { kind: 'keySetupConfirm'; host: HostDto }
+    | { kind: 'newFolder' };
 
   let dialog = $state<Dialog | null>(null);
   // Reset to the safer default (disable password login) each time the confirm dialog
@@ -43,11 +44,38 @@
   let searchInput = $state<HTMLInputElement>();
   const visibleCards = $derived(filterHosts($serverCards, query));
   // Accordion sections: a folder each, then the hosts in none (dashboardSections.ts).
-  const sections = $derived(groupCards(visibleCards));
+  // Kept folders show even when empty — except while searching, where only matches count.
+  const sections = $derived(groupCards(visibleCards, query.trim() ? [] : $keptFolders));
+  // Every folder a host is in is kept, so it outlives its last card (dragged out).
+  $effect(() => keptFolders.keepAll(folderNames($hosts)));
+
+  // "New folder": an empty section to drag cards into.
+  let newFolderName = $state('');
+  let newFolderError = $state<string | null>(null);
+
+  function openNewFolder(): void {
+    newFolderName = '';
+    newFolderError = null;
+    dialog = { kind: 'newFolder' };
+  }
+
+  function createFolder(): void {
+    const problem = folderNameProblem(newFolderName, [...folderNames($hosts), ...$keptFolders]);
+    if (problem) {
+      newFolderError = problem;
+      return;
+    }
+    const name = newFolderName.trim();
+    keptFolders.add(name);
+    // Open, so the new section is visible straight away.
+    if ($collapsedSections.has(`folder:${name}`)) collapsedSections.toggle(`folder:${name}`);
+    dialog = null;
+  }
 
   // The local shells for the fixed "This computer" section, found once per visit.
   let localShells = $state<TerminalProfileDto[]>([]);
   onMount(() => {
+    void keptFolders.load();
     terminalProfiles().then(
       (list) => (localShells = Array.isArray(list) ? list : []),
       () => (localShells = [])
@@ -242,6 +270,10 @@
           <Icon name="refresh" size={15} />
         </span>
       </button>
+      <button type="button" class={pill} onclick={openNewFolder}>
+        <Icon name="folder" size={13} />
+        New folder
+      </button>
       <button type="button" class={pill} onclick={() => (dialog = { kind: 'add' })}>
         <Icon name="plus" size={13} />
         Add host
@@ -274,7 +306,7 @@
     {/if}
   {/if}
 
-  {#if $serverCards.length === 0}
+  {#if $serverCards.length === 0 && sections.length === 0}
     <div class="flex flex-col items-center justify-center gap-2 py-20 text-center">
       <p class="font-medium">No servers yet</p>
       <p class="text-sm text-muted">Add a host, or import one from your SSH config, to see it here.</p>
@@ -283,7 +315,7 @@
         Add host
       </button>
     </div>
-  {:else if visibleCards.length === 0}
+  {:else if query.trim() && visibleCards.length === 0}
     <div class="flex flex-col items-center justify-center gap-2 py-20 text-center">
       <p class="text-sm text-muted">No hosts match “{query}”.</p>
     </div>
@@ -298,7 +330,11 @@
         ondrop={(e) => onDrop(e, section.folder)}
       >
         {@render sectionHeader(section.key, section.title, section.cards.length, section.folder)}
-        {#if !isCollapsed(section.key)}
+        {#if !isCollapsed(section.key) && section.cards.length === 0}
+          <div class="rounded-xl border border-dashed border-default px-4 py-6 text-center text-xs text-faint">
+            Drag host cards here to put them in {section.title}.
+          </div>
+        {:else if !isCollapsed(section.key)}
           <div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
             {#each section.cards as card (card.host.name)}
               <div draggable="true" ondragstart={(e) => onDragStart(e, card.host.name)} ondragend={() => (dropTarget = null)} role="listitem">
@@ -313,9 +349,10 @@
 </section>
 
 {#snippet sectionHeader(key: string, title: string, count: number, folder: string | null)}
+  <div class="mb-3 flex items-center gap-1">
   <button
     type="button"
-    class="mb-3 flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-sm font-semibold text-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+    class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-left text-sm font-semibold text-muted transition hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
     aria-expanded={!isCollapsed(key)}
     title={query ? 'Showing every section while searching' : isCollapsed(key) ? `Show ${title}` : `Hide ${title}`}
     onclick={() => collapsedSections.toggle(key)}
@@ -336,6 +373,19 @@
     <span class="truncate">{title}</span>
     <span class="rounded-full bg-surface-inset px-1.5 text-[11px] font-medium text-faint">{count}</span>
   </button>
+  <!-- Only an empty folder can go: one with hosts in it would just come back. -->
+  {#if folder && count === 0}
+    <button
+      type="button"
+      class={iconBtn}
+      title="Remove the empty folder {title}"
+      aria-label="Remove folder {title}"
+      onclick={() => keptFolders.remove(folder)}
+    >
+      <Icon name="close" size={13} />
+    </button>
+  {/if}
+  </div>
 {/snippet}
 
 {#snippet hostCard(card: ServerCard)}
@@ -507,7 +557,35 @@
       </Surface>
 {/snippet}
 
-{#if dialog?.kind === 'add'}
+{#if dialog?.kind === 'newFolder'}
+  <Modal label="New folder" onClose={() => (dialog = null)}>
+    <form
+      class="space-y-3 px-5 py-4"
+      onsubmit={(e) => {
+        e.preventDefault();
+        createFolder();
+      }}
+    >
+      <h2 class="text-sm font-semibold">New folder</h2>
+      <label class="block space-y-1 text-xs font-medium text-muted">
+        <span>Name</span>
+        <!-- svelte-ignore a11y_autofocus -- the one field of a dialog just opened for it -->
+        <input
+          bind:value={newFolderName}
+          autofocus
+          class="w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none placeholder:text-faint focus-visible:ring-2 focus-visible:ring-focus"
+          placeholder="Homelab"
+        />
+      </label>
+      <p class="text-xs text-faint">Then drag host cards onto it, or pick it in a host's Folder field.</p>
+      {#if newFolderError}<p class="text-xs text-status-crit">{newFolderError}</p>{/if}
+      <div class="flex justify-end gap-2 pt-1">
+        <Button variant="ghost" onclick={() => (dialog = null)}>Cancel</Button>
+        <Button variant="primary" type="submit">Create folder</Button>
+      </div>
+    </form>
+  </Modal>
+{:else if dialog?.kind === 'add'}
   <HostEditor mode="add" initial={emptyForm()} onSubmit={submit} onCancel={() => (dialog = null)} />
 {:else if dialog?.kind === 'edit'}
   {@const host = dialog.host}
