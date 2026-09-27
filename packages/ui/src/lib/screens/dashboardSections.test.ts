@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { folderNames, groupCards } from './dashboardSections';
+import { folderNameProblem, folderNames, groupCards } from './dashboardSections';
 
 const card = (name: string, folder?: string) => ({ host: { name, folder } });
 
@@ -24,5 +24,28 @@ describe('groupCards', () => {
 describe('folderNames', () => {
   it('lists each folder in use once, sorted without regard to case', () => {
     expect(folderNames([{ folder: 'b' }, { folder: 'A' }, { folder: 'b' }, {}, { folder: null }])).toEqual(['A', 'b']);
+  });
+});
+
+describe('kept folders', () => {
+  it('show as empty sections, sorted in among the others', () => {
+    const sections = groupCards([card('nas', 'Homelab'), card('test')], ['Archive', 'Homelab']);
+    expect(sections.map((s) => [s.title, s.cards.length])).toEqual([
+      ['Archive', 0],
+      ['Homelab', 1],
+      ['Other hosts', 1]
+    ]);
+  });
+
+  it('turn "Hosts" into "Other hosts" even while they are empty', () => {
+    expect(groupCards([card('a')], ['New']).map((s) => s.title)).toEqual(['New', 'Other hosts']);
+  });
+});
+
+describe('folderNameProblem', () => {
+  it('wants a name that is not taken, ignoring case', () => {
+    expect(folderNameProblem('  ', ['Homelab'])).toBe('Give the folder a name');
+    expect(folderNameProblem('homelab', ['Homelab'])).toBe('There is a folder called "homelab" already');
+    expect(folderNameProblem(' Kunde B ', ['Homelab'])).toBeNull();
   });
 });

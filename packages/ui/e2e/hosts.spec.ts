@@ -217,3 +217,38 @@ test('folders group the cards into sections under "This computer"; dragging a ca
   await expect(section('Homelab')).toContainText('2');
   await expect(section('Other hosts')).toHaveCount(0);
 });
+
+test('"New folder" makes an empty section to drag cards into; an empty folder can be removed', async ({ page }) => {
+  await boot(page);
+  const section = (title: string) => page.getByRole('button', { name: new RegExp(`^${title} \\d+$`) });
+
+  await page.getByRole('button', { name: 'New folder' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New folder' });
+  await dialog.getByRole('button', { name: 'Create folder' }).click();
+  await expect(dialog.getByText('Give the folder a name')).toBeVisible();
+  await dialog.getByLabel('Name').fill('Homelab');
+  await dialog.getByRole('button', { name: 'Create folder' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // An empty section, ready for cards; the rest are "Other hosts" now.
+  await expect(section('Homelab')).toContainText('0');
+  await expect(page.getByText('Drag host cards here to put them in Homelab.')).toBeVisible();
+  await expect(section('Other hosts')).toBeVisible();
+
+  // A name that exists is refused.
+  await page.getByRole('button', { name: 'New folder' }).click();
+  await dialog.getByLabel('Name').fill('homelab');
+  await dialog.getByRole('button', { name: 'Create folder' }).click();
+  await expect(dialog.getByText('There is a folder called "homelab" already')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+  // Drag a card in, and out again: the folder stays, empty, until removed.
+  await page.locator('[draggable="true"]', { hasText: 'web-1' }).dragTo(section('Homelab'));
+  await expect(section('Homelab')).toContainText('1');
+  await expect(page.getByRole('button', { name: 'Remove folder Homelab' })).toHaveCount(0);
+  await page.locator('[draggable="true"]', { hasText: 'web-1' }).dragTo(section('Other hosts'));
+  await expect(section('Homelab')).toContainText('0');
+  await page.getByRole('button', { name: 'Remove folder Homelab' }).click();
+  await expect(section('Homelab')).toHaveCount(0);
+  await expect(section('Hosts')).toBeVisible();
+});
