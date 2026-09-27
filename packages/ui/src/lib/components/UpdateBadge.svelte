@@ -65,8 +65,9 @@
       <span class="inline-flex animate-spin"><Icon name="refresh" size={11} /></span>
     {:else}
       <span class="relative flex h-1.5 w-1.5 shrink-0">
-        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60"></span>
-        <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-current"></span>
+        <!-- Green, the app's "all good" colour: something new is ready. -->
+        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-status-ok opacity-75"></span>
+        <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-status-ok"></span>
       </span>
     {/if}
     <span class="truncate">{label}</span>
