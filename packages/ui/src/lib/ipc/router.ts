@@ -8,6 +8,7 @@ import type {
   AutomationStarted,
   AutomationNodeResult,
   AutomationNodeStarted,
+  AutomationNodeProgress,
   ConnectionStatusDto,
   FilePreview,
   HostDto,
@@ -28,7 +29,8 @@ import {
   reduceAutomationCompleted,
   reduceAutomationFailed,
   reduceNodeResult,
-  reduceNodeStarted
+  reduceNodeStarted,
+  reduceNodeProgress
 } from '$lib/stores/automations';
 import { hosts } from '$lib/stores/hosts';
 import { statuses } from '$lib/stores/statuses';
@@ -207,8 +209,12 @@ export function applyAutomationNodeResult(payload: AutomationNodeResult): void {
   automationRun.update((run) => reduceNodeResult(run, automationName, result));
 }
 
+export function applyAutomationNodeProgress(payload: AutomationNodeProgress): void {
+  automationRun.update((run) => reduceNodeProgress(run, payload.automationName, payload.nodeId, payload.message));
+}
+
 export function applyAutomationCompleted(payload: AutomationCompleted): void {
-  automationRun.set(reduceAutomationCompleted(payload.automationName, payload.results));
+  automationRun.update((run) => reduceAutomationCompleted(payload.automationName, payload.results, run));
 }
 
 export function applyAutomationFailed(payload: AutomationFailed): void {

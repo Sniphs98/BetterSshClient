@@ -32,6 +32,7 @@
   import AutomationCanvasNode from './AutomationCanvasNode.svelte';
   import AutomationStartNode from './AutomationStartNode.svelte';
   import AutomationUploadNode from './AutomationUploadNode.svelte';
+  import AutomationGitHubNode from './AutomationGitHubNode.svelte';
   import SnippetEditor from './SnippetEditor.svelte';
   import { emptyForm, formFromSnippet } from './snippetForm';
   import {
@@ -43,6 +44,7 @@
     type SnippetNode,
     type StepNode,
     type UploadNode,
+    type GitHubNode,
     type AutomationNodeActionsContext,
     type StartNode
   } from './automationCanvasTypes';
@@ -64,7 +66,7 @@
   // svelte-ignore state_referenced_locally
   const notFound = automationName !== null && existing === undefined;
 
-  const nodeTypes = { snippet: AutomationCanvasNode, upload: AutomationUploadNode, start: AutomationStartNode };
+  const nodeTypes = { snippet: AutomationCanvasNode, upload: AutomationUploadNode, github: AutomationGitHubNode, start: AutomationStartNode };
 
   /** A simple left-to-right, wrapping grid — used only for a node that has no saved
    *  `position` yet (freshly added, or an automation saved before positions existed). */
@@ -78,7 +80,7 @@
 
   /** Every node that is saved as an `AutomationNode` — snippets and upload steps. */
   function isStepNode(n: AnyCanvasNode): n is StepNode {
-    return n.type === 'snippet' || n.type === 'upload';
+    return n.type === 'snippet' || n.type === 'upload' || n.type === 'github';
   }
 
   const startNode: StartNode = {
@@ -95,6 +97,14 @@
   let canvasNodes = $state<AnyCanvasNode[]>([
     startNode,
     ...initial.nodes.map((n, i): StepNode => {
+      if (n.github) {
+        return {
+          id: n.id,
+          type: 'github' as const,
+          position: n.position ?? layoutPosition(i),
+          data: { label: n.label, continueOnError: n.continueOnError, step: structuredClone(n.github) }
+        };
+      }
       if (n.upload) {
         return {
           id: n.id,
@@ -239,6 +249,22 @@
     wire(placement.wireFrom, id);
   }
 
+  /** Places a new GitHub step — start a workflow, or download a release file. */
+  function addGitHubNode(placement: NodePlacement, action: 'runWorkflow' | 'downloadAsset'): void {
+    const id = crypto.randomUUID();
+    const node: GitHubNode = {
+      id,
+      type: 'github',
+      position: placement.position ?? layoutPosition(canvasNodes.filter(isStepNode).length),
+      data:
+        action === 'runWorkflow'
+          ? { label: uniqueLabel('release'), continueOnError: false, step: { action, repo: '', workflow: '', ref: '', inputs: {} } }
+          : { label: uniqueLabel('download'), continueOnError: false, step: { action, repo: '', tag: '{{nodes.release.output}}', pattern: '*.tar.gz' } }
+    };
+    canvasNodes = [...canvasNodes, node];
+    wire(placement.wireFrom, id);
+  }
+
   /** The edge a placement asks for, from `wireFrom` to the new node `id`. */
   function wire(wireFrom: string | null, id: string): void {
     if (!wireFrom) return;
@@ -321,6 +347,10 @@
       addUploadNode(placement);
       return;
     }
+    if (result === 'githubRun' || result === 'githubDownload') {
+      addGitHubNode(placement, result === 'githubRun' ? 'runWorkflow' : 'downloadAsset');
+      return;
+    }
     addSnippetNode(result, placement);
   }
 
@@ -385,7 +415,7 @@
       return;
     }
     // An upload always goes to the host.
-    const usesRemote = stepNodes.some((n) => n.type === 'upload' || n.data.target === 'remote');
+    const usesRemote = stepNodes.some((n) => n.type === 'upload' || (n.type === 'snippet' && n.data.target === 'remote'));
     if (usesRemote && !hasHostParam) {
       error = 'This automation runs something on a host — add a host parameter on the Start node';
       return;
@@ -410,7 +440,9 @@
       params: params.map((p) => ({ ...p })),
       nodes: stepNodes.map((n) => ({
         id: n.id,
-        ...(n.type === 'upload'
+        ...(n.type === 'github'
+          ? { snippetId: '', github: JSON.parse(JSON.stringify(n.data.step)), target: 'local' as const }
+          : n.type === 'upload'
           ? { snippetId: '', upload: { from: n.data.from.trim(), to: n.data.to.trim() }, target: 'remote' as const }
           : {
               snippetId: n.data.snippetId,

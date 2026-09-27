@@ -242,6 +242,7 @@ describe('runAutomation', () => {
     return {
       runLocal: async (command) => ({ output: `ran: ${command}`, ok: true }),
       runWsl: async (_distro, command) => ({ output: `wsl: ${command}`, ok: true }),
+      runGitHub: async () => 'v0.0.0',
       connectHost: async () => ({ runShell: async () => ({ output: '', ok: true }), upload: async () => {}, disconnect: () => {} }),
       ...overrides
     };
@@ -611,5 +612,95 @@ describe('wsl nodes', () => {
   it('need no host parameter', () => {
     const f = automation([node({ id: 'n1', snippetId: 'x', target: 'wsl' })]);
     expect(validateAutomation(f, new Map([['x', snippet({ id: 'x', name: 'X' })]]))).toEqual([]);
+  });
+});
+
+describe('GitHub nodes', () => {
+  const load = snippet({ id: 'load', name: 'Load', command: 'docker load < {{nodes.upload.output}}' });
+  const flow = automation(
+    [
+      node({ id: 'rel', snippetId: '', label: 'release', target: 'local', github: { action: 'runWorkflow', repo: 'o/r', workflow: 'release.yml', ref: '{{params.branch}}', inputs: { release_type: '{{params.type}}' } } }),
+      node({ id: 'dl', snippetId: '', label: 'download', target: 'local', github: { action: 'downloadAsset', repo: 'o/r', tag: '{{nodes.release.output}}', pattern: '*.tar.gz' } }),
+      node({ id: 'up', snippetId: '', label: 'upload', target: 'remote', upload: { from: '{{nodes.download.output}}', to: '/tmp/' } }),
+      node({ id: 'ld', snippetId: 'load', label: 'load', target: 'remote' })
+    ],
+    [
+      ['rel', 'dl'],
+      ['dl', 'up'],
+      ['up', 'ld']
+    ],
+    [...hostParam, { name: 'branch', kind: 'text' }, { name: 'type', kind: 'text' }]
+  );
+
+  it('validates without snippets, and runs: tag → file → upload → load, with progress lines', async () => {
+    expect(validateAutomation(flow, new Map([['load', load]]))).toEqual([]);
+    const steps: unknown[] = [];
+    const progress: string[] = [];
+    const uploads: Array<[string, string]> = [];
+    const commands: string[] = [];
+    const results = await runAutomation(
+      flow,
+      new Map([['load', load]]),
+      { host: 'web-1', branch: 'main', type: 'patch' },
+      {
+        runLocal: async () => ({ output: '', ok: true }),
+        runWsl: async () => ({ output: '', ok: true }),
+        runGitHub: async (step, report) => {
+          steps.push(step);
+          report(`working on ${step.action}`);
+          return step.action === 'runWorkflow' ? 'v1.4.2' : 'C:\\Users\\me\\image-v1.4.2.tar.gz';
+        },
+        connectHost: async () => ({
+          runShell: async (cmd) => {
+            commands.push(cmd);
+            return { output: 'Loaded', ok: true };
+          },
+          upload: async (from, to) => {
+            uploads.push([from, to]);
+          },
+          disconnect: () => {}
+        })
+      },
+      (e) => {
+        if (e.kind === 'nodeProgress') progress.push(`${e.nodeId}: ${e.message}`);
+      }
+    );
+    expect(steps).toEqual([
+      { action: 'runWorkflow', repo: 'o/r', workflow: 'release.yml', ref: 'main', inputs: { release_type: 'patch' } },
+      { action: 'downloadAsset', repo: 'o/r', tag: 'v1.4.2', pattern: '*.tar.gz' }
+    ]);
+    expect(progress).toEqual(['rel: working on runWorkflow', 'dl: working on downloadAsset']);
+    expect(uploads).toEqual([['C:\\Users\\me\\image-v1.4.2.tar.gz', '/tmp/image-v1.4.2.tar.gz']]);
+    expect(commands).toEqual(['docker load < /tmp/image-v1.4.2.tar.gz']);
+    expect(results.map((r) => r.status)).toEqual(['success', 'success', 'success', 'success']);
+  });
+
+  it('a failed run fails its node with the reason and skips the rest', async () => {
+    const results = await runAutomation(flow, new Map([['load', load]]), { host: 'web-1', branch: 'main', type: 'patch' }, {
+      runLocal: async () => ({ output: '', ok: true }),
+      runWsl: async () => ({ output: '', ok: true }),
+      runGitHub: async () => {
+        throw new Error('the run ended failure (build-frontend-docker): https://github.com/o/r/actions/runs/1');
+      },
+      connectHost: async () => {
+        throw new Error('not reached');
+      }
+    });
+    expect(results.map((r) => r.status)).toEqual(['failed', 'skipped', 'skipped', 'skipped']);
+    expect(results[0].error).toMatch(/build-frontend-docker/);
+  });
+
+  it('refuses a GitHub step with missing fields or set to run on a host', () => {
+    const bad = automation(
+      [node({ id: 'g', snippetId: '', label: 'g', target: 'remote', github: { action: 'runWorkflow', repo: '', workflow: '', ref: '', inputs: {} } })],
+      [],
+      hostParam
+    );
+    expect(validateAutomation(bad, new Map())).toEqual([
+      'GitHub step "g" needs a repository',
+      'GitHub step "g" needs a workflow',
+      'GitHub step "g" needs a branch to run on',
+      'GitHub step "g" runs on this machine'
+    ]);
   });
 });

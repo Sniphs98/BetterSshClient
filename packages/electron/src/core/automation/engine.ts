@@ -1,4 +1,4 @@
-import type { Snippet, Automation, AutomationNode, NodeResult } from './types.js';
+import type { Snippet, Automation, AutomationNode, GitHubStep, NodeResult } from './types.js';
 
 /**
  * The Automation execution engine: an `Automation` is a DAG of `AutomationNode`s (each an
@@ -72,7 +72,30 @@ function hostParamOf(automation: Automation): { name: string } | undefined {
  *  an upload's two paths. Undefined for a node whose snippet is gone. */
 function templatedText(node: AutomationNode, snippetsById: Map<string, Snippet>): string | undefined {
   if (node.upload !== undefined) return `${node.upload.from}\n${node.upload.to}`;
+  if (node.github !== undefined) return githubTexts(node.github).join('\n');
   return snippetsById.get(node.snippetId)?.command;
+}
+
+/** Every text field of a GitHub step — what templates are substituted into. */
+function githubTexts(step: GitHubStep): string[] {
+  return step.action === 'runWorkflow'
+    ? [step.repo, step.workflow, step.ref, ...Object.values(step.inputs)]
+    : [step.repo, step.tag, step.pattern];
+}
+
+/** `step` with templates substituted into every text field. */
+function substituteGitHubStep(step: GitHubStep, predecessors: Map<string, NodeResult>, params: Record<string, string>): GitHubStep {
+  const sub = (text: string) => substituteTemplate(text, predecessors, params).trim();
+  if (step.action === 'runWorkflow') {
+    return {
+      ...step,
+      repo: sub(step.repo),
+      workflow: sub(step.workflow),
+      ref: sub(step.ref),
+      inputs: Object.fromEntries(Object.entries(step.inputs).map(([k, v]) => [k, sub(v)]))
+    };
+  }
+  return { ...step, repo: sub(step.repo), tag: sub(step.tag), pattern: sub(step.pattern) };
 }
 
 /** Where an upload lands: `to` itself, or — when `to` ends in `/` — that folder plus the
@@ -100,7 +123,17 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
   const labelCounts = new Map<string, number>();
 
   for (const node of automation.nodes) {
-    if (node.upload !== undefined) {
+    if (node.github !== undefined) {
+      const g = node.github;
+      if (!g.repo.trim()) problems.push(`GitHub step "${node.label}" needs a repository`);
+      if (g.action === 'runWorkflow') {
+        if (!g.workflow.trim()) problems.push(`GitHub step "${node.label}" needs a workflow`);
+        if (!g.ref.trim()) problems.push(`GitHub step "${node.label}" needs a branch to run on`);
+      } else if (!g.tag.trim()) {
+        problems.push(`GitHub step "${node.label}" needs a release tag`);
+      }
+      if (node.target !== 'local') problems.push(`GitHub step "${node.label}" runs on this machine`);
+    } else if (node.upload !== undefined) {
       if (!node.upload.from.trim()) problems.push(`upload "${node.label}" needs a file to upload`);
       if (!node.upload.to.trim()) problems.push(`upload "${node.label}" needs a destination on the host`);
       if (node.target !== 'remote') problems.push(`upload "${node.label}" must target the host`);
@@ -215,12 +248,16 @@ export interface RunAutomationDeps {
    *  fakeable in tests. */
   connectHost: (hostName: string) => Promise<RunAutomationConnection>;
   runLocal: (command: string, timeoutMs: number) => Promise<{ output: string; ok: boolean; error?: string }>;
+  /** A GitHub node: runs `step`, telling `report` how it's going; resolves with the node's output. */
+  runGitHub: (step: GitHubStep, report: (message: string) => void) => Promise<string>;
   /** A `'wsl'` node: `command` in WSL distribution `distro` (its default one when unset). */
   runWsl: (distro: string | undefined, command: string, timeoutMs: number) => Promise<{ output: string; ok: boolean; error?: string }>;
 }
 
 export type AutomationProgressEvent =
   | { kind: 'nodeStarted'; nodeId: string; label: string }
+  /** A line of news from a long-running node (a GitHub run's progress). */
+  | { kind: 'nodeProgress'; nodeId: string; message: string }
   | { kind: 'nodeResult'; result: NodeResult };
 
 /** Runs every node in `automation`, sequentially in topological order (matching the SFTP
@@ -268,7 +305,7 @@ export async function runAutomation(
       const node = nodeById.get(nodeId)!;
       const snippet = snippetsById.get(node.snippetId);
 
-      if (snippet === undefined && node.upload === undefined) {
+      if (snippet === undefined && node.upload === undefined && node.github === undefined) {
         settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'snippet no longer exists', durationMs: 0 });
         continue;
       }
@@ -292,7 +329,11 @@ export async function runAutomation(
 
       let exec: { output: string; ok: boolean; error?: string };
       try {
-        if (node.upload !== undefined) {
+        if (node.github !== undefined) {
+          const step = substituteGitHubStep(node.github, predecessorsByLabel, paramValues);
+          const output = await deps.runGitHub(step, (message) => onProgress?.({ kind: 'nodeProgress', nodeId, message }));
+          exec = { output, ok: true };
+        } else if (node.upload !== undefined) {
           // No timeout: a big image takes as long as the line allows, and a stalled
           // transfer fails on the SSH connection's own keepalive.
           const from = substituteTemplate(node.upload.from, predecessorsByLabel, paramValues).trim();

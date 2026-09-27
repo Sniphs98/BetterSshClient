@@ -20,7 +20,10 @@ export type PaletteItem =
   | { kind: 'snippet'; snippet: SnippetDto }
   | { kind: 'newSnippet' }
   /** Pinned in `pickSnippet` mode too: a built-in upload step instead of a snippet. */
-  | { kind: 'uploadStep' };
+  | { kind: 'uploadStep' }
+  /** Pinned too: the built-in GitHub steps. */
+  | { kind: 'githubRun' }
+  | { kind: 'githubDownload' };
 
 function hostHaystack(h: HostDto): string {
   return `${h.name} ${h.hostname} ${h.user} ${h.tags.join(' ')}`.toLowerCase();
@@ -58,7 +61,7 @@ export function paletteItems(
     const snippetRows: PaletteItem[] = snippets
       .filter((a) => matches(snippetHaystack(a), query))
       .map((snippet) => ({ kind: 'snippet', snippet }));
-    return [{ kind: 'newSnippet' }, { kind: 'uploadStep' }, ...snippetRows];
+    return [{ kind: 'newSnippet' }, { kind: 'uploadStep' }, { kind: 'githubRun' }, { kind: 'githubDownload' }, ...snippetRows];
   }
   const hostRows: PaletteItem[] = hosts
     .filter((h) => matches(hostHaystack(h), query))
@@ -88,6 +91,10 @@ export function paletteSignature(items: PaletteItem[]): string {
           return 'new-snippet';
         case 'uploadStep':
           return 'upload-step';
+        case 'githubRun':
+          return 'github-run';
+        case 'githubDownload':
+          return 'github-download';
       }
     })
     .join('\u0000');
@@ -121,7 +128,7 @@ export interface PaletteState {
 /** What `pickSnippet()` resolves with: an existing Snippet, `'upload'` (the pinned
  *  upload-step row), `'new'` (the pinned "new" row was chosen — the caller opens its own add-snippet form), or `null` (dismissed
  *  without choosing). */
-export type SnippetPickResult = SnippetDto | 'new' | 'upload' | null;
+export type SnippetPickResult = SnippetDto | 'new' | 'upload' | 'githubRun' | 'githubDownload' | null;
 
 function createPalette() {
   const { subscribe, set } = writable<PaletteState>({ open: false, mode: 'navigate' });
@@ -173,7 +180,7 @@ function createPalette() {
       set({ open: false, mode: 'navigate' });
     },
     /** Snippet-picker mode: hand the chosen result back to its caller and close. */
-    chooseSnippet(result: SnippetDto | 'new' | 'upload'): void {
+    chooseSnippet(result: SnippetDto | 'new' | 'upload' | 'githubRun' | 'githubDownload'): void {
       const resolve = pendingSnippet;
       pendingSnippet = null;
       pendingHost?.(null);

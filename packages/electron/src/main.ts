@@ -6,6 +6,7 @@ import { installApplicationMenu } from './applicationMenu.js';
 import { registerAutomationsIpc } from './ipc/automations.js';
 import { registerHostsIpc } from './ipc/hosts.js';
 import { registerOnePasswordIpc } from './ipc/onePassword.js';
+import { registerGitHubIpc } from './ipc/github.js';
 import { registerKeySetupIpc } from './ipc/keysetup.js';
 import { cleanUpRdpOnQuit, registerRdpIpc } from './ipc/rdp.js';
 import { closeEmbeddedRdp, registerRdpEmbeddedIpc } from './ipc/rdpEmbedded.js';
@@ -132,6 +133,7 @@ app.whenReady().then(async () => {
   registerRdpIpc(ipcMain, state);
   registerRdpEmbeddedIpc(ipcMain, state);
   registerOnePasswordIpc(ipcMain);
+  registerGitHubIpc(ipcMain);
 
   // Pre-load the shared host config so the first `list_hosts` paints
   // immediately, before the renderer's own `reload_hosts` call. A load

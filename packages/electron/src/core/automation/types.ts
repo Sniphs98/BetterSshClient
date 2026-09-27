@@ -51,6 +51,26 @@ export interface UploadStep {
   to: string;
 }
 
+/** A built-in GitHub step instead of a snippet — see core/github/steps.ts. Runs on this
+ *  machine (it talks to GitHub, not to a host). Every text field takes
+ *  `{{params.<name>}}` and `{{nodes.<label>.output}}`. */
+export type GitHubStep =
+  | {
+      /** Start a workflow and follow it to the end; output: the tag of the release it made. */
+      action: 'runWorkflow';
+      repo: string;
+      workflow: string;
+      ref: string;
+      inputs: Record<string, string>;
+    }
+  | {
+      /** Download a release's file to the home folder; output: its path. */
+      action: 'downloadAsset';
+      repo: string;
+      tag: string;
+      pattern: string;
+    };
+
 export interface AutomationNode {
   /** Instance id, unique within the automation — a Snippet can appear more than once. */
   id: string;
@@ -58,6 +78,8 @@ export interface AutomationNode {
   snippetId: string;
   /** Set for an upload node, which runs no snippet (and always targets the host). */
   upload?: UploadStep;
+  /** Set for a GitHub node, which runs no snippet (and runs here, target 'local'). */
+  github?: GitHubStep;
   /** Unique within the automation; the `{{nodes.<label>.output}}` handle. */
   label: string;
   /** An automation-wiring concern, not a property of the reusable Snippet: does this

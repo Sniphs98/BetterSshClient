@@ -8,6 +8,14 @@
   import Modal from '$lib/components/Modal.svelte';
   import { automationRun, dismissAutomationRun } from '$lib/stores/automations';
   import type { NodeResultDto } from '$lib/bindings';
+  import { openExternal } from '$lib/ipc/openExternal';
+
+  // A progress line split into text and links (a GitHub run's, a release's), so a link
+  // opens in the browser.
+  const URL_RE = /(https:\/\/\S+)/;
+  function parts(line: string): Array<{ text: string; url: boolean }> {
+    return line.split(URL_RE).filter(Boolean).map((text) => ({ text, url: URL_RE.test(text) }));
+  }
 
   function dotStatus(status: NodeResultDto['status'] | 'running'): Status {
     switch (status) {
@@ -52,6 +60,19 @@
                     {state.status === 'running' ? 'running…' : state.result.status}
                   </span>
                 </div>
+{#if run.progress?.[nodeId]?.length}
+                  <ul class="space-y-0.5 text-[11px] text-muted">
+                    {#each run.progress[nodeId].slice(-6) as line, i (i)}
+                      <li class="break-words">
+                        {#each parts(line) as part, j (j)}
+                          {#if part.url}
+                            <button type="button" class="underline decoration-dotted hover:text-fg" onclick={() => void openExternal(part.text)}>{part.text}</button>
+                          {:else}{part.text}{/if}
+                        {/each}
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
                 {#if state.status === 'done' && state.result.output}
                   <pre class={outputBlock}>{state.result.output}</pre>
                 {/if}
@@ -71,6 +92,19 @@
                 <span class="min-w-0 flex-1 truncate">{result.label}</span>
                 <span class="shrink-0 text-xs text-faint">{result.status}</span>
               </div>
+{#if run.progress?.[result.nodeId]?.length}
+                <ul class="space-y-0.5 text-[11px] text-muted">
+                  {#each run.progress[result.nodeId].slice(-6) as line, i (i)}
+                    <li class="break-words">
+                      {#each parts(line) as part, j (j)}
+                        {#if part.url}
+                          <button type="button" class="underline decoration-dotted hover:text-fg" onclick={() => void openExternal(part.text)}>{part.text}</button>
+                        {:else}{part.text}{/if}
+                      {/each}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
               {#if result.output}
                 <pre class={outputBlock}>{result.output}</pre>
               {/if}

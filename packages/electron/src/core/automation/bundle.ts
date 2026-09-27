@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Snippet, NodeTarget, Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind } from './types.js';
+import { parseGitHubStep } from './githubStep.js';
 
 /**
  * Export/import file format for sharing a single Snippet or Automation between people or
@@ -39,7 +40,7 @@ export function buildAutomationBundle(automation: Automation, snippetsById: Map<
   const seen = new Set<string>();
   const snippets: Snippet[] = [];
   for (const node of automation.nodes) {
-    if (node.upload !== undefined || seen.has(node.snippetId)) continue;
+    if (node.upload !== undefined || node.github !== undefined || seen.has(node.snippetId)) continue;
     const snippet = snippetsById.get(node.snippetId);
     if (snippet === undefined) {
       throw new Error(`automation "${automation.name}" references an unknown snippet`);
@@ -111,10 +112,12 @@ function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
     const u = obj(o.upload, `${ctx}.upload`);
     upload = { from: str(u.from, `${ctx}.upload.from`), to: str(u.to, `${ctx}.upload.to`) };
   }
+  const github = o.github === undefined || o.github === null ? undefined : parseGitHubStep(o.github, `${ctx}.github`);
   return {
     id: str(o.id, `${ctx}.id`),
-    snippetId: upload !== undefined && o.snippetId === undefined ? '' : str(o.snippetId, `${ctx}.snippetId`),
+    snippetId: (upload !== undefined || github !== undefined) && o.snippetId === undefined ? '' : str(o.snippetId, `${ctx}.snippetId`),
     upload,
+    github,
     wslDistro: target === 'wsl' ? optionalStr(o.wslDistro, `${ctx}.wslDistro`) || undefined : undefined,
     label: str(o.label, `${ctx}.label`),
     continueOnError: bool(o.continueOnError, `${ctx}.continueOnError`),
