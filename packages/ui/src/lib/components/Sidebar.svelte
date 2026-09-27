@@ -60,8 +60,9 @@
 
   const sshSelectors: Selector[] = [
     { kind: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { kind: 'automations', label: 'Automations', icon: 'automations' },
-    { kind: 'snippets', label: 'Snippets', icon: 'snippets' }
+    // Snippets first: they're the building blocks automations are made of.
+    { kind: 'snippets', label: 'Snippets', icon: 'snippets' },
+    { kind: 'automations', label: 'Automations', icon: 'automations' }
   ];
 
   function selectorActive(kind: Selector['kind']): boolean {
