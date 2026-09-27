@@ -8,6 +8,9 @@
   import { get } from 'svelte/store';
   import Logo from './Logo.svelte';
   import ThemeToggle from './ThemeToggle.svelte';
+  import UpdateBadge from './UpdateBadge.svelte';
+  import { UPDATE_BADGE_ID } from './flyToBadge';
+  import { availableUpdate, updateMinimized } from '$lib/stores/update';
   import { Button, Icon, StatusDot, type IconName } from '$lib/theme';
   import { activeEntity } from '$lib/stores/activeEntity';
   import {
@@ -269,8 +272,12 @@
     >
       <Icon name="settings" />
     </button>
-    {#if appVersion && !$sidebarCollapsed}
+    {#if $availableUpdate && $updateMinimized}
+      <!-- The update banner has tucked itself in here: the badge offers the update. -->
+      <UpdateBadge collapsed={$sidebarCollapsed} />
+    {:else if appVersion && !$sidebarCollapsed}
       <span
+        id={UPDATE_BADGE_ID}
         class="ml-1 rounded-full border border-default px-2 py-0.5 font-mono text-[11px] text-faint"
         title="BetterSshClient v{appVersion}"
       >
