@@ -129,7 +129,7 @@ test('the footer gear opens Settings; theme, interval, and update prefs work', a
   await expect(page.getByText('Update available — v2.0.0')).toBeVisible();
 });
 
-test('startup update-available raises the banner; dismiss hides it', async ({ page }) => {
+test('startup update-available raises the banner; closing it tucks it into the version badge', async ({ page }) => {
   await boot(page, { fireUpdateOnBoot: true });
 
   const banner = page.getByText('Update available — v2.0.0');
@@ -137,6 +137,42 @@ test('startup update-available raises the banner; dismiss hides it', async ({ pa
 
   await page.getByRole('button', { name: 'Dismiss update notice' }).click();
   await expect(banner).toHaveCount(0);
+  // The version badge now offers it.
+  await expect(page.locator('#update-badge')).toHaveText('Update');
+  await expect(page.locator('#update-badge')).toHaveAttribute('title', 'BetterSshClient v2.0.0 is out — click to update');
+  await expect(page.getByText('v1.4.2', { exact: true })).toHaveCount(0);
+});
+
+test('the banner hides itself into the badge after a few seconds; the badge downloads, then restarts', async ({ page }) => {
+  await page.clock.install();
+  await boot(page, { fireUpdateOnBoot: true });
+  const banner = page.getByText('Update available — v2.0.0');
+  await expect(banner).toBeVisible();
+
+  // Not while the pointer rests on it…
+  await banner.hover();
+  await page.clock.runFor(10_000);
+  await expect(banner).toBeVisible();
+  // …but soon after it leaves.
+  await page.mouse.move(5, 5);
+  await page.clock.runFor(9_000);
+  await expect(banner).toHaveCount(0);
+
+  const badge = page.locator('#update-badge');
+  await expect(badge).toHaveText('Update');
+  await badge.click();
+  await expect(badge).toHaveText('Updating 42%');
+  await page.evaluate(() => (window as unknown as UpdateTestWindow).__finishDownload());
+  await expect(badge).toHaveText('Restart');
+  await badge.click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as UpdateTestWindow).__restarted)).toBe(true);
+});
+
+test('where the app cannot update itself, the badge opens the release page', async ({ page }) => {
+  await boot(page, { fireUpdateOnBoot: true, canSelfUpdate: false });
+  await page.getByRole('button', { name: 'Dismiss update notice' }).click();
+  await page.locator('#update-badge').click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as UpdateTestWindow).__opened)).toBe(UPDATE.url);
 });
 
 test('a settings toggle preserves a skipVersion the banner wrote out-of-band', async ({ page }) => {

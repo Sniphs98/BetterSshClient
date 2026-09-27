@@ -6,14 +6,26 @@ import type { UpdateDownloadProgress, UpdateInfoDto } from '$lib/bindings';
 // (tech-gui.md §4.3). The banner (AppShell) renders whenever this is non-null.
 export const availableUpdate = writable<UpdateInfoDto | null>(null);
 
-/** Show an available update (from the event or a manual check). */
+/** Whether the banner has tucked itself into the sidebar's version badge — after a few
+ *  seconds, or when closed. The update stays offered there (the badge turns into an
+ *  "Update" button) until it's installed or skipped. */
+export const updateMinimized = writable(false);
+
+/** Show an available update (from the event or a manual check), as the banner. */
 export function offerUpdate(info: UpdateInfoDto): void {
   availableUpdate.set(info);
+  updateMinimized.set(false);
 }
 
-/** Dismiss the banner for this session (no persistence — it returns next launch). */
+/** Tuck the banner into the version badge. */
+export function minimizeUpdate(): void {
+  updateMinimized.set(true);
+}
+
+/** Drop the offer for this session (no persistence — it returns next launch). */
 export function dismissUpdate(): void {
   availableUpdate.set(null);
+  updateMinimized.set(false);
 }
 
 /** Where installing the offered update in place stands. */
