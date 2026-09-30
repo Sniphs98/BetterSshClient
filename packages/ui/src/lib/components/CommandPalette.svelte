@@ -109,6 +109,12 @@
       case 'uploadStep':
         palette.chooseSnippet('upload');
         break;
+      case 'githubRun':
+        palette.chooseSnippet('githubRun');
+        break;
+      case 'githubDownload':
+        palette.chooseSnippet('githubDownload');
+        break;
     }
   }
 
@@ -234,6 +240,12 @@
                 {:else if item.kind === 'snippet'}
                   <Icon name="automations" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">{item.snippet.name}</span>
+                {:else if item.kind === 'githubRun'}
+                  <Icon name="play" size={16} />
+                  <span class="min-w-0 flex-1 truncate font-medium">Start a GitHub workflow…</span>
+                {:else if item.kind === 'githubDownload'}
+                  <Icon name="download" size={16} />
+                  <span class="min-w-0 flex-1 truncate font-medium">Download a GitHub release file…</span>
                 {:else if item.kind === 'uploadStep'}
                   <Icon name="upload" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">Upload a file to the host…</span>

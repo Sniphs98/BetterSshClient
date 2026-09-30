@@ -138,6 +138,27 @@ export const commands = {
   async deleteSnippet(id: string): Promise<Result<null, CommandError>> {
     return call('delete_snippet', id);
   },
+  async githubSettings(): Promise<Result<GitHubSettingsDto, CommandError>> {
+    return call('github_settings');
+  },
+  async githubSaveSettings(input: GitHubSettingsInputDto): Promise<Result<null, CommandError>> {
+    return call('github_save_settings', input);
+  },
+  async githubTest(repo?: string): Promise<Result<GitHubTestDto, CommandError>> {
+    return call('github_test', repo);
+  },
+  async githubRepositories(): Promise<Result<string[], CommandError>> {
+    return call('github_repositories');
+  },
+  async githubWorkflows(repo: string): Promise<Result<GitHubWorkflowDto[], CommandError>> {
+    return call('github_workflows', repo);
+  },
+  async githubBranches(repo: string): Promise<Result<string[], CommandError>> {
+    return call('github_branches', repo);
+  },
+  async githubWorkflowInputs(repo: string, workflow: string, ref?: string): Promise<Result<GitHubWorkflowInputDto[], CommandError>> {
+    return call('github_workflow_inputs', repo, workflow, ref);
+  },
   async wslDistros(): Promise<Result<string[], CommandError>> {
     return call('wsl_distros');
   },
@@ -213,6 +234,7 @@ export const commands = {
 const EVENT_CHANNELS = {
   automationStarted: 'automation-started',
   automationNodeStarted: 'automation-node-started',
+  automationNodeProgress: 'automation-node-progress',
   automationNodeResult: 'automation-node-result',
   automationCompleted: 'automation-completed',
   automationFailed: 'automation-failed',
@@ -241,6 +263,7 @@ const EVENT_CHANNELS = {
 type EventMap = {
   automationStarted: AutomationStarted;
   automationNodeStarted: AutomationNodeStarted;
+  automationNodeProgress: AutomationNodeProgress;
   automationNodeResult: AutomationNodeResult;
   automationCompleted: AutomationCompleted;
   automationFailed: AutomationFailed;
@@ -320,6 +343,8 @@ export type NodeTargetDto = 'local' | 'wsl' | 'remote';
 export type AutomationNodeResult = NodeResultDto & { automationName: string };
 /** A node started executing. */
 export type AutomationNodeStarted = { automationName: string; nodeId: string; label: string };
+/** A line of news from a long-running node — a GitHub run's progress or its link. */
+export type AutomationNodeProgress = { automationName: string; nodeId: string; message: string };
 export type CommandError = { message: string };
 /** Whether the 1Password CLI is installed, and how to get it. */
 export type OnePasswordStatusDto = { installed: boolean; version?: string | null; command?: string | null; docsUrl: string };
@@ -359,6 +384,8 @@ export type AutomationNodeDto = {
   upload?: { from: string; to: string } | null;
   /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
   wslDistro?: string | null;
+  /** Set for a GitHub step: a workflow to run, or a release file to download. */
+  github?: GitHubStepDto | null;
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;
@@ -590,6 +617,25 @@ export type Result<T, E> = { status: 'ok'; data: T } | { status: 'error'; error:
  *  `new Channel<TerminalBytes>()`, then set `.onmessage`. Internally subscribes
  *  to the per-session `terminal-output-<id>` event once `terminalOpen` resolves
  *  a session id (see `commands.terminalOpen` above). */
+/** A built-in GitHub step of an automation (runs on this machine). */
+export type GitHubStepDto =
+  | { action: 'runWorkflow'; repo: string; workflow: string; ref: string; inputs: Record<string, string> }
+  | { action: 'downloadAsset'; repo: string; tag: string; pattern: string };
+/** Whether the app has a GitHub token, and the 1Password reference it reads it from. */
+export type GitHubSettingsDto = { hasToken: boolean; tokenRef?: string | null };
+export type GitHubSettingsInputDto = { token?: string; clearToken?: boolean; tokenRef?: string };
+export type GitHubTestDto = { login: string; repository?: { fullName: string; private: boolean; defaultBranch: string } | null };
+export type GitHubWorkflowDto = { name: string; file: string };
+/** One input a workflow's `workflow_dispatch` asks for. */
+export type GitHubWorkflowInputDto = {
+  name: string;
+  description?: string | null;
+  type: string;
+  required: boolean;
+  default?: string | null;
+  options?: string[] | null;
+};
+
 /** A shell a local terminal tab can open: PowerShell, Command Prompt, a WSL distribution, zsh, … */
 export type TerminalProfileDto = {
   /** Stable across runs: `pwsh`, `cmd`, `wsl:Ubuntu`, `shell:/bin/zsh`, … */

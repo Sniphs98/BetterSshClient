@@ -5,7 +5,7 @@
 
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
-import type { Snippet, NodeTarget, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
+import type { Snippet, NodeTarget, GitHubStep, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
 import { rdpSettingsFrom, type RdpSettings, type RemoteDesktopConnection, type RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
 import type { ConnectionStatus, Metrics } from './event.js';
@@ -148,6 +148,8 @@ export interface AutomationNodeDto {
   snippetId: string;
   /** Set for an upload node: a local file to copy to the automation's host. */
   upload?: { from: string; to: string };
+  /** Set for a GitHub node: a workflow to run, or a release file to download. */
+  github?: GitHubStep;
   /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
   wslDistro?: string;
   label: string;

@@ -5,6 +5,11 @@ import { commands, type Channel } from '$lib/bindings';
 import type {
   SnippetDto,
   TerminalProfileDto,
+  GitHubSettingsDto,
+  GitHubSettingsInputDto,
+  GitHubTestDto,
+  GitHubWorkflowDto,
+  GitHubWorkflowInputDto,
   FileEntryDto,
   AutomationDto,
   HostDto,
@@ -279,6 +284,21 @@ export async function deleteSnippet(id: string): Promise<void> {
 }
 
 /** Read the saved Automations. */
+async function unwrap<T>(p: Promise<{ status: 'ok'; data: T } | { status: 'error'; error: { message: string } }>): Promise<T> {
+  const res = await p;
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+export const githubSettings = (): Promise<GitHubSettingsDto> => unwrap(commands.githubSettings());
+export const githubSaveSettings = (input: GitHubSettingsInputDto): Promise<null> => unwrap(commands.githubSaveSettings(input));
+export const githubTest = (repo?: string): Promise<GitHubTestDto> => unwrap(commands.githubTest(repo));
+export const githubRepositories = (): Promise<string[]> => unwrap(commands.githubRepositories());
+export const githubWorkflows = (repo: string): Promise<GitHubWorkflowDto[]> => unwrap(commands.githubWorkflows(repo));
+export const githubBranches = (repo: string): Promise<string[]> => unwrap(commands.githubBranches(repo));
+export const githubWorkflowInputs = (repo: string, workflow: string, ref?: string): Promise<GitHubWorkflowInputDto[]> =>
+  unwrap(commands.githubWorkflowInputs(repo, workflow, ref));
+
 /** The WSL distributions on this machine; [] off Windows or without WSL. */
 export async function wslDistros(): Promise<string[]> {
   const res = await commands.wslDistros();

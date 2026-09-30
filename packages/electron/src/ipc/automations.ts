@@ -6,6 +6,9 @@ import { loadAutomations, saveAutomations } from '../core/config/automations.js'
 import { runLocalCommand } from '../core/automation/localExec.js';
 import { uploadOverSession } from '../core/automation/upload.js';
 import { listWslDistros, runWslCommand } from '../core/automation/wslExec.js';
+import { GitHubClient } from '../core/github/client.js';
+import { downloadAsset, runWorkflow } from '../core/github/steps.js';
+import { resolveGitHubToken } from '../core/config/github.js';
 import { missingParamValues, runAutomation, validateAutomation, type RunAutomationDeps } from '../core/automation/engine.js';
 import {
   buildSnippetBundle,
@@ -251,6 +254,10 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
     const deps: RunAutomationDeps = {
       runLocal: runLocalCommand,
       runWsl: runWslCommand,
+      runGitHub: async (step, report) => {
+        const client = new GitHubClient(await resolveGitHubToken());
+        return step.action === 'runWorkflow' ? runWorkflow(client, step, report) : downloadAsset(client, step, report);
+      },
       connectHost: async (hostName) => {
         const host = state.hostByName(hostName);
         if (host === undefined) throw new Error(`unknown host '${hostName}'`);
@@ -268,6 +275,8 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
       const results = await runAutomation(automation, snippetsById, paramValues, deps, (event) => {
         if (event.kind === 'nodeStarted') {
           state.emit('automation-node-started', { automationName, nodeId: event.nodeId, label: event.label });
+        } else if (event.kind === 'nodeProgress') {
+          state.emit('automation-node-progress', { automationName, nodeId: event.nodeId, message: event.message });
         } else {
           state.emit('automation-node-result', { automationName, ...nodeResultToDto(event.result) });
         }

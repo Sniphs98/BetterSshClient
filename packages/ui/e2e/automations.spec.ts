@@ -58,6 +58,20 @@ async function boot(page: Page): Promise<void> {
             state.snippets = state.snippets.filter((x) => x.id !== args[0]);
             return Promise.resolve(null);
           }
+          // GitHub, as the step editor sees it for Enable-Energy-Solutions/Frontend.
+          case 'github_repositories':
+            return Promise.resolve(['Enable-Energy-Solutions/Frontend', 'Sniphs98/BetterSshClient']);
+          case 'github_workflows':
+            return Promise.resolve([
+              { name: 'Release Frontend', file: 'release.yml' },
+              { name: 'Tests', file: 'test.yml' }
+            ]);
+          case 'github_branches':
+            return Promise.resolve(['main', 'feature/login']);
+          case 'github_workflow_inputs':
+            return Promise.resolve([
+              { name: 'release_type', description: 'Release type (major, minor, patch)', type: 'choice', required: true, default: 'patch', options: ['major', 'minor', 'patch'] }
+            ]);
           case 'wsl_distros':
             return Promise.resolve(['Ubuntu']);
           case 'list_automations':
@@ -120,6 +134,17 @@ async function boot(page: Page): Promise<void> {
                   continue;
                 }
                 fire('automation-node-started', { automationName, nodeId: node.id, label: node.label });
+                const github = (node as { github?: { action: string } }).github;
+                if (github) {
+                  // A GitHub step: news while it runs, then the release's tag.
+                  fire('automation-node-progress', { automationName, nodeId: node.id, message: 'run #57: https://github.com/Enable-Energy-Solutions/Frontend/actions/runs/4242' });
+                  fire('automation-node-progress', { automationName, nodeId: node.id, message: 'build-frontend-docker (2/4 jobs done)' });
+                  const result = { nodeId: node.id, label: node.label, status: 'success', output: 'v1.4.2', durationMs: 1 };
+                  statusById.set(node.id, 'success');
+                  results.push(result);
+                  fire('automation-node-result', { automationName, ...result });
+                  continue;
+                }
                 const snippet = snippetsById.get(node.snippetId);
                 const command = (snippet?.command as string) ?? '';
                 const ok = !command.includes('exit 1');
@@ -461,6 +486,51 @@ test('a node can run in WSL, in a chosen distribution, without needing a host', 
   const reopened = page.locator('.svelte-flow__node', { hasText: 'Save image' });
   await expect(reopened.getByRole('button', { name: 'WSL' })).toHaveAttribute('aria-pressed', 'true');
   await expect(reopened.getByLabel('WSL distribution')).toHaveValue('Ubuntu');
+});
+
+test('a GitHub workflow step: picked from the "+" menu, filled from GitHub, run with live progress', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('release-frontend');
+  await page.getByRole('button', { name: 'Add parameter' }).click();
+  await page.getByLabel('Parameter 1 name').fill('branch');
+
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Start a GitHub workflow/ }).click();
+  const node = page.locator('.svelte-flow__node', { hasText: 'Start a GitHub workflow' });
+  await expect(node.getByLabel('Label')).toHaveValue('release');
+  await node.getByLabel('Repository').fill('Enable-Energy-Solutions/Frontend');
+  await node.getByLabel('Workflow').fill('release.yml');
+  await node.getByLabel('Branch').fill('{{params.branch}}');
+  // The workflow's own input appears, its default filled in; its choices are offered.
+  await expect(node.getByLabel('Input release_type')).toHaveValue('patch');
+  await expect(node.locator('datalist[id$="-in-release_type"] option')).toHaveCount(3);
+  await node.getByLabel('Input release_type').fill('minor');
+
+  // No host needed: it runs here.
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  const saved = await page.evaluate(
+    () => (window as unknown as { __automationState: { automations: Array<{ nodes: unknown[] }> } }).__automationState.automations[0].nodes[0]
+  );
+  expect(saved).toMatchObject({
+    snippetId: '',
+    target: 'local',
+    label: 'release',
+    github: { action: 'runWorkflow', repo: 'Enable-Energy-Solutions/Frontend', workflow: 'release.yml', ref: '{{params.branch}}', inputs: { release_type: 'minor' } }
+  });
+
+  // Running it shows GitHub's progress and a link to the run, which stay once done.
+  await page.getByRole('button', { name: 'Run release-frontend' }).click();
+  const runDialog = page.getByRole('dialog', { name: 'Run automation' });
+  await runDialog.getByRole('textbox').first().fill('main');
+  await runDialog.getByRole('button', { name: 'Run', exact: true }).click();
+  const progress = page.getByRole('dialog', { name: 'Automation run' });
+  await expect(progress.getByRole('button', { name: 'Done' })).toBeVisible();
+  await expect(progress).toContainText('build-frontend-docker (2/4 jobs done)');
+  await expect(progress.getByRole('button', { name: 'https://github.com/Enable-Energy-Solutions/Frontend/actions/runs/4242' })).toBeVisible();
+  await expect(progress.locator('pre')).toHaveText('v1.4.2');
 });
 
 test('the "+" menu can create a brand new snippet inline and drops it straight onto the canvas', async ({

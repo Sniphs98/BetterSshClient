@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/svelte';
-import type { NodeTargetDto, AutomationParamDto, AutomationParamKindDto } from '$lib/bindings';
+import type { NodeTargetDto, AutomationParamDto, AutomationParamKindDto, GitHubStepDto } from '$lib/bindings';
 
 // The svelte-flow canvas's node/edge shapes for the Automation graph editor — denormalized
 // from AutomationNodeDto/AutomationEdgeDto (see AutomationEditor.svelte) so the canvas never has to look
@@ -32,8 +32,18 @@ export interface UploadNodeData extends Record<string, unknown> {
 
 export type UploadNode = Node<UploadNodeData, 'upload'>;
 
+/** A built-in GitHub step (no snippet): start a workflow and wait for it, or download a
+ *  release file. Always runs on this machine, so it has no target switch either. */
+export interface GitHubNodeData extends Record<string, unknown> {
+  label: string;
+  continueOnError: boolean;
+  step: GitHubStepDto;
+}
+
+export type GitHubNode = Node<GitHubNodeData, 'github'>;
+
 /** A node that becomes an `AutomationNode` when saved — everything but Start. */
-export type StepNode = SnippetNode | UploadNode;
+export type StepNode = SnippetNode | UploadNode | GitHubNode;
 export type AutomationCanvasEdge = Edge;
 
 /** The one, permanent "Start" node — the automation's parameters, drawn as a node instead of
@@ -56,7 +66,7 @@ export const START_NODE_ID = '__start__';
 export type StartNodeData = Record<string, never>;
 export type StartNode = Node<StartNodeData, 'start'>;
 
-export type AnyCanvasNode = SnippetNode | UploadNode | StartNode;
+export type AnyCanvasNode = SnippetNode | UploadNode | GitHubNode | StartNode;
 
 /** Passed via `setContext(AUTOMATION_PARAMS_CONTEXT, …)` from AutomationEditor.svelte down to the
  *  Start node so it can read/mutate `params` without that state needing to travel

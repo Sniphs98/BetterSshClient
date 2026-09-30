@@ -5,6 +5,7 @@ import { parse, stringify } from 'smol-toml';
 
 import { automationsConfigPath } from './platform.js';
 import type { Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind, NodeTarget } from '../automation/types.js';
+import { parseGitHubStep } from '../automation/githubStep.js';
 
 /** `automations.toml` I/O — Automations wire Snippets (loaded separately, from
  *  `snippets.ts`/`snippets.toml`) together into a graph. Mirrors
@@ -33,9 +34,11 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
     }
     upload = { from: u.from, to: u.to };
   }
+  const github = raw.github === undefined ? undefined : parseGitHubStep(raw.github, `automation "${automationName}" node "${raw.id}" github`);
   return {
     id: raw.id,
     snippetId: raw.snippetId,
+    github,
     upload,
     wslDistro: target === 'wsl' && typeof raw.wslDistro === 'string' && raw.wslDistro !== '' ? raw.wslDistro : undefined,
     label: raw.label,
@@ -57,6 +60,7 @@ function automationNodeToToml(node: AutomationNode): Record<string, unknown> {
     target: node.target
   };
   if (node.upload !== undefined) out.upload = { from: node.upload.from, to: node.upload.to };
+  if (node.github !== undefined) out.github = { ...node.github };
   if (node.target === 'wsl' && node.wslDistro) out.wslDistro = node.wslDistro;
   if (node.position !== undefined) out.position = { x: node.position.x, y: node.position.y };
   return out;
