@@ -15,6 +15,7 @@ import { registerSettingsIpc } from './ipc/settings.js';
 import { registerSftpIpc } from './ipc/sftp.js';
 import { registerSystemIpc } from './ipc/system.js';
 import { registerTerminalIpc } from './ipc/terminal.js';
+import { clearUpdateSplash } from './core/updateSplash.js';
 import { registerUpdateIpc } from './ipc/update.js';
 import { loadAllHosts } from './core/config/hosts.js';
 import { setSecretCipher } from './core/config/secretCipher.js';
@@ -103,6 +104,9 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
+  // Started by an update: the "Updating…" window the old version left can close now.
+  clearUpdateSplash();
+
   // Backs every stored Host password with OS-level encryption (Windows DPAPI / macOS
   // Keychain / Linux libsecret) instead of hosts.toml's previous plaintext — must run
   // before the `loadAllHosts()` a few lines down, and before any IPC handler that

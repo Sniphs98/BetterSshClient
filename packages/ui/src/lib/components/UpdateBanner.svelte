@@ -12,7 +12,7 @@
   import { fly } from 'svelte/transition';
   import { Icon } from '$lib/theme';
   import { availableUpdate, dismissUpdate, minimizeUpdate, updateDownload, updateMinimized } from '$lib/stores/update';
-  import { openReleasePage, restartNow, startUpdate } from '$lib/stores/updateActions';
+  import { openReleasePage, restartNow, restarting, startUpdate } from '$lib/stores/updateActions';
   import { loadUpdateConfig, saveUpdateConfig } from '$lib/ipc/commands';
   import { lastError } from '$lib/stores/notifications';
   import { flyToBadge } from './flyToBadge';
@@ -87,6 +87,9 @@
           {#if dl.phase === 'downloading'}
             <p class="text-sm font-medium">Downloading v{info.version}… {Math.round(dl.percent)}%</p>
             <p class="truncate text-xs text-muted">You can keep working in the meantime.</p>
+          {:else if dl.phase === 'ready' && $restarting}
+            <p class="text-sm font-medium">Restarting to install v{dl.version}…</p>
+            <p class="truncate text-xs text-muted">The app closes and opens again by itself.</p>
           {:else if dl.phase === 'ready'}
             <p class="text-sm font-medium">v{dl.version} is ready to install</p>
             <p class="truncate text-xs text-muted">Restart now, or it installs the next time you quit.</p>
@@ -106,7 +109,7 @@
           {:else if dl.phase === 'idle'}
             <button type="button" class={primary} disabled={busy} onclick={updateNow}>Update now</button>
           {:else if dl.phase === 'ready'}
-            <button type="button" class={primary} disabled={busy} onclick={restart}>Restart to update</button>
+            <button type="button" class={primary} disabled={busy || $restarting} onclick={restart}>Restart to update</button>
           {:else if dl.phase === 'failed'}
             <button type="button" class={primary} onclick={updateNow}>Try again</button>
             <button type="button" class={secondary} onclick={() => openReleasePage(info.url)}>Download</button>

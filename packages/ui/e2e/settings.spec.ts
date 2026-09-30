@@ -183,6 +183,9 @@ test('the banner hides itself into the badge after a few seconds; the badge down
   await page.evaluate(() => (window as unknown as UpdateTestWindow).__finishDownload());
   await expect(badge).toHaveText('Restart');
   await badge.click();
+  // While the app gets ready to close (the Windows "Updating…" window comes first).
+  await expect(badge).toHaveText('Restarting…');
+  await expect(badge).toBeDisabled();
   await expect.poll(() => page.evaluate(() => (window as unknown as UpdateTestWindow).__restarted)).toBe(true);
 });
 
