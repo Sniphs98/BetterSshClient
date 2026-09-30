@@ -7,7 +7,7 @@
   import { backOut } from 'svelte/easing';
   import { Icon } from '$lib/theme';
   import { availableUpdate, updateDownload } from '$lib/stores/update';
-  import { updateFromBadge } from '$lib/stores/updateActions';
+  import { restarting, updateFromBadge } from '$lib/stores/updateActions';
   import { UPDATE_BADGE_ID } from './flyToBadge';
 
   let { collapsed = false }: { collapsed?: boolean } = $props();
@@ -18,6 +18,7 @@
     const dl = $updateDownload;
     if (!info) return '';
     if (!info.canSelfUpdate) return 'Update';
+    if ($restarting) return 'Restarting…';
     if (dl.phase === 'downloading') return `Updating ${Math.round(dl.percent)}%`;
     if (dl.phase === 'ready') return 'Restart';
     if (dl.phase === 'failed') return 'Retry update';
@@ -35,7 +36,7 @@
     return `BetterSshClient v${info.version} is out — click to update`;
   });
 
-  const busy = $derived($updateDownload.phase === 'downloading');
+  const busy = $derived($updateDownload.phase === 'downloading' || $restarting);
 </script>
 
 {#if collapsed}
