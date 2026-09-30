@@ -10,7 +10,7 @@ let dir: string;
 let path: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'better-ssh-client-automations-'));
+  dir = await mkdtemp(join(tmpdir(), 'remoty-automations-'));
   path = join(dir, 'automations.toml');
 });
 
@@ -119,5 +119,28 @@ describe('saveAutomations / loadAutomations round trip', () => {
     const raw = await readFile(path, 'utf-8');
     expect(raw).not.toContain('startLinks');
     expect((await loadAutomations(path))[0].startLinks).toBeUndefined();
+  });
+});
+
+describe('GitHub nodes', () => {
+  it('round-trip, inputs included', async () => {
+    const original = [
+      automation({
+        nodes: [
+          {
+            id: 'g',
+            snippetId: '',
+            github: { action: 'runWorkflow', repo: 'Enable-Energy-Solutions/Frontend', workflow: 'release.yml', ref: '{{params.branch}}', inputs: { release_type: 'patch' } },
+            label: 'release',
+            continueOnError: false,
+            target: 'local'
+          },
+          { id: 'd', snippetId: '', github: { action: 'downloadAsset', repo: 'o/r', tag: '{{nodes.release.output}}', pattern: '*.tar.gz' }, label: 'download', continueOnError: false, target: 'local' }
+        ],
+        edges: [{ from: 'g', to: 'd' }]
+      })
+    ];
+    await saveAutomations(original, path);
+    expect(await loadAutomations(path)).toEqual(original);
   });
 });

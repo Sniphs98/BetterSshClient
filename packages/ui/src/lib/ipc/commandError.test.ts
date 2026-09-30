@@ -17,7 +17,7 @@ describe('commandErrorFrom', () => {
   });
 
   it('leaves other errors to be thrown (a missing bridge is a bug, not a failed command)', () => {
-    expect(commandErrorFrom(new Error('bsshClient is not defined'))).toBeUndefined();
+    expect(commandErrorFrom(new Error('remoty is not defined'))).toBeUndefined();
     expect(commandErrorFrom('nope')).toBeUndefined();
   });
 });

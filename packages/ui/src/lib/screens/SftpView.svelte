@@ -195,7 +195,7 @@
     const preventDefault = (e: DragEvent): void => e.preventDefault();
     const handleDrop = (e: DragEvent): void => {
       e.preventDefault();
-      const bridge = window.bsshClient;
+      const bridge = window.remoty;
       if (!bridge || !e.dataTransfer) return;
       const paths = Array.from(e.dataTransfer.files)
         .map((f) => {
@@ -220,7 +220,7 @@
     void (async () => {
       let home = '/';
       try {
-        home = (await window.bsshClient?.homeDir()) ?? '/';
+        home = (await window.remoty?.homeDir()) ?? '/';
       } catch {
         home = '/';
       }

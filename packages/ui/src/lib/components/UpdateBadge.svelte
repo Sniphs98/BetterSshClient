@@ -29,11 +29,11 @@
     const info = $availableUpdate;
     const dl = $updateDownload;
     if (!info) return '';
-    if (!info.canSelfUpdate) return `BetterSshClient v${info.version} is out — open the release page`;
+    if (!info.canSelfUpdate) return `Remoty v${info.version} is out — open the release page`;
     if (dl.phase === 'downloading') return `Downloading v${info.version}…`;
     if (dl.phase === 'ready') return `v${info.version} is downloaded — restart to install it`;
     if (dl.phase === 'failed') return `The download failed: ${dl.error}`;
-    return `BetterSshClient v${info.version} is out — click to update`;
+    return `Remoty v${info.version} is out — click to update`;
   });
 
   const busy = $derived($updateDownload.phase === 'downloading' || $restarting);

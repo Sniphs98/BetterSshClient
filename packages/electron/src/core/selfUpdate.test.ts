@@ -21,7 +21,7 @@ describe('selfUpdateSupport', () => {
   });
 
   it('updates a Linux AppImage, but leaves .deb/.rpm to the package manager', () => {
-    expect(selfUpdateSupport(facts({ platform: 'linux', env: { APPIMAGE: '/opt/BetterSshClient.AppImage' } }))).toEqual({
+    expect(selfUpdateSupport(facts({ platform: 'linux', env: { APPIMAGE: '/opt/Remoty.AppImage' } }))).toEqual({
       supported: true
     });
     const packaged = selfUpdateSupport(facts({ platform: 'linux', env: {} }));

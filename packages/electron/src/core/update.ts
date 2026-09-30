@@ -9,7 +9,7 @@
  * accordingly.
  */
 
-const REPO = 'Sniphs98/BetterSshClient';
+const REPO = 'Sniphs98/Remoty';
 const HTTP_TIMEOUT_MS = 8000;
 
 export interface UpdateInfo {
@@ -71,7 +71,7 @@ async function fetchLatestTag(): Promise<string> {
   try {
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
       // GitHub requires a User-Agent header on API requests.
-      headers: { 'User-Agent': 'better-ssh-client', Accept: 'application/vnd.github+json' },
+      headers: { 'User-Agent': 'remoty', Accept: 'application/vnd.github+json' },
       signal: controller.signal
     });
     if (!res.ok) throw new Error(`release request returned ${res.status}`);

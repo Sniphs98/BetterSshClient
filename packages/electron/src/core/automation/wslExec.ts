@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
  * (Ubuntu with its own Docker, say), rather than in cmd.exe.
  *
  * The command travels as an environment variable (shared into WSL through `WSLENV`)
- * and runs as `bash -lc 'eval "$BSSH_COMMAND"'` via `wsl.exe --exec`, so no quote, `$`
+ * and runs as `bash -lc 'eval "$REMOTY_COMMAND"'` via `wsl.exe --exec`, so no quote, `$`
  * or line break in it is ever re-parsed by Windows or by a shell in between. `-l` gives
  * the login environment (PATH additions from ~/.profile, as in a terminal).
  *
@@ -15,7 +15,7 @@ import { homedir } from 'node:os';
  * upload node's relative path) expects it.
  */
 
-const COMMAND_VAR = 'BSSH_COMMAND';
+const COMMAND_VAR = 'REMOTY_COMMAND';
 
 /** wsl.exe's own messages ("There is no distribution with the supplied name") are
  *  UTF-16 on older builds even when asked for UTF-8; a command's output is UTF-8. */

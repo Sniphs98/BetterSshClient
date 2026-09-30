@@ -68,14 +68,14 @@ describe('paletteItems — filter & sections', () => {
   it('snippet picker always leads with the pinned "new" row, then matching snippets', () => {
     const snippets = [snippet('Build'), snippet('Deploy')];
     const items = paletteItems('pickSnippet', [], [], snippets, '');
-    expect(items.map((i) => i.kind)).toEqual(['newSnippet', 'uploadStep', 'snippet', 'snippet']);
+    expect(items.map((i) => i.kind)).toEqual(['newSnippet', 'uploadStep', 'githubRun', 'githubDownload', 'snippet', 'snippet']);
   });
 
   it('snippet picker filters by name, but the "new" and upload rows always survive', () => {
     const snippets = [snippet('Build'), snippet('Deploy')];
     const items = paletteItems('pickSnippet', [], [], snippets, 'deploy');
-    expect(items.map((i) => i.kind)).toEqual(['newSnippet', 'uploadStep', 'snippet']);
-    expect(items[2]).toMatchObject({ kind: 'snippet', snippet: { name: 'Deploy' } });
+    expect(items.map((i) => i.kind)).toEqual(['newSnippet', 'uploadStep', 'githubRun', 'githubDownload', 'snippet']);
+    expect(items[4]).toMatchObject({ kind: 'snippet', snippet: { name: 'Deploy' } });
   });
 });
 

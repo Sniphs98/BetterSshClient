@@ -12,7 +12,7 @@ describe('wslExec', () => {
   });
 
   it('runs bash in the chosen distribution, the command never on the command line', () => {
-    expect(wslArgs('Ubuntu')).toEqual(['-d', 'Ubuntu', '--exec', 'bash', '-lc', 'eval "$BSSH_COMMAND"']);
-    expect(wslArgs(undefined)).toEqual(['--exec', 'bash', '-lc', 'eval "$BSSH_COMMAND"']);
+    expect(wslArgs('Ubuntu')).toEqual(['-d', 'Ubuntu', '--exec', 'bash', '-lc', 'eval "$REMOTY_COMMAND"']);
+    expect(wslArgs(undefined)).toEqual(['--exec', 'bash', '-lc', 'eval "$REMOTY_COMMAND"']);
   });
 });

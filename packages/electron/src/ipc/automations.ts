@@ -6,6 +6,9 @@ import { loadAutomations, saveAutomations } from '../core/config/automations.js'
 import { runLocalCommand } from '../core/automation/localExec.js';
 import { uploadOverSession } from '../core/automation/upload.js';
 import { listWslDistros, runWslCommand } from '../core/automation/wslExec.js';
+import { GitHubClient } from '../core/github/client.js';
+import { downloadAsset, runWorkflow } from '../core/github/steps.js';
+import { resolveGitHubToken } from '../core/config/github.js';
 import { missingParamValues, runAutomation, validateAutomation, type RunAutomationDeps } from '../core/automation/engine.js';
 import {
   buildSnippetBundle,
@@ -145,8 +148,8 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
       const bundle = buildSnippetBundle(snippet);
       const { canceled, filePath } = await dialog.showSaveDialog({
         title: 'Export snippet',
-        defaultPath: `${sanitizeFileName(snippet.name)}.better-ssh-client-snippet.json`,
-        filters: [{ name: 'BetterSshClient snippet', extensions: ['json'] }]
+        defaultPath: `${sanitizeFileName(snippet.name)}.remoty-snippet.json`,
+        filters: [{ name: 'Remoty snippet', extensions: ['json'] }]
       });
       if (canceled || !filePath) return null;
       await writeFile(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
@@ -164,8 +167,8 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
       const bundle = buildAutomationBundle(automation, new Map(snippets.map((a) => [a.id, a])));
       const { canceled, filePath } = await dialog.showSaveDialog({
         title: 'Export automation',
-        defaultPath: `${sanitizeFileName(automation.name)}.better-ssh-client-automation.json`,
-        filters: [{ name: 'BetterSshClient automation', extensions: ['json'] }]
+        defaultPath: `${sanitizeFileName(automation.name)}.remoty-automation.json`,
+        filters: [{ name: 'Remoty automation', extensions: ['json'] }]
       });
       if (canceled || !filePath) return null;
       await writeFile(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
@@ -179,7 +182,7 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
         title: 'Import snippet or automation',
-        filters: [{ name: 'BetterSshClient snippet/automation', extensions: ['json'] }],
+        filters: [{ name: 'Remoty snippet/automation', extensions: ['json'] }],
         properties: ['openFile']
       });
       if (canceled || filePaths.length === 0) return null;
@@ -194,7 +197,7 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
       const bundle = parseBundle(raw);
 
       const [snippets, automations] = await Promise.all([loadSnippets(), loadAutomations()]);
-      if (bundle.kind === 'better-ssh-client-snippet') {
+      if (bundle.kind === 'remoty-snippet') {
         const merged = mergeSnippetBundle(bundle, snippets);
         await saveSnippets(merged.snippets);
         return merged.result;
@@ -251,6 +254,10 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
     const deps: RunAutomationDeps = {
       runLocal: runLocalCommand,
       runWsl: runWslCommand,
+      runGitHub: async (step, report) => {
+        const client = new GitHubClient(await resolveGitHubToken());
+        return step.action === 'runWorkflow' ? runWorkflow(client, step, report) : downloadAsset(client, step, report);
+      },
       connectHost: async (hostName) => {
         const host = state.hostByName(hostName);
         if (host === undefined) throw new Error(`unknown host '${hostName}'`);
@@ -268,6 +275,8 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
       const results = await runAutomation(automation, snippetsById, paramValues, deps, (event) => {
         if (event.kind === 'nodeStarted') {
           state.emit('automation-node-started', { automationName, nodeId: event.nodeId, label: event.label });
+        } else if (event.kind === 'nodeProgress') {
+          state.emit('automation-node-progress', { automationName, nodeId: event.nodeId, message: event.message });
         } else {
           state.emit('automation-node-result', { automationName, ...nodeResultToDto(event.result) });
         }

@@ -31,6 +31,9 @@ export type AutomationRunPhase =
 export interface AutomationRun {
   automationName: string;
   phase: AutomationRunPhase;
+  /** Lines of news from long-running nodes (a GitHub run's progress, its link), by
+   *  node id — kept once the run ends, so the links stay. */
+  progress?: Record<string, string[]>;
 }
 
 // The active (or just-finished) run, or null when no progress panel is shown — one at
@@ -86,10 +89,23 @@ export function reduceNodeResult(run: AutomationRun | null, automationName: stri
   return { ...run, phase: { kind: 'running', nodes } };
 }
 
+/** Fold an `automation-node-progress` line into the active run. */
+export function reduceNodeProgress(run: AutomationRun | null, automationName: string, nodeId: string, message: string): AutomationRun | null {
+  if (!run || run.automationName !== automationName) return run;
+  const progress = { ...(run.progress ?? {}) };
+  progress[nodeId] = [...(progress[nodeId] ?? []), message];
+  return { ...run, progress };
+}
+
 /** A terminal outcome always replaces whatever phase was active for its automation — even if
  *  the panel was dismissed, so a later reopen (or the toolbar's own state) reflects it. */
-export function reduceAutomationCompleted(automationName: string, results: NodeResultDto[]): AutomationRun {
-  return { automationName, phase: { kind: 'completed', results } };
+export function reduceAutomationCompleted(
+  automationName: string,
+  results: NodeResultDto[],
+  previous: AutomationRun | null = null
+): AutomationRun {
+  const progress = previous?.automationName === automationName ? previous.progress : undefined;
+  return { automationName, phase: { kind: 'completed', results }, ...(progress ? { progress } : {}) };
 }
 
 export function reduceAutomationFailed(automationName: string, error: string): AutomationRun {

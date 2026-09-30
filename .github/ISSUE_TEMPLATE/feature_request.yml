@@ -1,5 +1,5 @@
 name: Feature request
-description: An idea for something BetterSshClient should do.
+description: An idea for something Remoty should do.
 labels: [enhancement]
 body:
   - type: textarea

@@ -1,4 +1,4 @@
-# Contributing to BetterSshClient
+# Contributing to Remoty
 
 Thank you for your interest in contributing!  This document describes the
 development workflow, coding conventions, and review process.
@@ -30,8 +30,8 @@ development workflow, coding conventions, and review process.
 **Clone and install:**
 
 ```bash
-git clone https://github.com/Sniphs98/BetterSshClient.git
-cd BetterSshClient
+git clone https://github.com/Sniphs98/Remoty.git
+cd Remoty
 npm install
 ```
 
@@ -48,8 +48,8 @@ npm rebuild electron ssh2 cpu-features
 
 | Package | Path | Contents |
 |---------|------|----------|
-| `better-ssh-client-electron` | `packages/electron` | Main process + preload + the ported SSH engine (connect/auth, PTY, SFTP, key setup, metrics, config) — no UI dependencies |
-| `better-ssh-client-ui` | `packages/ui` | The SvelteKit renderer: dashboard, terminal, SFTP browser, snippets, settings |
+| `remoty-electron` | `packages/electron` | Main process + preload + the ported SSH engine (connect/auth, PTY, SFTP, key setup, metrics, config) — no UI dependencies |
+| `remoty-ui` | `packages/ui` | The SvelteKit renderer: dashboard, terminal, SFTP browser, snippets, settings |
 
 ---
 
@@ -73,7 +73,7 @@ npm run package:dir
 ```
 
 `npm run dev` alone only starts the SvelteKit dev server — screens that call
-into the Electron bridge (`window.bsshClient`) will reject with "the Electron
+into the Electron bridge (`window.remoty`) will reject with "the Electron
 bridge is unavailable" outside a real Electron window, which is expected;
 use `npm run dev:electron` to exercise the whole app.
 
@@ -100,7 +100,7 @@ npm run test:e2e --workspace packages/ui
 ```
 
 `packages/ui/e2e/*.spec.ts` are Playwright specs that run against the built
-static SPA (`vite preview`) with a `window.bsshClient` stub installed via
+static SPA (`vite preview`) with a `window.remoty` stub installed via
 `page.addInitScript` — see `packages/ui/src/lib/electron.d.ts` for the
 bridge shape a stub must match, and the module comment at the top of each
 spec file for what it fakes.
@@ -118,7 +118,7 @@ npm run test:integration
 
 See [`docker/ssh-test-target/README.md`](docker/ssh-test-target/README.md)
 for what the container is, its (intentionally public, test-only)
-credentials, and how to point BetterSshClient itself at it to try a feature by
+credentials, and how to point Remoty itself at it to try a feature by
 hand. These tests are opt-in and excluded from `npm test` — they need
 Docker running, and touch a live TCP connection.
 
@@ -156,7 +156,7 @@ These conventions are enforced in code review and by CI.
 
 ### Frontend
 
-- Components call `$lib/ipc/commands.ts` wrappers, never `window.bsshClient`
+- Components call `$lib/ipc/commands.ts` wrappers, never `window.remoty`
   directly.
 - Store updates from backend events go through `$lib/ipc/router.ts`'s pure
   `applyXxx` functions, which stay framework- and transport-agnostic and
@@ -181,7 +181,7 @@ install time and the packaged app's size.
 
 ## 5. Commit style
 
-BetterSshClient uses [Conventional Commits](https://www.conventionalcommits.org/).
+Remoty uses [Conventional Commits](https://www.conventionalcommits.org/).
 
 ```
 <type>(<optional scope>): <short summary>
@@ -257,7 +257,7 @@ packaging on all three platforms — so a green PR is a releasable one.
 
 Please open a GitHub Issue with:
 
-- BetterSshClient version (Settings screen, or the app's About info)
+- Remoty version (Settings screen, or the app's About info)
 - OS
 - Steps to reproduce
 - Expected behaviour vs. actual behaviour

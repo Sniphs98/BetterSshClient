@@ -11,6 +11,7 @@ import {
   applyAutomationStarted,
   applyAutomationNodeResult,
   applyAutomationNodeStarted,
+  applyAutomationNodeProgress,
   applyError,
   applyFilePreview,
   applyHostStatusChanged,
@@ -57,6 +58,7 @@ export async function startEventBridge(): Promise<() => void> {
     offs.push(await events.updateDownloaded.listen((e) => applyUpdateDownloaded(e.payload)));
     offs.push(await events.automationStarted.listen((e) => applyAutomationStarted(e.payload)));
     offs.push(await events.automationNodeStarted.listen((e) => applyAutomationNodeStarted(e.payload)));
+    offs.push(await events.automationNodeProgress.listen((e) => applyAutomationNodeProgress(e.payload)));
     offs.push(await events.automationNodeResult.listen((e) => applyAutomationNodeResult(e.payload)));
     offs.push(await events.automationCompleted.listen((e) => applyAutomationCompleted(e.payload)));
     offs.push(await events.automationFailed.listen((e) => applyAutomationFailed(e.payload)));

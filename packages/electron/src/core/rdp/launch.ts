@@ -296,7 +296,7 @@ function safeFileName(name: string): string {
 }
 
 async function writeRdpFile(connection: LaunchTarget): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'better-ssh-client-rdp-'));
+  const dir = await mkdtemp(join(tmpdir(), 'remoty-rdp-'));
   const path = join(dir, `${safeFileName(connection.name)}.rdp`);
   await writeFile(path, buildRdpFileContent(connection), 'utf-8');
   return path;

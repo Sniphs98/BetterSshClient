@@ -12,7 +12,7 @@ export function maximizeWhenConnected(pid: number): Promise<void> {
   const script = String.raw`
 Add-Type @'
 using System; using System.Text; using System.Runtime.InteropServices;
-public static class BsshWin {
+public static class RemotyWin {
   public delegate bool Cb(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] public static extern bool EnumWindows(Cb cb, IntPtr l);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
@@ -34,8 +34,8 @@ public static class BsshWin {
 '@
 for ($i = 0; $i -lt 300; $i++) {
   if (-not (Get-Process -Id ${pid} -ErrorAction SilentlyContinue)) { exit 0 }
-  $h = [BsshWin]::Session(${pid})
-  if ($h -ne [IntPtr]::Zero) { Start-Sleep -Milliseconds 500; [void][BsshWin]::ShowWindow($h, 3); exit 0 }
+  $h = [RemotyWin]::Session(${pid})
+  if ($h -ne [IntPtr]::Zero) { Start-Sleep -Milliseconds 500; [void][RemotyWin]::ShowWindow($h, 3); exit 0 }
   Start-Sleep -Seconds 1
 }
 `;

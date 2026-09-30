@@ -27,7 +27,7 @@ describe('windowsCredentials', () => {
   const runner = vi.fn<(script: string, input: string) => Promise<string>>();
 
   beforeEach(async () => {
-    configRoot = await mkdtemp(join(tmpdir(), 'bssh-cred-'));
+    configRoot = await mkdtemp(join(tmpdir(), 'remoty-cred-'));
     process.env.APPDATA = configRoot;
     process.env.XDG_CONFIG_HOME = configRoot;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
@@ -84,7 +84,7 @@ describe('windowsCredentials', () => {
     expect(runner).not.toHaveBeenCalled();
 
     await stageCredential('10.0.0.5', 'admin', 'x');
-    expect(existsSync(join(configRoot, 'better-ssh-client', 'rdp-staged-credentials'))).toBe(true);
+    expect(existsSync(join(configRoot, 'remoty', 'rdp-staged-credentials'))).toBe(true);
 
     runner.mockResolvedValue('2');
     expect(await sweepStagedCredentials()).toBe(2);

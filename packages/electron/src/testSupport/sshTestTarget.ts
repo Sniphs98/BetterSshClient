@@ -12,10 +12,10 @@ import type { Host } from '../core/ssh/client.js';
 export function testTargetHost(overrides: Partial<Host> = {}): Host {
   return {
     name: 'ssh-test-target',
-    hostname: process.env.BSSH_TEST_SSH_HOST ?? '127.0.0.1',
-    port: Number(process.env.BSSH_TEST_SSH_PORT ?? 2222),
-    user: process.env.BSSH_TEST_SSH_USER ?? 'better-ssh-client',
-    password: process.env.BSSH_TEST_SSH_PASSWORD ?? 'better-ssh-client',
+    hostname: process.env.REMOTY_TEST_SSH_HOST ?? '127.0.0.1',
+    port: Number(process.env.REMOTY_TEST_SSH_PORT ?? 2222),
+    user: process.env.REMOTY_TEST_SSH_USER ?? 'remoty',
+    password: process.env.REMOTY_TEST_SSH_PASSWORD ?? 'remoty',
     tags: [],
     source: 'manual',
     monitoring: 'ssh',

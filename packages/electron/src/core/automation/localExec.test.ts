@@ -13,7 +13,7 @@ import { localUploadPath, runLocalCommand } from './localExec.js';
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'better-ssh-client-localexec-'));
+  dir = await mkdtemp(join(tmpdir(), 'remoty-localexec-'));
 });
 
 afterEach(async () => {

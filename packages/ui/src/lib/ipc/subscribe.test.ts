@@ -18,6 +18,7 @@ vi.mock('$lib/bindings', () => {
     events: {
       automationStarted: channel('automationStarted'),
       automationNodeStarted: channel('automationNodeStarted'),
+      automationNodeProgress: channel('automationNodeProgress'),
       automationNodeResult: channel('automationNodeResult'),
       automationCompleted: channel('automationCompleted'),
       automationFailed: channel('automationFailed'),

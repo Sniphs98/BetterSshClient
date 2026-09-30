@@ -77,7 +77,7 @@ export function localTerminalEnv(env: NodeJS.ProcessEnv): Record<string, string>
   delete out.ELECTRON_NO_ATTACH_CONSOLE;
   out.TERM = 'xterm-256color';
   out.COLORTERM = 'truecolor';
-  out.TERM_PROGRAM = 'BetterSshClient';
+  out.TERM_PROGRAM = 'Remoty';
   return out;
 }
 

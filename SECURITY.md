@@ -1,17 +1,17 @@
 # Security policy
 
-BetterSshClient holds the keys to other people's servers — SSH credentials, host lists,
+Remoty holds the keys to other people's servers — SSH credentials, host lists,
 a one-click setup that edits `sshd_config`. Security reports are taken seriously and
 handled before anything else.
 
 ## Reporting a vulnerability
 
 **Please don't open a public issue.** Report it privately instead:
-[**Security → Report a vulnerability**](https://github.com/Sniphs98/BetterSshClient/security/advisories/new).
+[**Security → Report a vulnerability**](https://github.com/Sniphs98/Remoty/security/advisories/new).
 
 Helpful to include:
 
-- the BetterSshClient version and OS,
+- the Remoty version and OS,
 - what an attacker could do, and what they need for it (a malicious server? local access?),
 - steps or a proof of concept to reproduce it.
 

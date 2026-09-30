@@ -94,7 +94,7 @@
 
   // Dragging a card onto another section moves the host into that folder (or out of
   // every folder, for the "no folder" one) — the same save its editor's Folder field does.
-  const HOST_DRAG = 'application/x-better-ssh-client-host';
+  const HOST_DRAG = 'application/x-remoty-host';
   let dropTarget = $state<string | null>(null);
 
   function onDragStart(e: DragEvent, hostName: string): void {

@@ -14,7 +14,7 @@ describe('1Password password references against the test target', () => {
     const asked: string[] = [];
     setOpRunner(async (args) => {
       asked.push(args.join(' '));
-      return { stdout: 'better-ssh-client', stderr: '' };
+      return { stdout: 'remoty', stderr: '' };
     });
     const host = testTargetHost({ password: undefined, passwordRef: 'op://Servers/it-op-ok/password' });
     const session = await SshSession.connect(host);

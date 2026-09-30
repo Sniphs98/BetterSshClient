@@ -10,20 +10,20 @@ export function sshConfigPath(): string {
 
 /**
  * The application config directory.
- * - Linux:   `~/.config/better-ssh-client/`
- * - macOS:   `~/Library/Application Support/better-ssh-client/`
- * - Windows: `%APPDATA%\better-ssh-client\`
+ * - Linux:   `~/.config/remoty/`
+ * - macOS:   `~/Library/Application Support/remoty/`
+ * - Windows: `%APPDATA%\remoty\`
  */
 export function appConfigDir(): string {
   if (process.platform === 'win32') {
     const appData = process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming');
-    return join(appData, 'better-ssh-client');
+    return join(appData, 'remoty');
   }
   if (process.platform === 'darwin') {
-    return join(homedir(), 'Library', 'Application Support', 'better-ssh-client');
+    return join(homedir(), 'Library', 'Application Support', 'remoty');
   }
   const xdgConfig = process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config');
-  return join(xdgConfig, 'better-ssh-client');
+  return join(xdgConfig, 'remoty');
 }
 
 export function appConfigPath(): string {

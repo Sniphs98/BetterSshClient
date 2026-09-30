@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Settings + self-update (tech-gui.md §4.3). e2e runs against the static SPA with the
-// Electron preload bridge absent, so we install a `window.bsshClient` stub at the boundary
+// Electron preload bridge absent, so we install a `window.remoty` stub at the boundary
 // (electron.d.ts). The stub backs the update config in memory and returns an update from
 // `check_update`; `update-available` is fired after `reload_hosts` (which the layout calls
 // once its listeners are attached), mirroring the startup check. `install_update` reports
@@ -13,7 +13,7 @@ const HOSTS = [
 
 const UPDATE = {
   version: '2.0.0',
-  url: 'https://github.com/timhartmann7/better-ssh-client/releases/tag/v2.0.0',
+  url: 'https://github.com/timhartmann7/remoty/releases/tag/v2.0.0',
   tag: 'v2.0.0',
   canSelfUpdate: true
 };
@@ -27,15 +27,17 @@ async function boot(
       const listeners: Record<string, Array<(payload: unknown) => void>> = {};
       const state = {
         hosts: hosts.map((h) => ({ ...h })),
-        updateConfig: { checkOnStartup: true, skipVersion: '' } as Record<string, unknown>
+        updateConfig: { checkOnStartup: true, skipVersion: '' } as Record<string, unknown>,
+        github: { token: '', tokenRef: '' }
       };
+      (window as unknown as { __github: unknown }).__github = state.github;
       const win = window as unknown as Record<string, unknown>;
 
       function fire(channel: string, payload: unknown): void {
         for (const cb of listeners[channel] ?? []) cb(payload);
       }
 
-      win.bsshClient = {
+      win.remoty = {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':
@@ -48,6 +50,22 @@ async function boot(
               return Promise.resolve(null);
             case 'refresh_metrics':
               return Promise.resolve(null);
+            // GitHub sign-in: remembers what's saved; the test answers as whoever it is.
+            case 'github_settings':
+              return Promise.resolve({ hasToken: Boolean(state.github.token), tokenRef: state.github.tokenRef || undefined });
+            case 'github_save_settings': {
+              const input = args[0] as { token?: string; clearToken?: boolean; tokenRef?: string };
+              if (input.clearToken) state.github.token = '';
+              else if (input.token) state.github.token = input.token;
+              state.github.tokenRef = input.tokenRef ?? '';
+              return Promise.resolve(null);
+            }
+            case 'github_test':
+              if (!state.github.token && !state.github.tokenRef) return Promise.reject({ message: 'no GitHub token yet — add one in Settings → GitHub' });
+              return Promise.resolve({
+                login: 'Sniphs98',
+                repository: args[0] ? { fullName: args[0], private: true, defaultBranch: 'main' } : undefined
+              });
             case 'load_update_config':
               return Promise.resolve({ ...state.updateConfig });
             case 'save_update_config':
@@ -139,7 +157,7 @@ test('startup update-available raises the banner; closing it tucks it into the v
   await expect(banner).toHaveCount(0);
   // The version badge now offers it.
   await expect(page.locator('#update-badge')).toHaveText('Update');
-  await expect(page.locator('#update-badge')).toHaveAttribute('title', 'BetterSshClient v2.0.0 is out — click to update');
+  await expect(page.locator('#update-badge')).toHaveAttribute('title', 'Remoty v2.0.0 is out — click to update');
   await expect(page.getByText('v1.4.2', { exact: true })).toHaveCount(0);
 });
 
@@ -247,4 +265,27 @@ test('the running version sits beside the Settings gear, and in its tooltip when
   await page.getByRole('button', { name: 'Collapse sidebar' }).click();
   await expect(page.getByText('v1.4.2', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Settings' })).toHaveAttribute('title', 'Settings · v1.4.2');
+});
+
+test('Settings → GitHub: a token (or a 1Password reference) is saved and tested, never shown again', async ({ page }) => {
+  await boot(page, { fireUpdateOnBoot: false });
+  await page.getByRole('button', { name: 'Settings' }).click();
+
+  // Nothing saved yet: testing says so.
+  await page.getByRole('button', { name: 'Test connection' }).click();
+  await expect(page.getByText('no GitHub token yet — add one in Settings → GitHub')).toBeVisible();
+
+  await page.getByLabel('Token', { exact: true }).fill('github_pat_secret');
+  await page.getByLabel('Check access to a repository (optional)').fill('Enable-Energy-Solutions/Frontend');
+  await page.getByRole('button', { name: 'Save and test' }).click();
+  await expect(page.getByText('Signed in as Sniphs98 — can see Enable-Energy-Solutions/Frontend (private).')).toBeVisible();
+  // The field empties; the token isn't shown back, only that one is saved.
+  await expect(page.getByLabel('Token', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Token', { exact: true })).toHaveAttribute('placeholder', 'Saved — leave blank to keep it');
+
+  // Switched to 1Password, the reference is what's saved.
+  await page.getByRole('button', { name: 'Token from 1Password' }).click();
+  await page.getByLabel('Token', { exact: true }).fill('op://Private/GitHub/token');
+  await page.getByRole('button', { name: 'Save and test' }).click();
+  expect(await page.evaluate(() => (window as unknown as { __github: { tokenRef: string } }).__github.tokenRef)).toBe('op://Private/GitHub/token');
 });

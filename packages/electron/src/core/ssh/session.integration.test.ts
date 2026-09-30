@@ -11,8 +11,8 @@ describe('SshSession against the test target', () => {
   it('connects with a password and runs a command', async () => {
     const session = await SshSession.connect(testTargetHost());
     try {
-      const output = await session.runCommand('echo hello-from-better-ssh-client');
-      expect(output.trim()).toBe('hello-from-better-ssh-client');
+      const output = await session.runCommand('echo hello-from-remoty');
+      expect(output.trim()).toBe('hello-from-remoty');
     } finally {
       session.disconnect();
     }

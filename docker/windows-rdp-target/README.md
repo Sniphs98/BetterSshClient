@@ -1,6 +1,6 @@
 # Windows RDP test target
 
-A real Windows 11, for trying BetterSshClient's Remote Desktop feature against a real
+A real Windows 11, for trying Remoty's Remote Desktop feature against a real
 RDP server. It is [dockurr/windows](https://github.com/dockur/windows): Windows runs as a
 QEMU/KVM virtual machine *inside* the container, installed unattended on first start.
 
@@ -24,12 +24,12 @@ docker compose -f docker/windows-rdp-target/compose.yml up -d
 
 The **first** start downloads Windows from Microsoft and installs it: 15–30 minutes. Watch
 it at <http://127.0.0.1:8006>. Later starts boot in about a minute; the installed system
-lives in the `better-ssh-client-rdp_windows-storage` volume.
+lives in the `remoty-rdp_windows-storage` volume.
 
 Stop it with `docker compose -f docker/windows-rdp-target/compose.yml stop`. `down -v`
 also deletes the volume, i.e. the installation.
 
-## Add it in BetterSshClient
+## Add it in Remoty
 
 Remote Desktop → New connection:
 
