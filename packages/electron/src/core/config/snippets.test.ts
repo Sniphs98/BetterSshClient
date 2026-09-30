@@ -10,7 +10,7 @@ let dir: string;
 let path: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'better-ssh-client-snippets-'));
+  dir = await mkdtemp(join(tmpdir(), 'remoty-snippets-'));
   path = join(dir, 'snippets.toml');
 });
 

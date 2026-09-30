@@ -1,12 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 /**
- * The renderer's only door into the main process. Exposed as `window.bsshClient`;
+ * The renderer's only door into the main process. Exposed as `window.remoty`;
  * `packages/ui/src/lib/bindings.ts` is the sole consumer — no other renderer
  * code talks to `ipcRenderer` directly (mirrors the old `TAURI_INVOKE`/
  * `TAURI_API_EVENT` boundary in the generated Tauri bindings).
  */
-const bsshClient = {
+const remoty = {
   invoke: (channel: string, ...args: unknown[]): Promise<unknown> => ipcRenderer.invoke(channel, ...args),
 
   on: (channel: string, callback: (payload: unknown) => void): (() => void) => {
@@ -30,6 +30,6 @@ const bsshClient = {
   getPathForFile: (file: File): string => webUtils.getPathForFile(file)
 };
 
-export type BsshClientBridge = typeof bsshClient;
+export type RemotyBridge = typeof remoty;
 
-contextBridge.exposeInMainWorld('bsshClient', bsshClient);
+contextBridge.exposeInMainWorld('remoty', remoty);

@@ -148,8 +148,8 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
       const bundle = buildSnippetBundle(snippet);
       const { canceled, filePath } = await dialog.showSaveDialog({
         title: 'Export snippet',
-        defaultPath: `${sanitizeFileName(snippet.name)}.better-ssh-client-snippet.json`,
-        filters: [{ name: 'BetterSshClient snippet', extensions: ['json'] }]
+        defaultPath: `${sanitizeFileName(snippet.name)}.remoty-snippet.json`,
+        filters: [{ name: 'Remoty snippet', extensions: ['json'] }]
       });
       if (canceled || !filePath) return null;
       await writeFile(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
@@ -167,8 +167,8 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
       const bundle = buildAutomationBundle(automation, new Map(snippets.map((a) => [a.id, a])));
       const { canceled, filePath } = await dialog.showSaveDialog({
         title: 'Export automation',
-        defaultPath: `${sanitizeFileName(automation.name)}.better-ssh-client-automation.json`,
-        filters: [{ name: 'BetterSshClient automation', extensions: ['json'] }]
+        defaultPath: `${sanitizeFileName(automation.name)}.remoty-automation.json`,
+        filters: [{ name: 'Remoty automation', extensions: ['json'] }]
       });
       if (canceled || !filePath) return null;
       await writeFile(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
@@ -182,7 +182,7 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
         title: 'Import snippet or automation',
-        filters: [{ name: 'BetterSshClient snippet/automation', extensions: ['json'] }],
+        filters: [{ name: 'Remoty snippet/automation', extensions: ['json'] }],
         properties: ['openFile']
       });
       if (canceled || filePaths.length === 0) return null;
@@ -197,7 +197,7 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
       const bundle = parseBundle(raw);
 
       const [snippets, automations] = await Promise.all([loadSnippets(), loadAutomations()]);
-      if (bundle.kind === 'better-ssh-client-snippet') {
+      if (bundle.kind === 'remoty-snippet') {
         const merged = mergeSnippetBundle(bundle, snippets);
         await saveSnippets(merged.snippets);
         return merged.result;

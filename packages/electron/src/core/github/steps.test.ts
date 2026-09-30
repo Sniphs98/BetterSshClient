@@ -152,7 +152,7 @@ describe('runWorkflow', () => {
 
 describe('downloadAsset', () => {
   let dir: string;
-  beforeEach(async () => (dir = await mkdtemp(join(tmpdir(), 'bssh-gh-'))));
+  beforeEach(async () => (dir = await mkdtemp(join(tmpdir(), 'remoty-gh-'))));
   afterEach(async () => rm(dir, { recursive: true, force: true }));
 
   it("downloads the matching file, following GitHub's redirect without the token", async () => {

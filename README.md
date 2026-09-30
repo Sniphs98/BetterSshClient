@@ -1,13 +1,13 @@
 <div align="center">
 
-# Better Ssh Client
+# Remoty
 
 **An SSH client built around my daily workflow: dashboard, terminals, SFTP and automations in one window.**
 
-<img src="assets/dashboard.png" alt="The Better Ssh Client dashboard: a card per server with live CPU, RAM, disk, top processes and detected services" width="900">
+<img src="assets/dashboard.png" alt="The Remoty dashboard: a card per server with live CPU, RAM, disk, top processes and detected services" width="900">
 
-[![Latest release](https://img.shields.io/github/v/release/Sniphs98/BetterSshClient?label=latest)](https://github.com/Sniphs98/BetterSshClient/releases/latest)
-[![Release](https://img.shields.io/github/actions/workflow/status/Sniphs98/BetterSshClient/release.yml?branch=main&label=build)](https://github.com/Sniphs98/BetterSshClient/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/Sniphs98/Remoty?label=latest)](https://github.com/Sniphs98/Remoty/releases/latest)
+[![Release](https://img.shields.io/github/actions/workflow/status/Sniphs98/Remoty/release.yml?branch=main&label=build)](https://github.com/Sniphs98/Remoty/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **[Why this exists](#why-this-exists)** •
@@ -73,12 +73,12 @@ for what works, what's in progress, and what's still planned.
 
 ## Install
 
-Download the file for your system from the [**latest release**](https://github.com/Sniphs98/BetterSshClient/releases/latest):
+Download the file for your system from the [**latest release**](https://github.com/Sniphs98/Remoty/releases/latest):
 
 | System | File |
 |---|---|
-| **Windows** | `BetterSshClient-<version>-setup.exe` (installer) or `-portable.exe` (no install) |
-| **macOS** | `BetterSshClient-<version>-mac-<arch>.dmg` |
+| **Windows** | `Remoty-<version>-setup.exe` (installer) or `-portable.exe` (no install) |
+| **macOS** | `Remoty-<version>-mac-<arch>.dmg` |
 | **Linux** | `.AppImage`, `.deb` or `.rpm` |
 
 > [!NOTE]
@@ -90,15 +90,15 @@ The builds aren't code-signed, so your OS asks once on first launch:
 
 - **Windows:** SmartScreen shows "Windows protected your PC". Click *More info → Run anyway*.
 - **macOS:** right-click the app → *Open* → *Open*.
-- **Linux AppImage:** `chmod +x BetterSshClient-*.AppImage`, then run it.
+- **Linux AppImage:** `chmod +x Remoty-*.AppImage`, then run it.
 
 **Updates:** the app tells you when a new release is out. The Windows installer version and
 the Linux AppImage update themselves with one click ("Update now", then restart). The other
 builds link to the release page to download it.
 
 The app reads the hosts from your `~/.ssh/config` (it never writes to it) and stores its
-own data in `%APPDATA%\better-ssh-client\` (Windows), `~/Library/Application Support/better-ssh-client/`
-(macOS) or `~/.config/better-ssh-client/` (Linux).
+own data in `%APPDATA%\remoty\` (Windows), `~/Library/Application Support/remoty/`
+(macOS) or `~/.config/remoty/` (Linux).
 
 ### Using 1Password
 
@@ -120,7 +120,7 @@ takes over its place.
 
 ## Feedback and contributing
 
-Found a bug or have an idea? **[Open an issue](https://github.com/Sniphs98/BetterSshClient/issues/new/choose)**
+Found a bug or have an idea? **[Open an issue](https://github.com/Sniphs98/Remoty/issues/new/choose)**
 and describe it there. Feedback on macOS and Linux is especially welcome.
 
 If you've fixed something yourself, feel free to open a **pull request**. I'll look at it
@@ -135,8 +135,8 @@ opening a public issue.
 You need **Node.js 22+** and npm. Docker is optional (for the integration tests).
 
 ```bash
-git clone https://github.com/Sniphs98/BetterSshClient.git
-cd BetterSshClient
+git clone https://github.com/Sniphs98/Remoty.git
+cd Remoty
 npm ci
 npm run dev:electron     # build and start the app
 ```

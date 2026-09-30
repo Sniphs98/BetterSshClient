@@ -353,7 +353,7 @@ const METRIC_SECTIONS = {
 type MetricSection = keyof typeof METRIC_SECTIONS;
 
 /** Prefix of the line that opens each section — no metric command prints it. */
-const SECTION_MARKER = '@@bssh-metric:';
+const SECTION_MARKER = '@@remoty-metric:';
 
 /**
  * Every metric command as one remote script, each section's output opened by

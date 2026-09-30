@@ -98,7 +98,7 @@
             <p class="truncate text-xs text-muted" title={dl.error}>{dl.error}</p>
           {:else}
             <p class="text-sm font-medium">Update available — v{info.version}</p>
-            <p class="truncate text-xs text-muted">A newer BetterSshClient release is ready.</p>
+            <p class="truncate text-xs text-muted">A newer Remoty release is ready.</p>
           {/if}
         </div>
         <div class="ml-auto flex shrink-0 items-center gap-1.5">

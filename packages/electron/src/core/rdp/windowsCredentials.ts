@@ -21,7 +21,7 @@ import { appConfigDir } from '../config/platform.js';
  */
 
 /** Marks a credential as staged by this app; nothing else is ever touched. */
-export const CREDENTIAL_COMMENT = 'Staged by BetterSshClient for one Remote Desktop launch';
+export const CREDENTIAL_COMMENT = 'Staged by Remoty for one Remote Desktop launch';
 
 /** Exists while a staged credential might still be in the store, so a start after a
  *  crash knows to sweep — without paying for a PowerShell run on every start. */
@@ -37,7 +37,7 @@ const INTEROP = String.raw`
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class BsshCred {
+public static class RemotyCred {
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
   public struct CREDENTIAL {
     public int Flags; public int Type; public string TargetName; public string Comment;
@@ -162,8 +162,8 @@ export async function stageCredential(hostname: string, user: string, password: 
   await writeFile(markerPath(), '', 'utf-8');
   const out = await runner(
     script(
-      'if ([BsshCred]::Owner($in.target, $in.marker) -eq "foreign") { "kept-existing" }\n' +
-        'else { [BsshCred]::Write($in.target, $in.user, $in.password, $in.marker); "staged" }\n'
+      'if ([RemotyCred]::Owner($in.target, $in.marker) -eq "foreign") { "kept-existing" }\n' +
+        'else { [RemotyCred]::Write($in.target, $in.user, $in.password, $in.marker); "staged" }\n'
     ),
     encodeInput({ target, user, password })
   );
@@ -173,7 +173,7 @@ export async function stageCredential(hostname: string, user: string, password: 
 /** Deletes the staged credential for `hostname` — only if it is still ours. */
 export async function removeCredential(hostname: string): Promise<void> {
   await runner(
-    script('[BsshCred]::DeleteIfOurs($in.target, $in.marker)\n'),
+    script('[RemotyCred]::DeleteIfOurs($in.target, $in.marker)\n'),
     encodeInput({ target: credentialTarget(hostname) })
   );
 }
@@ -183,7 +183,7 @@ export async function removeCredential(hostname: string): Promise<void> {
  *  launch left the marker behind. Returns how many were removed. */
 export async function sweepStagedCredentials(): Promise<number> {
   if (process.platform !== 'win32' || !existsSync(markerPath())) return 0;
-  const out = await runner(script('[BsshCred]::Sweep($in.marker)\n'), encodeInput({}));
+  const out = await runner(script('[RemotyCred]::Sweep($in.marker)\n'), encodeInput({}));
   await rm(markerPath(), { force: true });
   return Number.parseInt(out, 10) || 0;
 }

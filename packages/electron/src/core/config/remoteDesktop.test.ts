@@ -36,7 +36,7 @@ describe('remote-desktop.toml I/O', () => {
   let prevHome: string | undefined;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), 'better-ssh-client-rd-'));
+    tmp = await mkdtemp(join(tmpdir(), 'remoty-rd-'));
     prevAppData = process.env.APPDATA;
     prevXdgConfig = process.env.XDG_CONFIG_HOME;
     prevHome = process.env.HOME;

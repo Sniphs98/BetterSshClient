@@ -31,7 +31,7 @@
   // sidebar is collapsed). Absent outside Electron (tests, `vite preview`).
   let appVersion = $state<string | null>(null);
   onMount(() => {
-    window.bsshClient
+    window.remoty
       ?.appVersion?.()
       .then((v) => (appVersion = v))
       .catch(() => {});
@@ -107,7 +107,7 @@
   >
     {#if !$sidebarCollapsed}
       <Logo size={22} />
-      <span class="flex-1 truncate text-sm font-bold tracking-wide">BetterSshClient</span>
+      <span class="flex-1 truncate text-sm font-bold tracking-wide">Remoty</span>
     {/if}
     <Button
       variant="icon"
@@ -279,7 +279,7 @@
       <span
         id={UPDATE_BADGE_ID}
         class="ml-1 rounded-full border border-default px-2 py-0.5 font-mono text-[11px] text-faint"
-        title="BetterSshClient v{appVersion}"
+        title="Remoty v{appVersion}"
       >
         v{appVersion}
       </span>

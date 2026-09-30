@@ -10,7 +10,7 @@ describe('knownCerts (trust on first use)', () => {
   const saved = { APPDATA: process.env.APPDATA, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, HOME: process.env.HOME };
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'bssh-certs-'));
+    dir = await mkdtemp(join(tmpdir(), 'remoty-certs-'));
     process.env.APPDATA = dir;
     process.env.XDG_CONFIG_HOME = dir;
     process.env.HOME = dir;

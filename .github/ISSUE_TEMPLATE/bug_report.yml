@@ -11,7 +11,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: BetterSshClient version
+      label: Remoty version
       description: Shown in Settings.
       placeholder: 1.2.0
     validations:

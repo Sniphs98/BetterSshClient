@@ -14,13 +14,13 @@ import { parseGitHubStep } from './githubStep.js';
 export const BUNDLE_VERSION = 1;
 
 export interface SnippetBundle {
-  kind: 'better-ssh-client-snippet';
+  kind: 'remoty-snippet';
   version: number;
   snippet: Snippet;
 }
 
 export interface AutomationBundle {
-  kind: 'better-ssh-client-automation';
+  kind: 'remoty-automation';
   version: number;
   automation: Automation;
   snippets: Snippet[];
@@ -29,7 +29,7 @@ export interface AutomationBundle {
 export type Bundle = SnippetBundle | AutomationBundle;
 
 export function buildSnippetBundle(snippet: Snippet): SnippetBundle {
-  return { kind: 'better-ssh-client-snippet', version: BUNDLE_VERSION, snippet };
+  return { kind: 'remoty-snippet', version: BUNDLE_VERSION, snippet };
 }
 
 /** Gathers exactly the Snippets `automation` actually references, in node order and
@@ -48,12 +48,12 @@ export function buildAutomationBundle(automation: Automation, snippetsById: Map<
     seen.add(node.snippetId);
     snippets.push(snippet);
   }
-  return { kind: 'better-ssh-client-automation', version: BUNDLE_VERSION, automation, snippets };
+  return { kind: 'remoty-automation', version: BUNDLE_VERSION, automation, snippets };
 }
 
 // ---------------------------------------------------------------------------
 // Parsing an imported file's already-`JSON.parse`d contents — the file might be
-// hand-edited, from a future app version, or not a BetterSshClient bundle at all, so every
+// hand-edited, from a future app version, or not a Remoty bundle at all, so every
 // field is checked explicitly and a bad one throws a descriptive `Error`, the same
 // discipline core/config/automations.ts's *FromToml functions apply to a hand-edited TOML.
 // ---------------------------------------------------------------------------
@@ -157,28 +157,34 @@ function parseAutomation(raw: unknown, ctx: string): Automation {
   };
 }
 
+const NAMES = ['remoty', 'better-ssh-client', 'omnyssh'];
+
+function isKind(kind: unknown, what: 'snippet' | 'automation'): boolean {
+  return NAMES.some((name) => kind === `${name}-${what}`);
+}
+
 /** Parses+validates a file's already-`JSON.parse`d contents into a `Bundle`, or throws
  *  a descriptive `Error`. */
 export function parseBundle(raw: unknown): Bundle {
   const o = obj(raw, 'file');
-  // 'omnyssh-*' is what this app called itself before the rename; files exported then
-  // still import, they just come back out under the current name.
-  if (o.kind === 'better-ssh-client-snippet' || o.kind === 'omnyssh-snippet') {
+  // 'better-ssh-client-*' and 'omnyssh-*' are what this app called itself before; files
+  // exported then still import, they just come back out under the current name.
+  if (isKind(o.kind, 'snippet')) {
     return {
-      kind: 'better-ssh-client-snippet',
+      kind: 'remoty-snippet',
       version: num(o.version, 'file.version'),
       snippet: parseSnippet(o.snippet, 'file.snippet')
     };
   }
-  if (o.kind === 'better-ssh-client-automation' || o.kind === 'omnyssh-automation') {
+  if (isKind(o.kind, 'automation')) {
     return {
-      kind: 'better-ssh-client-automation',
+      kind: 'remoty-automation',
       version: num(o.version, 'file.version'),
       automation: parseAutomation(o.automation, 'file.automation'),
       snippets: arr(o.snippets, 'file.snippets').map((a, i) => parseSnippet(a, `file.snippets[${i}]`))
     };
   }
-  throw new Error('not a BetterSshClient snippet/automation file');
+  throw new Error('not a Remoty snippet/automation file');
 }
 
 export interface ImportResult {

@@ -151,7 +151,7 @@ function parseRemoteDesktopFile(content: string): RemoteDesktopFile {
   return { connections: raw.connections.map((c) => connectionFromToml(c as Record<string, unknown>)) };
 }
 
-/** Loads remote-desktop connections from `~/.config/better-ssh-client/remote-desktop.toml`.
+/** Loads remote-desktop connections from `~/.config/remoty/remote-desktop.toml`.
  *  Returns `[]` if the file does not exist yet. */
 export async function loadRemoteDesktopConnections(): Promise<RemoteDesktopConnection[]> {
   const path = remoteDesktopConfigPath();

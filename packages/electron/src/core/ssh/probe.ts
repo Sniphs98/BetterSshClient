@@ -4,25 +4,25 @@
  *
  * The Quick Scan probe is a single bash script that collects maximum
  * information in one SSH invocation. Output is delimited by section markers
- * (`===BSSH:SECTION===`) for easy parsing.
+ * (`===REMOTY:SECTION===`) for easy parsing.
  */
 
 /** Generates the Quick Scan probe bash script. Runs multiple commands and
  *  delimits their output with section markers; every command redirects
  *  stderr to /dev/null for graceful failure. */
 export function generateQuickScanScript(): string {
-  return `cat << 'BSSH_PROBE_EOF' | bash
-echo "===BSSH:OS==="
+  return `cat << 'REMOTY_PROBE_EOF' | bash
+echo "===REMOTY:OS==="
 cat /etc/os-release 2>/dev/null | head -5
-echo "===BSSH:SERVICES==="
+echo "===REMOTY:SERVICES==="
 systemctl list-units --type=service --state=running --no-pager --no-legend 2>/dev/null | awk '{print $1}' | head -50
-echo "===BSSH:DOCKER==="
+echo "===REMOTY:DOCKER==="
 docker ps --format '{{.ID}}\\t{{.Names}}\\t{{.Status}}\\t{{.Image}}' 2>/dev/null | head -30
-echo "===BSSH:LISTEN==="
+echo "===REMOTY:LISTEN==="
 ss -tlnp 2>/dev/null | tail -n +2 | head -30
-echo "===BSSH:PROCESS==="
+echo "===REMOTY:PROCESS==="
 ps aux --sort=-%mem 2>/dev/null | head -15
-BSSH_PROBE_EOF
+REMOTY_PROBE_EOF
 `;
 }
 
@@ -35,7 +35,7 @@ export class ProbeOutput {
   }
 
   /** Parses the probe script output into sections, delimited by
-   *  `===BSSH:NAME===` markers. Never throws — unknown or malformed
+   *  `===REMOTY:NAME===` markers. Never throws — unknown or malformed
    *  output is silently ignored (graceful degradation). */
   static parse(output: string): ProbeOutput {
     const sections = new Map<string, string>();
@@ -45,12 +45,12 @@ export class ProbeOutput {
     for (const line of output.split('\n')) {
       const trimmed = line.trim();
 
-      if (trimmed.startsWith('===BSSH:') && trimmed.endsWith('===')) {
+      if (trimmed.startsWith('===REMOTY:') && trimmed.endsWith('===')) {
         if (currentSection !== undefined) {
           sections.set(currentSection, currentContent.trim());
           currentContent = '';
         }
-        currentSection = trimmed.slice('===BSSH:'.length, -'==='.length);
+        currentSection = trimmed.slice('===REMOTY:'.length, -'==='.length);
       } else if (currentSection !== undefined) {
         currentContent += line + '\n';
       }

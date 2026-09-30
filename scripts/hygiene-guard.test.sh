@@ -49,10 +49,10 @@ setup_repo
 printf 'X=1\n' >"$repo/.ENV" && git -C "$repo" add -f .ENV && expect_fail "case-variant .ENV"
 
 setup_repo
-: >"$repo/better-ssh-client.p12" && git -C "$repo" add -f better-ssh-client.p12 && expect_fail "tracked *.p12"
+: >"$repo/remoty.p12" && git -C "$repo" add -f remoty.p12 && expect_fail "tracked *.p12"
 
 setup_repo
-: >"$repo/better-ssh-client.pfx" && git -C "$repo" add -f better-ssh-client.pfx && expect_fail "tracked *.pfx"
+: >"$repo/remoty.pfx" && git -C "$repo" add -f remoty.pfx && expect_fail "tracked *.pfx"
 
 setup_repo
 printf -- '-----BEGIN OPENSSH PRIVATE KEY-----\nx\n-----END OPENSSH PRIVATE KEY-----\n' >"$repo/id_ed25519"

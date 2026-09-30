@@ -33,7 +33,7 @@ function deps(): RunAutomationDeps {
 
 describe('upload node against the test target', () => {
   it('copies a local file to the host, and the next node reads it where it landed', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'bssh-upload-'));
+    const dir = await mkdtemp(join(tmpdir(), 'remoty-upload-'));
     const file = join(dir, `payload-${Date.now()}.txt`);
     await writeFile(file, 'hello from the upload node\n');
     try {
@@ -104,7 +104,7 @@ describe('snippet engine against the test target', () => {
   });
 
   it('a failing local node (no continueOnError) skips the dependent remote node entirely', async () => {
-    const marker = `/home/better-ssh-client/it-marker-${Date.now()}`;
+    const marker = `/home/remoty/it-marker-${Date.now()}`;
     const failing: Snippet = { id: 'fail', name: 'Fail', kind: 'local', command: 'exit 1', timeoutSecs: 30 };
     const remote: Snippet = {
       id: 'remote',

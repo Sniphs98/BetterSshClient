@@ -25,9 +25,9 @@ describe('useHosts', () => {
 
   it('resolves jump chains against the host list it was given, not the config files', async () => {
     // Neither host exists on disk: the chain can only resolve from the given list.
-    const outer = host('bssh-test-outer-bastion');
-    const inner = host('bssh-test-inner-bastion', outer.name);
-    const target = host('bssh-test-target', inner.name);
+    const outer = host('remoty-test-outer-bastion');
+    const inner = host('remoty-test-inner-bastion', outer.name);
+    const target = host('remoty-test-target', inner.name);
     useHosts([outer, inner, target]);
     // Two bastions plus the target: three per-hop connect budgets.
     expect(await connectBudgetMs(target)).toBe(3 * (await connectBudgetMs(outer)));

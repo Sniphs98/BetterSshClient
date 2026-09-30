@@ -19,13 +19,13 @@ describe('SftpManager against the test target', () => {
 
   it('lists the seeded home directory', async () => {
     manager = await SftpManager.connect(testTargetHost());
-    const entries = await manager.listDir('/home/better-ssh-client');
+    const entries = await manager.listDir('/home/remoty');
     expect(entries.map((e) => e.name)).toEqual(expect.arrayContaining(['config.yml', 'www']));
   });
 
   it('round-trips write, read, rename, and delete on a fresh directory', async () => {
     manager = await SftpManager.connect(testTargetHost());
-    const dir = `/home/better-ssh-client/it-${Date.now()}`;
+    const dir = `/home/remoty/it-${Date.now()}`;
     await manager.mkdir(dir);
 
     const original = `${dir}/note.txt`;
@@ -42,13 +42,13 @@ describe('SftpManager against the test target', () => {
 
     await manager.delete(renamed);
     await manager.delete(dir); // empty now — delete() falls back to rmdir
-    const remaining = await manager.listDir('/home/better-ssh-client');
+    const remaining = await manager.listDir('/home/remoty');
     expect(remaining.map((e) => e.name)).not.toContain(dir.split('/').pop());
   });
 
   it('readPreview truncates; readFile does not', async () => {
     manager = await SftpManager.connect(testTargetHost());
-    const dir = `/home/better-ssh-client/it-${Date.now()}`;
+    const dir = `/home/remoty/it-${Date.now()}`;
     await manager.mkdir(dir);
     const path = `${dir}/big.txt`;
     const content = 'x'.repeat(5000); // over readPreview's 4096-byte cap
@@ -65,8 +65,8 @@ describe('SftpManager against the test target', () => {
     // flight on the one SFTP channel at once, distinct paths, every byte in the right file.
     manager = await SftpManager.connect(testTargetHost());
     const m = manager;
-    const local = await mkdtemp(join(tmpdir(), 'bssh-par-'));
-    const dir = `/home/better-ssh-client/it-par-${Date.now()}`;
+    const local = await mkdtemp(join(tmpdir(), 'remoty-par-'));
+    const dir = `/home/remoty/it-par-${Date.now()}`;
     await m.mkdir(dir);
     try {
       const names = Array.from({ length: 8 }, (_, i) => `f${i}.bin`);

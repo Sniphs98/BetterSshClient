@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Host management CRUD (tech-gui.md §4.1). e2e runs against the static SPA; the
-// Electron preload bridge is absent, so we install a `window.bsshClient` stub matching
-// the `BsshClientBridge` shape (electron.d.ts) at the boundary. The stub is stateful:
+// Electron preload bridge is absent, so we install a `window.remoty` stub matching
+// the `RemotyBridge` shape (electron.d.ts) at the boundary. The stub is stateful:
 // save/delete mutate an in-memory list, and `reload_hosts` replays it as a
 // `hosts-loaded` event through the same listener the app registers — so a save/delete
 // round-trips into the dashboard grid exactly as the real backend would drive it.
@@ -21,7 +21,7 @@ async function boot(page: Page): Promise<void> {
         for (const cb of listeners[channel] ?? []) cb(payload);
       }
 
-      (window as unknown as { bsshClient: unknown }).bsshClient = {
+      (window as unknown as { remoty: unknown }).remoty = {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':
@@ -207,7 +207,7 @@ test('folders group the cards into sections under "This computer"; dragging a ca
   await section('Homelab').click();
   await expect(section('Homelab')).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByText('web-1', { exact: true })).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem('better-ssh-client-dashboard-collapsed'))).toBe('["folder:Homelab"]');
+  expect(await page.evaluate(() => localStorage.getItem('remoty-dashboard-collapsed'))).toBe('["folder:Homelab"]');
   await section('Homelab').click();
   await expect(page.getByText('web-1', { exact: true })).toBeVisible();
 

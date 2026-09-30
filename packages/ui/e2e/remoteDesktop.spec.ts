@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 // Remote Desktop (RDP only this round — see the feature plan): a new sidebar area,
 // reached via the top SSH/Remote Desktop switch, that manages RDP connection profiles
 // and launches them via the OS's native client. e2e runs against the static SPA with
-// the Electron preload bridge absent, so we install a `window.bsshClient` stub;
+// the Electron preload bridge absent, so we install a `window.remoty` stub;
 // `rdp_launch` just records the call (the real OS-process spawn is covered by
 // core/rdp/launch.test.ts on the electron side).
 type Rec = Record<string, unknown>;
@@ -23,7 +23,7 @@ async function boot(page: Page, opts: { launch?: Rec } = {}): Promise<void> {
     win.__rdpConnections = state;
     win.__rdpTyped = [];
 
-    win.bsshClient = {
+    win.remoty = {
       invoke: (channel: string, ...rawArgs: unknown[]) => {
         const args = rawArgs.map((a) => structuredClone(a));
         switch (channel) {
@@ -319,7 +319,7 @@ test('Connect opens the remote desktop in a tab, with the external app as the wa
 
 test('reopened in Remote Desktop mode, the app shows Remote Desktop, not the SSH dashboard', async ({ page }) => {
   // What the switch remembers from the last run.
-  await page.addInitScript(() => localStorage.setItem('better-ssh-client-sidebar-mode', 'remoteDesktop'));
+  await page.addInitScript(() => localStorage.setItem('remoty-sidebar-mode', 'remoteDesktop'));
   await boot(page);
   await expect(page.getByRole('heading', { name: 'Remote Desktop' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toHaveCount(0);

@@ -26,7 +26,7 @@ describe('loadAppConfig', () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await mkdtemp(join(tmpdir(), 'better-ssh-client-appconfig-'));
+    tmp = await mkdtemp(join(tmpdir(), 'remoty-appconfig-'));
   });
 
   afterEach(async () => {

@@ -28,11 +28,11 @@ describe('sidebar mode persistence', () => {
     const sidebarMode = await fresh();
     sidebarMode.set('remoteDesktop');
     expect(get(sidebarMode)).toBe('remoteDesktop');
-    expect(localStorage.getItem('better-ssh-client-sidebar-mode')).toBe('remoteDesktop');
+    expect(localStorage.getItem('remoty-sidebar-mode')).toBe('remoteDesktop');
   });
 
   it('initialises from the localStorage mirror', async () => {
-    localStorage.setItem('better-ssh-client-sidebar-mode', 'remoteDesktop');
+    localStorage.setItem('remoty-sidebar-mode', 'remoteDesktop');
     const sidebarMode = await fresh();
     expect(get(sidebarMode)).toBe('remoteDesktop');
   });

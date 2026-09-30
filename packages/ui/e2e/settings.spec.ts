@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // Settings + self-update (tech-gui.md §4.3). e2e runs against the static SPA with the
-// Electron preload bridge absent, so we install a `window.bsshClient` stub at the boundary
+// Electron preload bridge absent, so we install a `window.remoty` stub at the boundary
 // (electron.d.ts). The stub backs the update config in memory and returns an update from
 // `check_update`; `update-available` is fired after `reload_hosts` (which the layout calls
 // once its listeners are attached), mirroring the startup check. `install_update` reports
@@ -13,7 +13,7 @@ const HOSTS = [
 
 const UPDATE = {
   version: '2.0.0',
-  url: 'https://github.com/timhartmann7/better-ssh-client/releases/tag/v2.0.0',
+  url: 'https://github.com/timhartmann7/remoty/releases/tag/v2.0.0',
   tag: 'v2.0.0',
   canSelfUpdate: true
 };
@@ -37,7 +37,7 @@ async function boot(
         for (const cb of listeners[channel] ?? []) cb(payload);
       }
 
-      win.bsshClient = {
+      win.remoty = {
         invoke: (channel: string, ...args: unknown[]) => {
           switch (channel) {
             case 'list_hosts':
@@ -157,7 +157,7 @@ test('startup update-available raises the banner; closing it tucks it into the v
   await expect(banner).toHaveCount(0);
   // The version badge now offers it.
   await expect(page.locator('#update-badge')).toHaveText('Update');
-  await expect(page.locator('#update-badge')).toHaveAttribute('title', 'BetterSshClient v2.0.0 is out — click to update');
+  await expect(page.locator('#update-badge')).toHaveAttribute('title', 'Remoty v2.0.0 is out — click to update');
   await expect(page.getByText('v1.4.2', { exact: true })).toHaveCount(0);
 });
 

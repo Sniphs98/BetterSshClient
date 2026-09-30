@@ -1,8 +1,8 @@
 // Ambient type for the bridge `packages/electron/src/preload.ts` exposes via
-// `contextBridge.exposeInMainWorld('bsshClient', ...)`. Kept independent of the
+// `contextBridge.exposeInMainWorld('remoty', ...)`. Kept independent of the
 // electron package (a renderer build has no business depending on it) —
 // change one, mirror the other.
-export interface BsshClientBridge {
+export interface RemotyBridge {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
   on(channel: string, callback: (payload: unknown) => void): () => void;
   settings: {
@@ -18,6 +18,6 @@ export interface BsshClientBridge {
 
 declare global {
   interface Window {
-    bsshClient?: BsshClientBridge;
+    remoty?: RemotyBridge;
   }
 }

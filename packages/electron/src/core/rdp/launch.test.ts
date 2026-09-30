@@ -464,7 +464,7 @@ describe('launchRdp', () => {
     let binDir: string;
 
     beforeEach(async () => {
-      binDir = await mkdtemp(join(tmpdir(), 'bssh-rdp-bin-'));
+      binDir = await mkdtemp(join(tmpdir(), 'remoty-rdp-bin-'));
       process.env.PATH = binDir;
     });
 

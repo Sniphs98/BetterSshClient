@@ -1,10 +1,10 @@
 {
-  "name": "better-ssh-client-electron",
+  "name": "remoty-electron",
   "private": true,
   "version": "1.1.2",
-  "description": "BetterSshClient Desktop — SSH dashboard, terminal, and SFTP file manager.",
-  "author": "BetterSshClient contributors",
-  "homepage": "https://github.com/Sniphs98/BetterSshClient",
+  "description": "Remoty Desktop — SSH dashboard, terminal, and SFTP file manager.",
+  "author": "Remoty contributors",
+  "homepage": "https://github.com/Sniphs98/Remoty",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",

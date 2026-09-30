@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { clearUpdateSplash, updateFlagPath, updateSplashCommand } from './updateSplash.js';
 
 describe('updateSplashCommand', () => {
-  const cmd = updateSplashCommand('C:\\Temp\\better-ssh-client-updating', '1.12.0', 'C:\\Apps\\BetterSshClient.exe', { PATH: 'x' });
+  const cmd = updateSplashCommand('C:\\Temp\\remoty-updating', '1.12.0', 'C:\\Apps\\Remoty.exe', { PATH: 'x' });
 
   it('starts a hidden PowerShell through `cmd /c start`, outside the app', () => {
     expect(cmd.file).toBe('cmd.exe');
@@ -19,14 +19,14 @@ describe('updateSplashCommand', () => {
   it('passes what it shows and watches as environment, never inside the script', () => {
     expect(cmd.env).toMatchObject({
       PATH: 'x',
-      BSSH_UPDATE_FLAG: 'C:\\Temp\\better-ssh-client-updating',
-      BSSH_UPDATE_VERSION: '1.12.0',
-      BSSH_APP_EXE: 'C:\\Apps\\BetterSshClient.exe'
+      REMOTY_UPDATE_FLAG: 'C:\\Temp\\remoty-updating',
+      REMOTY_UPDATE_VERSION: '1.12.0',
+      REMOTY_APP_EXE: 'C:\\Apps\\Remoty.exe'
     });
     const script = Buffer.from(cmd.args[2].split(' ').pop()!, 'base64').toString('utf16le');
-    expect(script).toContain('$env:BSSH_UPDATE_FLAG');
+    expect(script).toContain('$env:REMOTY_UPDATE_FLAG');
     expect(script).not.toContain('1.12.0');
-    expect(script).not.toContain('BetterSshClient.exe');
+    expect(script).not.toContain('Remoty.exe');
     // Closes when the flag goes, when the app runs again, and after three minutes at the latest.
     expect(script).toMatch(/Test-Path -LiteralPath \$flag/);
     expect(script).toMatch(/Get-Process -Name \$appName/);
@@ -36,7 +36,7 @@ describe('updateSplashCommand', () => {
 
 describe('clearUpdateSplash', () => {
   let dir: string;
-  beforeEach(async () => (dir = await mkdtemp(join(tmpdir(), 'bssh-splash-'))));
+  beforeEach(async () => (dir = await mkdtemp(join(tmpdir(), 'remoty-splash-'))));
   afterEach(async () => rm(dir, { recursive: true, force: true }));
 
   it("removes the flag an update left, so its window closes; nothing to do otherwise", async () => {

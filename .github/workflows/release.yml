@@ -71,7 +71,7 @@ jobs:
             gh release edit "$TAG" --target "$GITHUB_SHA" --notes-file release-notes.md
           else
             gh release create "$TAG" --draft --target "$GITHUB_SHA" \
-              --title "BetterSshClient $VERSION" --notes-file release-notes.md
+              --title "Remoty $VERSION" --notes-file release-notes.md
           fi
 
   package:

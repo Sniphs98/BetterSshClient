@@ -18,18 +18,18 @@ import { join } from 'node:path';
 
 /** The flag file: there while an update is being installed. */
 export function updateFlagPath(dir: string = tmpdir()): string {
-  return join(dir, 'better-ssh-client-updating');
+  return join(dir, 'remoty-updating');
 }
 
 const SCRIPT = String.raw`
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
-$flag = $env:BSSH_UPDATE_FLAG
+$flag = $env:REMOTY_UPDATE_FLAG
 $dark = [System.Drawing.Color]::FromArgb(33, 33, 33)
 $muted = [System.Drawing.Color]::FromArgb(174, 183, 194)
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'BetterSshClient'
+$form.Text = 'Remoty'
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
@@ -39,10 +39,10 @@ $form.ClientSize = New-Object System.Drawing.Size(440, 116)
 $form.BackColor = $dark
 $form.ForeColor = [System.Drawing.Color]::White
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
-try { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($env:BSSH_APP_EXE) } catch {}
+try { $form.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($env:REMOTY_APP_EXE) } catch {}
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = $(if ($env:BSSH_UPDATE_VERSION) { "Updating BetterSshClient to v$($env:BSSH_UPDATE_VERSION)" } else { 'Updating BetterSshClient' }) + [char]0x2026
+$title.Text = $(if ($env:REMOTY_UPDATE_VERSION) { "Updating Remoty to v$($env:REMOTY_UPDATE_VERSION)" } else { 'Updating Remoty' }) + [char]0x2026
 $title.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
 $title.AutoSize = $true
 $title.Location = New-Object System.Drawing.Point(20, 16)
@@ -64,14 +64,14 @@ $form.Controls.Add($bar)
 
 # A dark title bar, like the app's (Windows 10 20H1 and later; ignored before).
 try {
-  Add-Type -Namespace Bssh -Name Dwm -MemberDefinition '[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr h, int a, ref int v, int s);'
-  $form.Add_HandleCreated({ $on = 1; [void][Bssh.Dwm]::DwmSetWindowAttribute($form.Handle, 20, [ref]$on, 4) })
+  Add-Type -Namespace Remoty -Name Dwm -MemberDefinition '[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr h, int a, ref int v, int s);'
+  $form.Add_HandleCreated({ $on = 1; [void][Remoty.Dwm]::DwmSetWindowAttribute($form.Handle, 20, [ref]$on, 4) })
 } catch {}
 # Tell the app it's on screen, so it can quit now.
 $form.Add_Shown({ Set-Content -LiteralPath $flag -Value 'shown' -ErrorAction SilentlyContinue })
 
 $start = Get-Date
-$appName = [System.IO.Path]::GetFileNameWithoutExtension($env:BSSH_APP_EXE)
+$appName = [System.IO.Path]::GetFileNameWithoutExtension($env:REMOTY_APP_EXE)
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 500
 $timer.Add_Tick({
@@ -98,7 +98,7 @@ export function updateSplashCommand(flag: string, version: string, appExe: strin
   return {
     file: 'cmd.exe',
     args: ['/d', '/c', `start "" /min ${powershell}`],
-    env: { ...env, BSSH_UPDATE_FLAG: flag, BSSH_UPDATE_VERSION: version, BSSH_APP_EXE: appExe }
+    env: { ...env, REMOTY_UPDATE_FLAG: flag, REMOTY_UPDATE_VERSION: version, REMOTY_APP_EXE: appExe }
   };
 }
 

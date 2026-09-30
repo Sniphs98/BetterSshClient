@@ -6,7 +6,7 @@ import { writable } from 'svelte/store';
 // mirrored to localStorage so the SPA renders the right mode on first paint.
 export type SidebarMode = 'ssh' | 'remoteDesktop';
 
-const LOCAL_KEY = 'better-ssh-client-sidebar-mode';
+const LOCAL_KEY = 'remoty-sidebar-mode';
 const STORE_KEY = 'sidebarMode';
 
 function mirroredMode(): SidebarMode {

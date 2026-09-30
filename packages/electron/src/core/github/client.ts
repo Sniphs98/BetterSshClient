@@ -12,7 +12,7 @@ import { parse as parseYaml } from 'yaml';
 
 // Overridable for end-to-end tests against a stand-in GitHub, the way the SSH tests
 // point at their test server (testSupport/sshTestTarget.ts).
-const API = process.env.BSSH_GITHUB_API || 'https://api.github.com';
+const API = process.env.REMOTY_GITHUB_API || 'https://api.github.com';
 
 export class GitHubError extends Error {
   constructor(
@@ -118,7 +118,7 @@ export class GitHubClient {
           Accept: 'application/vnd.github+json',
           Authorization: `Bearer ${this.token}`,
           'X-GitHub-Api-Version': '2022-11-28',
-          'User-Agent': 'BetterSshClient',
+          'User-Agent': 'Remoty',
           ...(init.body ? { 'Content-Type': 'application/json' } : {}),
           ...(init.headers as Record<string, string> | undefined)
         }
@@ -236,7 +236,7 @@ export class GitHubClient {
     const location = first.headers.get('location');
     if (first.status >= 300 && first.status < 400 && location) {
       try {
-        res = await this.fetchImpl(location, { headers: { 'User-Agent': 'BetterSshClient' } });
+        res = await this.fetchImpl(location, { headers: { 'User-Agent': 'Remoty' } });
       } catch (err) {
         throw new GitHubError(`could not download the release file: ${(err as Error).message}`);
       }

@@ -146,7 +146,7 @@ describe('buildDisablePasswordCommand', () => {
   const cmd = buildDisablePasswordCommand();
 
   it('creates a timestamped backup and validates with sshd -t', () => {
-    expect(cmd).toContain('bssh_backup.');
+    expect(cmd).toContain('remoty_backup.');
     expect(cmd).toContain('sshd -t');
   });
 

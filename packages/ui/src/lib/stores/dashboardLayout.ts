@@ -3,7 +3,7 @@ import { writable } from 'svelte/store';
 // Which dashboard sections are collapsed (keys from screens/dashboardSections.ts). A
 // per-machine view preference, so localStorage is enough: losing it just opens every
 // section again.
-const KEY = 'better-ssh-client-dashboard-collapsed';
+const KEY = 'remoty-dashboard-collapsed';
 
 function load(): Set<string> {
   try {

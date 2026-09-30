@@ -1,4 +1,4 @@
-import type { BsshClientBridge } from './electron';
+import type { RemotyBridge } from './electron';
 
 // Hand-written replacement for the tauri-specta-generated bindings.ts. Keeps
 // the exact same exported shape (command signatures, `Result<T, E>` wrapper,
@@ -321,7 +321,7 @@ export const events = makeEvents<EventMap>(EVENT_CHANNELS);
 
 /** user-defined types **/
 /** A reusable, named shell-command building block for Snippets — local (on the
- *  BetterSshClient host machine) or against one specific remote host. */
+ *  Remoty host machine) or against one specific remote host. */
 export type SnippetDto = {
   id: string;
   name: string;
@@ -661,14 +661,14 @@ export class Channel<T> {
   }
 }
 
-/** Errors when `window.bsshClient` isn't present (Vitest, `vite preview` outside
+/** Errors when `window.remoty` isn't present (Vitest, `vite preview` outside
  *  Electron) — every command then rejects with a real `Error`, exactly like
  *  the old bindings did off a Tauri runtime. */
-function bridge(): BsshClientBridge {
-  if (typeof window === 'undefined' || !window.bsshClient) {
-    throw new Error('the Electron bridge (window.bsshClient) is unavailable in this environment');
+function bridge(): RemotyBridge {
+  if (typeof window === 'undefined' || !window.remoty) {
+    throw new Error('the Electron bridge (window.remoty) is unavailable in this environment');
   }
-  return window.bsshClient;
+  return window.remoty;
 }
 
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {

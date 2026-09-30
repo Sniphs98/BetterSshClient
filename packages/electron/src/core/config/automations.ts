@@ -124,7 +124,7 @@ function parseAutomationsFile(content: string): AutomationsFile {
   return { automations: raw.automations.map((f) => automationFromToml(f as Record<string, unknown>)) };
 }
 
-/** Loads Automations from `~/.config/better-ssh-client/automations.toml` (or `overridePath`, for tests).
+/** Loads Automations from `~/.config/remoty/automations.toml` (or `overridePath`, for tests).
  *  Returns `[]` if the file does not exist yet. */
 export async function loadAutomations(overridePath?: string): Promise<Automation[]> {
   const path = overridePath ?? automationsConfigPath();
@@ -133,7 +133,7 @@ export async function loadAutomations(overridePath?: string): Promise<Automation
   return parseAutomationsFile(content).automations;
 }
 
-/** Persists Automations to `~/.config/better-ssh-client/automations.toml` (or `overridePath`, for tests),
+/** Persists Automations to `~/.config/remoty/automations.toml` (or `overridePath`, for tests),
  *  atomically (tmp file + rename), `chmod 600` on non-Windows. */
 export async function saveAutomations(automations: Automation[], overridePath?: string): Promise<void> {
   const path = overridePath ?? automationsConfigPath();
