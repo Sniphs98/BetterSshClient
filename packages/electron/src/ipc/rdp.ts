@@ -33,8 +33,17 @@ export function launchNotice(
   passwordOnClipboard = false
 ): string | undefined {
   const notes: string[] = [];
+  // Never forced past what Windows has saved: the user decides which to keep.
   if (result.credential === 'kept-existing') {
-    notes.push('Windows already has a saved password for this host, so Remote Desktop uses that one instead of the one stored here.');
+    notes.push(
+      'Windows already has saved credentials for this host, so Remote Desktop signs in with those, not the ones stored here. ' +
+        'To use these, remove the TERMSRV entry for this host in Windows Credential Manager (Windows Credentials) and connect again.'
+    );
+  } else if (result.credential === 'staged-beside-saved') {
+    notes.push(
+      'Windows also has Remote Desktop credentials of its own saved for this host and may sign in with those. ' +
+        'If it does, or keeps asking, remove the TERMSRV entry for this host in Windows Credential Manager, or enter the credentials here again.'
+    );
   }
   // Windows switches everything off in its prompt for .rdp files; say what to tick.
   const toTick = [settings.drives && 'Drives', settings.clipboard !== false && 'Clipboard'].filter(Boolean);

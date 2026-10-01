@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { appConfigDir } from '../../config/platform.js';
-import { CRED_MAX_BLOB_BYTES, CRED_TYPE_GENERIC, loadWindowsCredentialApi, type CredentialApi } from './windowsCredentialStore.js';
+import { CRED_MAX_BLOB_BYTES, CRED_TYPE_DOMAIN_PASSWORD, CRED_TYPE_GENERIC, loadWindowsCredentialApi, type CredentialApi } from './windowsCredentialStore.js';
 
 /**
  * The Windows credential store side of an RDP launch. `mstsc` has no way to take a
@@ -32,8 +32,17 @@ export function credentialTarget(hostname: string): string {
 export type StageOutcome =
   /** Ours is in the store now; delete it with `removeCredential` once read. */
   | 'staged'
-  /** The user has their own credential for this target; left alone, and `mstsc` uses it. */
+  /** As `'staged'`, but Windows also has RDP credentials of its own saved for this
+   *  target (another type, so untouched) — mstsc may pick those instead. */
+  | 'staged-beside-saved'
+  /** Someone else's generic credential has this target; writing ours would replace
+   *  it, so nothing is written, and `mstsc` uses that one. */
   | 'kept-existing';
+
+/** Whether `outcome` means a credential of ours is in the store. */
+export function holdsOurs(outcome: StageOutcome | undefined): boolean {
+  return outcome === 'staged' || outcome === 'staged-beside-saved';
+}
 
 /** Whether a credential is one this app staged — the only kind it may replace or delete. */
 function isOurs(c: { target: string; type: number; comment: string | null }): boolean {
@@ -70,16 +79,17 @@ export function createCredentialStore(api: CredentialApi): RdpCredentialStore {
       }
       // CredWriteW replaces a credential with the same target and type: one that
       // isn't ours is left as it is (and mstsc uses it). A failed read throws, so
-      // nothing is written blind.
+      // nothing is written blind. Only generic credentials are ever written.
       const existing = api.read(target);
       if (existing && !isOurs(existing)) return 'kept-existing';
+      const savedByWindows = api.read(target, CRED_TYPE_DOMAIN_PASSWORD) !== null;
       const blob = Buffer.from(password, 'utf16le');
       try {
         api.write(target, username, blob, CREDENTIAL_COMMENT);
       } finally {
         blob.fill(0);
       }
-      return 'staged';
+      return savedByWindows ? 'staged-beside-saved' : 'staged';
     },
     async remove(target) {
       removeSync(target);
@@ -140,7 +150,7 @@ export async function stageCredential(hostname: string, user: string, password: 
   await mkdir(appConfigDir(), { recursive: true });
   await writeFile(markerPath(), '', 'utf-8');
   const outcome = await currentStore().write(credentialTarget(hostname), user, password);
-  if (outcome === 'staged') staged.add(hostname);
+  if (holdsOurs(outcome)) staged.add(hostname);
   else if (staged.size === 0) await rm(markerPath(), { force: true });
   return outcome;
 }
