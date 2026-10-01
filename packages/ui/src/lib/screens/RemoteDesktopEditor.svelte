@@ -64,17 +64,7 @@
     return fields.viaHost && !names.includes(fields.viaHost) ? [fields.viaHost, ...names] : names;
   });
 
-  // Starts open when the profile already deviates from the defaults (seeded once, like `fields`).
-  let settingsOpen = $state(
-    // svelte-ignore state_referenced_locally
-    initial.display !== '' ||
-      initial.multiMonitor ||
-      !initial.clipboard ||
-      initial.drives ||
-      initial.dynamicResolution ||
-      initial.audio !== 'local'
-  );
-  // Shown on the collapsed header, so what's set is visible without opening it.
+  // Shown under the section's title: what's set, in one line.
   const settingsSummary = $derived(describeSettings(fields).join(' · '));
 
   // Windows asks before sharing drives from a .rdp file (see core/rdp/launch.ts).
@@ -83,12 +73,16 @@
   const label = 'block space-y-1 text-xs font-medium text-muted';
   const labelRow = 'flex items-center justify-between gap-2';
   const row = 'flex items-center justify-between gap-4 px-3.5 py-3';
+  // The two columns are matching cards of equal height.
+  const card = 'flex flex-col rounded-xl border border-default bg-surface-inset/40';
+  const cardHeader = 'flex items-center gap-3 px-4 py-3';
+  const cardIcon = 'grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted';
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
 </script>
 
-<Modal label={mode === 'add' ? 'New RDP connection' : 'Edit RDP connection'} onClose={onCancel}>
+<Modal label={mode === 'add' ? 'New RDP connection' : 'Edit RDP connection'} size="large" onClose={onCancel}>
   <form
     onsubmit={(e) => {
       e.preventDefault();
@@ -100,7 +94,18 @@
       <h2 class="text-sm font-semibold">{mode === 'add' ? 'New RDP connection' : 'Edit RDP connection'}</h2>
     </header>
 
-    <div class="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4">
+    <!-- Two columns side by side where there's room (screens are wider than tall):
+         the connection on the left, display & devices on the right. Stacked otherwise. -->
+    <div class="grid min-h-0 flex-1 gap-4 overflow-y-auto px-5 py-4 md:grid-cols-2">
+    <section class={card} aria-labelledby="rdp-connection-title">
+      <div class={cardHeader}>
+        <span class={cardIcon}><Icon name="key" size={15} /></span>
+        <span class="min-w-0 flex-1">
+          <span id="rdp-connection-title" class="block text-sm font-medium">Connection</span>
+          <span class="block truncate text-xs text-faint">Where to connect and how to sign in</span>
+        </span>
+      </div>
+    <div class="space-y-3.5 border-t border-default px-4 pb-4 pt-4">
       <label class={label}>
         <span>Name</span>
         <input bind:this={nameEl} bind:value={fields.name} class={field} placeholder="office-pc" />
@@ -155,6 +160,8 @@
           remote machine's RDP port doesn't need to be reachable from here.
         </p>
       {/if}
+
+      <div class="border-t border-default pt-3.5 text-[11px] font-semibold uppercase tracking-wider text-faint">Sign-in</div>
 
       <div class="grid grid-cols-2 gap-3">
         <div class={label}>
@@ -218,38 +225,19 @@
         </p>
         <OnePasswordCliHint />
       {/if}
+    </div>
+    </section>
 
-      <section class="rounded-xl border border-default bg-surface-inset/40">
-        <button
-          type="button"
-          class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-surface-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-          aria-expanded={settingsOpen}
-          aria-controls="rdp-display-devices"
-          onclick={() => (settingsOpen = !settingsOpen)}
-        >
-          <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted">
-            <Icon name="monitor" size={15} />
-          </span>
+      <section class={card} aria-labelledby="rdp-display-devices-title">
+        <div class={cardHeader}>
+          <span class={cardIcon}><Icon name="monitor" size={15} /></span>
           <span class="min-w-0 flex-1">
-            <span class="block text-sm font-medium">Display &amp; devices</span>
+            <span id="rdp-display-devices-title" class="block text-sm font-medium">Display &amp; devices</span>
             <span class="block truncate text-xs text-faint">{settingsSummary}</span>
           </span>
-          <svg
-            class="h-3 w-3 shrink-0 text-faint transition-transform {settingsOpen ? 'rotate-180' : ''}"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3 4.5 6 7.5 9 4.5" />
-          </svg>
-        </button>
-        {#if settingsOpen}
-        <div id="rdp-display-devices" class="space-y-4 border-t border-default px-4 pb-4 pt-4">
-          <div class="grid grid-cols-[1fr,6rem,6rem] gap-3">
+        </div>
+        <div class="space-y-4 border-t border-default px-4 pb-4 pt-4">
+          <div class="grid grid-cols-2 gap-3">
             <label class={label}>
               <span>Display</span>
               <Select bind:value={fields.display} class={field}>
@@ -257,6 +245,14 @@
                 <option value="fullscreen">Full screen</option>
                 <option value="fit">Fit to screen</option>
                 <option value="window">Window</option>
+              </Select>
+            </label>
+            <label class={label}>
+              <span>Sound</span>
+              <Select bind:value={fields.audio} class={field}>
+                <option value="local">On this computer</option>
+                <option value="remote">On the remote computer</option>
+                <option value="off">Don't play</option>
               </Select>
             </label>
             {#if fields.display === 'window'}
@@ -270,15 +266,6 @@
               </label>
             {/if}
           </div>
-
-          <label class={label}>
-            <span>Sound</span>
-            <Select bind:value={fields.audio} class={field}>
-              <option value="local">Play on this computer</option>
-              <option value="remote">Play on the remote computer</option>
-              <option value="off">Don't play</option>
-            </Select>
-          </label>
 
           <div class="divide-y divide-[var(--border)] rounded-lg bg-surface-inset/60">
             <div class={row}>
@@ -317,13 +304,12 @@
             </div>
           </div>
         </div>
-        {/if}
       </section>
-
-      {#if error}
-        <p class="text-xs text-status-crit">{error}</p>
-      {/if}
     </div>
+
+    {#if error}
+      <p class="px-5 pb-3 text-xs text-status-crit">{error}</p>
+    {/if}
 
     <footer class="flex justify-end gap-2 border-t border-default px-5 py-3">
       <Button variant="ghost" onclick={onCancel}>Cancel</Button>
