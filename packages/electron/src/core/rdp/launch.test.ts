@@ -12,7 +12,8 @@ const removeMock = vi.fn();
 vi.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args)
 }));
-vi.mock('./credentials/index.js', () => ({
+vi.mock('./credentials/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./credentials/index.js')>()),
   stageCredential: (...args: unknown[]) => stageMock(...args),
   removeCredential: (...args: unknown[]) => removeMock(...args)
 }));
@@ -427,6 +428,20 @@ describe('launchRdp', () => {
 
     expect(result.credential).toBe('kept-existing');
     expect(removeMock).not.toHaveBeenCalled();
+  });
+
+  it('on Windows: a credential staged beside one Windows saved is still ours to drop', async () => {
+    setPlatform('win32');
+    stageMock.mockResolvedValue('staged-beside-saved');
+    const child = fakeChild();
+
+    const result = await launchRdp(connection({ username: 'admin', password: 'secret' }));
+    expect(result.credential).toBe('staged-beside-saved');
+    expect(pendingCredentialHosts.has('10.0.0.5')).toBe(true);
+    child.emit('exit');
+    await flush();
+
+    expect(removeMock).toHaveBeenCalledWith('10.0.0.5');
   });
 
   it('on Windows: a missing mstsc is an error, and the staged password is taken out again', async () => {

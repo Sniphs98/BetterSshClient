@@ -39,8 +39,16 @@ describe('offerPasswordOnClipboard', () => {
 });
 
 describe('launchNotice', () => {
-  it('says when Windows uses its own saved password', () => {
-    expect(launchNotice({ opened: 'mstsc', credential: 'kept-existing' })).toContain('already has a saved password');
+  it('says when Windows uses its own saved credentials, and how to use these instead', () => {
+    const notice = launchNotice({ opened: 'mstsc', credential: 'kept-existing' });
+    expect(notice).toContain('already has saved credentials');
+    expect(notice).toContain('Windows Credential Manager');
+  });
+
+  it('warns when Windows has RDP credentials of its own beside the staged ones', () => {
+    const notice = launchNotice({ opened: 'mstsc', credential: 'staged-beside-saved' });
+    expect(notice).toContain('may sign in with those');
+    expect(notice).toContain('enter the credentials here again');
   });
 
   it('says where the password went when it had to go on the clipboard', () => {
