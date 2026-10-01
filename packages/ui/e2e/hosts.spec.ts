@@ -113,6 +113,11 @@ test('adds a host and it appears as a card', async ({ page }) => {
   await page.getByRole('button', { name: 'Add host' }).click();
   const editor = page.getByRole('dialog', { name: 'Add host' });
   await expect(editor).toBeVisible();
+  // Session & dashboard sits next to the connection fields.
+  const session = editor.getByRole('region', { name: 'Session & dashboard' });
+  const nameField = editor.getByLabel('Name', { exact: true });
+  expect((await session.boundingBox())!.x).toBeGreaterThan((await nameField.boundingBox())!.x + 200);
+  await editor.screenshot({ path: 'test-results/host-editor.png' });
 
   await editor.getByLabel('Name', { exact: true }).fill('db-1');
   await editor.getByLabel('Hostname / IP').fill('db-1.example.com');
