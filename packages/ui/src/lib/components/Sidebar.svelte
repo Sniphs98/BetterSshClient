@@ -103,7 +103,7 @@
   class="col-start-1 row-start-1 flex h-full flex-col overflow-hidden border-r border-default bg-surface pt-[var(--titlebar-h)]"
 >
   <header
-    class="flex items-center gap-3 px-3 pb-1 pt-4 {$sidebarCollapsed ? 'justify-center' : ''}"
+    class="flex items-center gap-3 px-3 pt-4 {$sidebarCollapsed ? 'justify-center' : ''}"
   >
     {#if !$sidebarCollapsed}
       <Logo size={28} />
@@ -119,7 +119,7 @@
   </header>
 
   <!-- Entry points stay pinned; only the sessions list scrolls (tech-gui.md §2). -->
-  <nav class="flex min-h-0 flex-1 flex-col px-2 py-2">
+  <nav class="flex min-h-0 flex-1 flex-col px-2 pb-2 pt-1">
     <!-- Top switch: swaps the SSH-centric app for the Remote Desktop area below.
          The open-sessions list further down is unaffected either way. -->
     <div class="shrink-0 pb-2">
