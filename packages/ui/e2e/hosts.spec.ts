@@ -11,7 +11,7 @@ const HOSTS = [
   { name: 'imported', hostname: 'imported.example.com', user: 'root', port: 22, tags: [], source: 'sshConfig', hasKey: false }
 ];
 
-async function boot(page: Page): Promise<void> {
+async function boot(page: Page, hosts: Array<Record<string, unknown>> = HOSTS): Promise<void> {
   await page.addInitScript(
     ({ hosts }) => {
       const listeners: Record<string, Array<(payload: unknown) => void>> = {};
@@ -100,7 +100,7 @@ async function boot(page: Page): Promise<void> {
         getPathForFile: () => ''
       };
     },
-    { hosts: HOSTS }
+    { hosts }
   );
   await page.goto('/');
   // The dashboard is the default screen; the seeded cards confirm the app booted.
@@ -308,4 +308,18 @@ test('hosts export to a file — one, a folder, or all — and an import asks ab
   await expect(page.getByText('Imported 2 SSH hosts.')).toBeVisible();
   await expect(page.getByText('db', { exact: true })).toBeVisible();
   expect((await calls()).at(-1)).toEqual(['apply_connection_import', 't1', { hosts: { 'web-1': { action: 'overwrite' } }, profiles: {} }]);
+});
+
+test('an offline card shows its panel under the bars, with what the host last reported', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('remoty-host-cache', JSON.stringify({ 'web-1': { lastSeen: Date.now() - 3 * 3_600_000, osInfo: 'Ubuntu 24.04' } }))
+  );
+  await boot(page, [{ ...HOSTS[0], monitoring: 'ssh' }]);
+  const panel = page.getByTestId('offline-panel').first();
+  await expect(panel).toContainText('offline');
+  await expect(panel).toContainText('last seen 3h ago');
+  await expect(panel).toContainText('Ubuntu 24.04');
+  // Under the Disk bar, not in place of the bars.
+  const disk = page.getByText('Disk', { exact: true }).first();
+  expect((await panel.boundingBox())!.y).toBeGreaterThan((await disk.boundingBox())!.y);
 });
