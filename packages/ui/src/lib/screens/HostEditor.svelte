@@ -5,7 +5,7 @@
   // surfaces inline without closing. Semantic tokens only.
   import { onMount } from 'svelte';
   import type { HostInputDto } from '$lib/bindings';
-  import { Button } from '$lib/theme';
+  import { Button, Icon } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
   import OnePasswordCliHint from '$lib/components/OnePasswordCliHint.svelte';
   import OnePasswordToggle from '$lib/components/OnePasswordToggle.svelte';
@@ -71,12 +71,18 @@
 
   const label = 'block space-y-1 text-xs font-medium text-muted';
   const labelRow = 'flex items-center justify-between gap-2';
+  // The two columns are matching cards of equal height, as in the RDP editor.
+  const card = 'flex flex-col rounded-xl border border-default bg-surface-inset/40';
+  const cardHeader = 'flex items-center gap-3 px-4 py-3';
+  const cardIcon = 'grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted';
+  const cardBody = 'space-y-3.5 border-t border-default px-4 pb-4 pt-4';
+  const groupTitle = 'border-t border-default pt-3.5 text-[11px] font-semibold uppercase tracking-wider text-faint';
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
 </script>
 
-<Modal label={mode === 'add' ? 'Add host' : 'Edit host'} onClose={onCancel}>
+<Modal label={mode === 'add' ? 'Add host' : 'Edit host'} size="large" onClose={onCancel}>
   <form
     onsubmit={(e) => {
       e.preventDefault();
@@ -88,204 +94,237 @@
       <h2 class="text-sm font-semibold">{mode === 'add' ? 'Add host' : 'Edit host'}</h2>
     </header>
 
-    <div class="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4">
-      {#if imported}
+    {#if imported}
+      <div class="px-5 pt-4">
         <p class="rounded-lg bg-surface-inset px-3 py-2 text-xs text-muted">
           Imported from <span class="font-mono">~/.ssh/config</span>. Saving keeps your own copy in
           <span class="font-mono">hosts.toml</span> and Remoty uses it from then on — your SSH config
           file is never written, and later edits to it stop showing up for this host.
         </p>
-      {/if}
-      <label class={label}>
-        <span>Name {mode === 'edit' ? '(fixed)' : ''}</span>
-        <input
-          bind:this={nameEl}
-          bind:value={fields.name}
-          class="{field} {mode === 'edit' ? 'cursor-not-allowed text-muted' : ''}"
-          placeholder="web-prod-1"
-          readonly={mode === 'edit'}
-          title={mode === 'edit' ? 'To rename, delete this host and add it again' : undefined}
-        />
-      </label>
-
-      <div class={label}>
-        <div class={labelRow}>
-          <label for="host-hostname">Hostname / IP</label>
-          <OnePasswordToggle bind:on={fields.hostnameFrom1P} field="Hostname" />
-        </div>
-        <input
-          id="host-hostname"
-          bind:this={hostnameEl}
-          bind:value={fields.hostname}
-          class="{field} font-mono"
-          placeholder={fields.hostnameFrom1P ? 'op://Servers/web-1/hostname' : '10.0.0.1'}
-          spellcheck="false"
-        />
       </div>
+    {/if}
 
-      <div class="grid grid-cols-[1fr,7rem] gap-3">
+    <!-- Two cards side by side where there's room (screens are wider than tall): how to
+         reach and sign in on the left, what happens once connected on the right. -->
+    <div class="grid min-h-0 flex-1 gap-4 overflow-y-auto px-5 py-4 md:grid-cols-2">
+    <section class={card} aria-labelledby="host-connection-title">
+      <div class={cardHeader}>
+        <span class={cardIcon}><Icon name="key" size={15} /></span>
+        <span class="min-w-0 flex-1">
+          <span id="host-connection-title" class="block text-sm font-medium">Connection</span>
+          <span class="block truncate text-xs text-faint">Where to connect and how to sign in</span>
+        </span>
+      </div>
+      <div class={cardBody}>
+        <label class={label}>
+          <span>Name {mode === 'edit' ? '(fixed)' : ''}</span>
+          <input
+            bind:this={nameEl}
+            bind:value={fields.name}
+            class="{field} {mode === 'edit' ? 'cursor-not-allowed text-muted' : ''}"
+            placeholder="web-prod-1"
+            readonly={mode === 'edit'}
+            title={mode === 'edit' ? 'To rename, delete this host and add it again' : undefined}
+          />
+        </label>
+
         <div class={label}>
           <div class={labelRow}>
-            <label for="host-user">User</label>
-            <OnePasswordToggle bind:on={fields.userFrom1P} field="User" />
+            <label for="host-hostname">Hostname / IP</label>
+            <OnePasswordToggle bind:on={fields.hostnameFrom1P} field="Hostname" />
           </div>
           <input
-            id="host-user"
-            bind:value={fields.user}
-            class="{field} {fields.userFrom1P ? 'font-mono' : ''}"
-            placeholder={fields.userFrom1P ? 'op://Servers/web-1/username' : 'root'}
+            id="host-hostname"
+            bind:this={hostnameEl}
+            bind:value={fields.hostname}
+            class="{field} font-mono"
+            placeholder={fields.hostnameFrom1P ? 'op://Servers/web-1/hostname' : '10.0.0.1'}
             spellcheck="false"
           />
         </div>
+
+        <div class="grid grid-cols-[1fr,7rem] gap-3">
+          <div class={label}>
+            <div class={labelRow}>
+              <label for="host-user">User</label>
+              <OnePasswordToggle bind:on={fields.userFrom1P} field="User" />
+            </div>
+            <input
+              id="host-user"
+              bind:value={fields.user}
+              class="{field} {fields.userFrom1P ? 'font-mono' : ''}"
+              placeholder={fields.userFrom1P ? 'op://Servers/web-1/username' : 'root'}
+              spellcheck="false"
+            />
+          </div>
+          <div class={label}>
+            <div class={labelRow}>
+              <label for="host-port">Port</label>
+              <OnePasswordToggle bind:on={fields.portFrom1P} field="Port" />
+            </div>
+            {#if fields.portFrom1P}
+              <input
+                id="host-port"
+                bind:value={fields.portRef}
+                class="{field} font-mono"
+                placeholder="op://…/port"
+                title={fields.portRef}
+                spellcheck="false"
+              />
+            {:else}
+              <input id="host-port" bind:value={fields.port} inputmode="numeric" class={field} placeholder="22" />
+            {/if}
+          </div>
+        </div>
+
+        <div class={groupTitle}>Sign-in</div>
+
+        <label class={label}>
+          <span>Identity file</span>
+          <input
+            bind:value={fields.identityFile}
+            class="{field} font-mono"
+            placeholder={secretHint ?? '~/.ssh/id_ed25519'}
+          />
+        </label>
+
         <div class={label}>
           <div class={labelRow}>
-            <label for="host-port">Port</label>
-            <OnePasswordToggle bind:on={fields.portFrom1P} field="Port" />
+            <label for="host-password">Password</label>
+            <OnePasswordToggle bind:on={fields.passwordFrom1P} field="Password" />
           </div>
-          {#if fields.portFrom1P}
+          {#if fields.passwordFrom1P}
             <input
-              id="host-port"
-              bind:value={fields.portRef}
+              id="host-password"
+              bind:value={fields.passwordRef}
               class="{field} font-mono"
-              placeholder="op://…/port"
-              title={fields.portRef}
+              placeholder="op://Servers/web-1/password"
+              autocomplete="off"
               spellcheck="false"
             />
           {:else}
-            <input id="host-port" bind:value={fields.port} inputmode="numeric" class={field} placeholder="22" />
+            <input
+              id="host-password"
+              type="password"
+              bind:value={fields.password}
+              class={field}
+              placeholder={secretHint ?? 'For initial key setup only'}
+              autocomplete="off"
+            />
           {/if}
         </div>
+
+        {#if fields.hostnameFrom1P || fields.userFrom1P || fields.portFrom1P || fields.passwordFrom1P || fields.defaultPathFrom1P}
+          <p class="-mt-2.5 text-xs text-faint">
+            Fields marked 1Password take a secret reference and are read from 1Password when connecting (needs the
+            1Password CLI). In 1Password: right-click a field → Copy Secret Reference.
+          </p>
+          <OnePasswordCliHint />
+        {/if}
       </div>
+    </section>
 
-      <label class={label}>
-        <span>Identity file</span>
-        <input
-          bind:value={fields.identityFile}
-          class="{field} font-mono"
-          placeholder={secretHint ?? '~/.ssh/id_ed25519'}
-        />
-      </label>
-
-      <div class={label}>
-        <div class={labelRow}>
-          <label for="host-password">Password</label>
-          <OnePasswordToggle bind:on={fields.passwordFrom1P} field="Password" />
-        </div>
-        {#if fields.passwordFrom1P}
+    <section class={card} aria-labelledby="host-session-title">
+      <div class={cardHeader}>
+        <span class={cardIcon}><Icon name="terminal" size={15} /></span>
+        <span class="min-w-0 flex-1">
+          <span id="host-session-title" class="block text-sm font-medium">Session &amp; dashboard</span>
+          <span class="block truncate text-xs text-faint">What happens once connected, and how the card shows</span>
+        </span>
+      </div>
+      <div class={cardBody}>
+        <div class={label}>
+          <div class={labelRow}>
+            <label for="host-default-path">Default path</label>
+            <OnePasswordToggle bind:on={fields.defaultPathFrom1P} field="Default path" />
+          </div>
           <input
-            id="host-password"
-            bind:value={fields.passwordRef}
+            id="host-default-path"
+            bind:value={fields.defaultPath}
             class="{field} font-mono"
-            placeholder="op://Servers/web-1/password"
+            placeholder={fields.defaultPathFrom1P ? 'op://Servers/web-1/path' : '/var/www (optional)'}
+            spellcheck="false"
+          />
+        </div>
+        <p class="-mt-2.5 text-xs text-faint">
+          Opens a terminal or the SFTP browser already here, instead of the login directory /
+          server root.
+        </p>
+
+        <label class={label}>
+          <span>Startup command</span>
+          <input
+            bind:value={fields.startupCommand}
+            class="{field} font-mono"
+            placeholder="tmux attach || tmux (optional)"
             autocomplete="off"
             spellcheck="false"
           />
-        {:else}
-          <input
-            id="host-password"
-            type="password"
-            bind:value={fields.password}
-            class={field}
-            placeholder={secretHint ?? 'For initial key setup only'}
-            autocomplete="off"
-          />
-        {/if}
-      </div>
-
-      {#if fields.hostnameFrom1P || fields.userFrom1P || fields.portFrom1P || fields.passwordFrom1P || fields.defaultPathFrom1P}
-        <p class="-mt-2.5 text-xs text-faint">
-          Fields marked 1Password take a secret reference and are read from 1Password when connecting (needs the
-          1Password CLI). In 1Password: right-click a field → Copy Secret Reference.
-        </p>
-        <OnePasswordCliHint />
-      {/if}
-
-      <div class={label}>
-        <div class={labelRow}>
-          <label for="host-default-path">Default path</label>
-          <OnePasswordToggle bind:on={fields.defaultPathFrom1P} field="Default path" />
-        </div>
-        <input
-          id="host-default-path"
-          bind:value={fields.defaultPath}
-          class="{field} font-mono"
-          placeholder={fields.defaultPathFrom1P ? 'op://Servers/web-1/path' : '/var/www (optional)'}
-          spellcheck="false"
-        />
-      </div>
-      <p class="-mt-2.5 text-xs text-faint">
-        Opens a terminal or the SFTP browser already here, instead of the login directory /
-        server root.
-      </p>
-
-      <label class={label}>
-        <span>Startup command</span>
-        <input
-          bind:value={fields.startupCommand}
-          class="{field} font-mono"
-          placeholder="tmux attach || tmux (optional)"
-          autocomplete="off"
-          spellcheck="false"
-        />
-      </label>
-      <p class="-mt-2.5 text-xs text-faint">
-        Runs in every new terminal on this host, right after it connects.
-      </p>
-
-      <label class={label}>
-        <span>Folder</span>
-        <input
-          bind:value={fields.folder}
-          list="host-folders"
-          class={field}
-          placeholder="Optional — groups the card on the dashboard"
-          autocomplete="off"
-        />
-        <datalist id="host-folders">
-          {#each folders as name (name)}
-            <option value={name}></option>
-          {/each}
-        </datalist>
-      </label>
-
-      <label class={label}>
-        <span>Tags</span>
-        <input bind:value={fields.tags} class={field} placeholder="prod, web" />
-      </label>
-
-      <label class={label}>
-        <span>Notes</span>
-        <textarea bind:value={fields.notes} rows="2" class="{field} resize-y" placeholder="Optional"></textarea>
-      </label>
-
-      <div class="grid grid-cols-2 gap-3">
-        <label class={label}>
-          <span>Monitoring</span>
-          <Select bind:value={fields.monitoring} class={field}>
-            <option value="ssh">SSH metrics</option>
-            <option value="tcpPort">TCP port check</option>
-          </Select>
         </label>
-        {#if fields.monitoring === 'tcpPort'}
-          <label class={label}>
-            <span>Probe port</span>
-            <input
-              bind:value={fields.monitorPort}
-              inputmode="numeric"
-              class={field}
-              placeholder={fields.portFrom1P ? 'SSH port' : fields.port || '22'}
-            />
-          </label>
-        {/if}
-      </div>
-      {#if fields.monitoring === 'tcpPort'}
-        <p class="text-xs text-faint">Checks the port only — no login, and no metrics on the card.</p>
-      {/if}
+        <p class="-mt-2.5 text-xs text-faint">
+          Runs in every new terminal on this host, right after it connects.
+        </p>
 
-      {#if error}
-        <p class="text-xs text-status-crit">{error}</p>
-      {/if}
+        <div class={groupTitle}>Dashboard</div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <label class={label}>
+            <span>Folder</span>
+            <input
+              bind:value={fields.folder}
+              list="host-folders"
+              class={field}
+              placeholder="Optional"
+              autocomplete="off"
+            />
+            <datalist id="host-folders">
+              {#each folders as name (name)}
+                <option value={name}></option>
+              {/each}
+            </datalist>
+          </label>
+
+          <label class={label}>
+            <span>Tags</span>
+            <input bind:value={fields.tags} class={field} placeholder="prod, web" />
+          </label>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <label class={label}>
+            <span>Monitoring</span>
+            <Select bind:value={fields.monitoring} class={field}>
+              <option value="ssh">SSH metrics</option>
+              <option value="tcpPort">TCP port check</option>
+            </Select>
+          </label>
+          {#if fields.monitoring === 'tcpPort'}
+            <label class={label}>
+              <span>Probe port</span>
+              <input
+                bind:value={fields.monitorPort}
+                inputmode="numeric"
+                class={field}
+                placeholder={fields.portFrom1P ? 'SSH port' : fields.port || '22'}
+              />
+            </label>
+          {/if}
+        </div>
+        {#if fields.monitoring === 'tcpPort'}
+          <p class="text-xs text-faint">Checks the port only — no login, and no metrics on the card.</p>
+        {/if}
+
+        <label class={label}>
+          <span>Notes</span>
+          <textarea bind:value={fields.notes} rows="2" class="{field} resize-y" placeholder="Optional"></textarea>
+        </label>
+      </div>
+    </section>
     </div>
+
+    {#if error}
+      <p class="px-5 pb-3 text-xs text-status-crit">{error}</p>
+    {/if}
 
     <footer class="flex justify-end gap-2 border-t border-default px-5 py-3">
       <Button variant="ghost" onclick={onCancel}>Cancel</Button>
