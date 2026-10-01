@@ -250,7 +250,7 @@ test('a connection through an SSH host, with display and device settings', async
   const editor = page.getByRole('dialog', { name: 'New RDP connection' });
   await editor.getByLabel('Name', { exact: true }).fill('behind-bastion');
   await editor.getByLabel('Hostname / IP').fill('10.20.0.5');
-  await editor.getByLabel('Connect').selectOption('bastion');
+  await editor.getByRole('combobox', { name: 'Connect' }).selectOption('bastion');
   await expect(editor.getByText('Hostname and port are as seen from bastion.')).toBeVisible();
 
   // Display & devices sits next to the connection fields, always open.
@@ -298,7 +298,7 @@ test('a connection through an SSH host, with display and device settings', async
   await page.getByRole('button', { name: 'Edit behind-bastion' }).click();
   const edit = page.getByRole('dialog', { name: 'Edit RDP connection' });
   await expect(edit.getByLabel('Width')).toHaveValue('1600');
-  await expect(edit.getByLabel('Connect')).toHaveValue('bastion');
+  await expect(edit.getByRole('combobox', { name: 'Connect' })).toHaveValue('bastion');
 });
 
 test('a launch that fails says why', async ({ page }) => {

@@ -73,6 +73,10 @@
   const label = 'block space-y-1 text-xs font-medium text-muted';
   const labelRow = 'flex items-center justify-between gap-2';
   const row = 'flex items-center justify-between gap-4 px-3.5 py-3';
+  // The two columns are matching cards of equal height.
+  const card = 'flex flex-col rounded-xl border border-default bg-surface-inset/40';
+  const cardHeader = 'flex items-center gap-3 px-4 py-3';
+  const cardIcon = 'grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted';
   const field =
     'w-full rounded-lg bg-surface-inset px-3 py-2 text-sm text-fg outline-none ' +
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
@@ -92,8 +96,16 @@
 
     <!-- Two columns side by side where there's room (screens are wider than tall):
          the connection on the left, display & devices on the right. Stacked otherwise. -->
-    <div class="grid min-h-0 flex-1 items-start gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
-    <div class="space-y-3.5">
+    <div class="grid min-h-0 flex-1 gap-4 overflow-y-auto px-5 py-4 md:grid-cols-2">
+    <section class={card} aria-labelledby="rdp-connection-title">
+      <div class={cardHeader}>
+        <span class={cardIcon}><Icon name="key" size={15} /></span>
+        <span class="min-w-0 flex-1">
+          <span id="rdp-connection-title" class="block text-sm font-medium">Connection</span>
+          <span class="block truncate text-xs text-faint">Where to connect and how to sign in</span>
+        </span>
+      </div>
+    <div class="space-y-3.5 border-t border-default px-4 pb-4 pt-4">
       <label class={label}>
         <span>Name</span>
         <input bind:this={nameEl} bind:value={fields.name} class={field} placeholder="office-pc" />
@@ -148,6 +160,8 @@
           remote machine's RDP port doesn't need to be reachable from here.
         </p>
       {/if}
+
+      <div class="border-t border-default pt-3.5 text-[11px] font-semibold uppercase tracking-wider text-faint">Sign-in</div>
 
       <div class="grid grid-cols-2 gap-3">
         <div class={label}>
@@ -212,19 +226,18 @@
         <OnePasswordCliHint />
       {/if}
     </div>
+    </section>
 
-      <section class="rounded-xl border border-default bg-surface-inset/40" aria-labelledby="rdp-display-devices-title">
-        <div class="flex items-center gap-3 px-4 py-3">
-          <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted">
-            <Icon name="monitor" size={15} />
-          </span>
+      <section class={card} aria-labelledby="rdp-display-devices-title">
+        <div class={cardHeader}>
+          <span class={cardIcon}><Icon name="monitor" size={15} /></span>
           <span class="min-w-0 flex-1">
             <span id="rdp-display-devices-title" class="block text-sm font-medium">Display &amp; devices</span>
             <span class="block truncate text-xs text-faint">{settingsSummary}</span>
           </span>
         </div>
         <div class="space-y-4 border-t border-default px-4 pb-4 pt-4">
-          <div class="grid grid-cols-[1fr,6rem,6rem] gap-3">
+          <div class="grid grid-cols-2 gap-3">
             <label class={label}>
               <span>Display</span>
               <Select bind:value={fields.display} class={field}>
@@ -232,6 +245,14 @@
                 <option value="fullscreen">Full screen</option>
                 <option value="fit">Fit to screen</option>
                 <option value="window">Window</option>
+              </Select>
+            </label>
+            <label class={label}>
+              <span>Sound</span>
+              <Select bind:value={fields.audio} class={field}>
+                <option value="local">On this computer</option>
+                <option value="remote">On the remote computer</option>
+                <option value="off">Don't play</option>
               </Select>
             </label>
             {#if fields.display === 'window'}
@@ -245,15 +266,6 @@
               </label>
             {/if}
           </div>
-
-          <label class={label}>
-            <span>Sound</span>
-            <Select bind:value={fields.audio} class={field}>
-              <option value="local">Play on this computer</option>
-              <option value="remote">Play on the remote computer</option>
-              <option value="off">Don't play</option>
-            </Select>
-          </label>
 
           <div class="divide-y divide-[var(--border)] rounded-lg bg-surface-inset/60">
             <div class={row}>
