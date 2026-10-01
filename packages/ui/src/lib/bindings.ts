@@ -183,6 +183,27 @@ export const commands = {
   async importBundle(): Promise<Result<ImportResultDto | null, CommandError>> {
     return call('import_bundle');
   },
+  async exportSshHosts(names: string[], label?: string): Promise<Result<string | null, CommandError>> {
+    return call('export_ssh_hosts', names, label);
+  },
+  async exportRdpProfiles(ids: string[], label?: string): Promise<Result<string | null, CommandError>> {
+    return call('export_rdp_profiles', ids, label);
+  },
+  async previewSshHostsImport(): Promise<Result<ConnectionImportPreviewDto | null, CommandError>> {
+    return call('preview_ssh_hosts_import');
+  },
+  async previewRdpProfilesImport(): Promise<Result<ConnectionImportPreviewDto | null, CommandError>> {
+    return call('preview_rdp_profiles_import');
+  },
+  async applyConnectionImport(
+    token: string,
+    decisions: ConnectionImportDecisionsDto
+  ): Promise<Result<ConnectionImportResultDto, CommandError>> {
+    return call('apply_connection_import', token, decisions);
+  },
+  async discardConnectionImport(token: string): Promise<Result<null, CommandError>> {
+    return call('discard_connection_import', token);
+  },
   async listRemoteDesktopConnections(): Promise<Result<RemoteDesktopConnectionDto[], CommandError>> {
     return call('list_remote_desktop_connections');
   },
@@ -451,6 +472,48 @@ export type HostsLoaded = HostDto[];
  *  otherwise which kind of thing was added and under what name (an Automation's may differ
  *  from the file's own, if it collided with an existing one). */
 export type ImportResultDto = { kind: 'snippet' | 'automation'; name: string };
+/** One entry of an SSH-host or RDP-profile file, as the import dialog lists it. */
+export type ConnectionImportEntryDto = {
+  /** What the decision for this entry is keyed by. */
+  key: string;
+  name: string;
+  /** `user@hostname:port`, to recognise it by. */
+  detail: string;
+  /** Something by that name exists already: overwrite it, or rename this one. */
+  conflict: boolean;
+  /** A free name to offer for a rename. */
+  suggestedName: string;
+  /** Preselected for a conflict: overwrite when it's the same machine anyway. */
+  defaultAction: 'overwrite' | 'rename';
+  /** Signs in through 1Password. */
+  onePassword: boolean;
+  /** Every 1Password reference the entry reads — shown to check before importing. */
+  references: string[];
+  /** The exporter had a password stored; it has to be entered again. */
+  passwordOmitted: boolean;
+  /** The exporter logged in with its own key file. */
+  keyOmitted: boolean;
+  /** Other entries of the file that connect through this one. */
+  usedBy: string[];
+};
+/** What the import previews resolve with — `null` when the file picker was canceled.
+ *  For an RDP file, `hosts` are the SSH hosts its profiles tunnel through. */
+export type ConnectionImportPreviewDto = {
+  token: string;
+  fileName: string;
+  hosts: ConnectionImportEntryDto[];
+  profiles: ConnectionImportEntryDto[];
+  /** Tunnel hosts the profiles name that neither the file nor this machine has. */
+  missingTunnelHosts: string[];
+};
+export type ConnectionImportActionDto = { action: 'overwrite' } | { action: 'rename'; name: string };
+/** The choice for each conflicting entry, keyed by the entry's `key`. */
+export type ConnectionImportDecisionsDto = {
+  hosts?: Record<string, ConnectionImportActionDto>;
+  profiles?: Record<string, ConnectionImportActionDto>;
+};
+/** How many entries an import brought in. */
+export type ConnectionImportResultDto = { hosts: number; profiles: number };
 /** Key setup finished successfully — key auth is configured. */
 export type KeySetupComplete = { hostName: string; keyPath: string };
 /** Key setup failed before touching the server's auth config. */

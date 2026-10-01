@@ -7,6 +7,7 @@ import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
 import type { Snippet, NodeTarget, GitHubStep, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
+import type { ImportAction, ImportEntryPreview } from './core/config/sshHostBundle.js';
 import { rdpSettingsFrom, type RdpSettings, type RemoteDesktopConnection, type RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
 import type { ConnectionStatus, Metrics } from './event.js';
 import type { ProcessInfo } from './core/ssh/metrics.js';
@@ -217,6 +218,36 @@ export function nodeResultToDto(result: NodeResult): NodeResultDto {
  *  `mergeAutomationBundle`), so the renderer can say what happened rather than just refresh
  *  silently. */
 export type ImportResultDto = ImportResult;
+
+/** One entry of an SSH-host or RDP-profile file, as the import dialog lists it. */
+export type ConnectionImportEntryDto = ImportEntryPreview;
+
+/** What `preview_ssh_hosts_import` / `preview_rdp_profiles_import` resolve with — `null`
+ *  when the file picker was canceled. `token` names the file for
+ *  `apply_connection_import`. For an RDP file, `hosts` are the SSH hosts its profiles
+ *  tunnel through. */
+export interface ConnectionImportPreviewDto {
+  token: string;
+  fileName: string;
+  hosts: ConnectionImportEntryDto[];
+  profiles: ConnectionImportEntryDto[];
+  /** Tunnel hosts the profiles name that neither the file nor this machine has. */
+  missingTunnelHosts: string[];
+}
+
+export type ConnectionImportActionDto = ImportAction;
+
+/** The user's choice for each conflicting entry, keyed by the entry's `key`. */
+export interface ConnectionImportDecisionsDto {
+  hosts?: Record<string, ConnectionImportActionDto>;
+  profiles?: Record<string, ConnectionImportActionDto>;
+}
+
+/** How many entries `apply_connection_import` brought in. */
+export interface ConnectionImportResultDto {
+  hosts: number;
+  profiles: number;
+}
 
 /** Whether the 1Password CLI is installed (`onepassword_status`), and how to get it. */
 export interface OnePasswordStatusDto {

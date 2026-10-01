@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { APP_ORIGIN, registerAppProtocolHandler, registerAppScheme } from './appProtocol.js';
 import { installApplicationMenu } from './applicationMenu.js';
 import { registerAutomationsIpc } from './ipc/automations.js';
+import { registerConnectionBundlesIpc } from './ipc/connectionBundles.js';
 import { registerHostsIpc } from './ipc/hosts.js';
 import { registerOnePasswordIpc } from './ipc/onePassword.js';
 import { registerGitHubIpc } from './ipc/github.js';
@@ -134,6 +135,7 @@ app.whenReady().then(async () => {
   registerUpdateIpc(ipcMain, state);
   registerAutomationsIpc(ipcMain, state);
   registerRemoteDesktopIpc(ipcMain);
+  registerConnectionBundlesIpc(ipcMain, state);
   registerRdpIpc(ipcMain, state);
   registerRdpEmbeddedIpc(ipcMain, state);
   registerOnePasswordIpc(ipcMain);

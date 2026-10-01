@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Snippet, NodeTarget, Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind } from './types.js';
 import { parseGitHubStep } from './githubStep.js';
+import { arr, bool, num, obj, optionalStr, str, uniqueName } from '../config/bundleFields.js';
 
 /**
  * Export/import file format for sharing a single Snippet or Automation between people or
@@ -52,40 +53,10 @@ export function buildAutomationBundle(automation: Automation, snippetsById: Map<
 }
 
 // ---------------------------------------------------------------------------
-// Parsing an imported file's already-`JSON.parse`d contents — the file might be
-// hand-edited, from a future app version, or not a Remoty bundle at all, so every
-// field is checked explicitly and a bad one throws a descriptive `Error`, the same
-// discipline core/config/automations.ts's *FromToml functions apply to a hand-edited TOML.
+// Parsing an imported file's already-`JSON.parse`d contents — every field is checked
+// explicitly (see core/config/bundleFields.ts), the same discipline
+// core/config/automations.ts's *FromToml functions apply to a hand-edited TOML.
 // ---------------------------------------------------------------------------
-
-function str(v: unknown, ctx: string): string {
-  if (typeof v !== 'string') throw new Error(`${ctx}: expected a string`);
-  return v;
-}
-
-function optionalStr(v: unknown, ctx: string): string | undefined {
-  return v === undefined ? undefined : str(v, ctx);
-}
-
-function num(v: unknown, ctx: string): number {
-  if (typeof v !== 'number') throw new Error(`${ctx}: expected a number`);
-  return v;
-}
-
-function bool(v: unknown, ctx: string): boolean {
-  if (typeof v !== 'boolean') throw new Error(`${ctx}: expected a boolean`);
-  return v;
-}
-
-function obj(v: unknown, ctx: string): Record<string, unknown> {
-  if (typeof v !== 'object' || v === null) throw new Error(`${ctx}: expected an object`);
-  return v as Record<string, unknown>;
-}
-
-function arr(v: unknown, ctx: string): unknown[] {
-  if (!Array.isArray(v)) throw new Error(`${ctx}: expected an array`);
-  return v;
-}
 
 function parseSnippet(raw: unknown, ctx: string): Snippet {
   const o = obj(raw, ctx);
@@ -190,16 +161,6 @@ export function parseBundle(raw: unknown): Bundle {
 export interface ImportResult {
   kind: 'snippet' | 'automation';
   name: string;
-}
-
-/** `base` if it's not already in `taken`, else `"base (2)"`, `"base (3)"`, … — used for
- *  an Automation's name (the on-disk primary key; see `upsertAutomation`) so importing one never
- *  silently overwrites an existing automation of the same name. */
-function uniqueName(base: string, taken: Set<string>): string {
-  if (!taken.has(base)) return base;
-  let i = 2;
-  while (taken.has(`${base} (${i})`)) i += 1;
-  return `${base} (${i})`;
 }
 
 /** Adds the bundled Snippet to the library under a fresh id. `Snippet.id` is a

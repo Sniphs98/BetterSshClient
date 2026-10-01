@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { defaultHost, type Host } from './client.js';
-import { resolveChain } from './jump.js';
+import { jumpHopHosts, renameJumpHops, resolveChain } from './jump.js';
 
 // Ported from crates/omnyssh-core/src/ssh/jump.rs's #[cfg(test)] module.
 // (parse_jump_spec/parse_hop are private in the Rust source and only tested
@@ -186,5 +186,24 @@ describe('resolveChain', () => {
     const multi = resolveChain(jumping('t', '10.0.0.9', 'a, ops@b:2222'), known);
     expect(names(multi)).toEqual(['a', 'b']);
     expect(multi[1].port).toBe(2222);
+  });
+});
+
+describe('jumpHopHosts', () => {
+  it('lists the host of every hop', () => {
+    expect(jumpHopHosts('ops@bastion:2222,b,[2001:db8::1]:22')).toEqual(['bastion', 'b', '2001:db8::1']);
+  });
+
+  it('is empty for a direct host or a broken value', () => {
+    expect(jumpHopHosts(undefined)).toEqual([]);
+    expect(jumpHopHosts(' none ')).toEqual([]);
+    expect(jumpHopHosts('a,,b')).toEqual([]);
+  });
+});
+
+describe('renameJumpHops', () => {
+  it('renames mapped hops, keeping user and port, and leaves the rest as written', () => {
+    const rename = (h: string): string | undefined => (h === 'bastion' ? 'bastion-2' : undefined);
+    expect(renameJumpHops('ops@bastion:2222, other ,bastion', rename)).toBe('ops@bastion-2:2222, other ,bastion-2');
   });
 });

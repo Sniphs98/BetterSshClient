@@ -13,11 +13,14 @@ const HOSTS = [
 ];
 
 /** `launch`: what `rdp_launch` answers — a result, or `{ error }` to reject with. */
-async function boot(page: Page, opts: { launch?: Rec } = {}): Promise<void> {
-  await page.addInitScript(({ hosts, launch }) => {
+/** `connections`: the profiles saved at start. */
+async function boot(page: Page, opts: { launch?: Rec; connections?: Rec[] } = {}): Promise<void> {
+  await page.addInitScript(({ hosts, launch, connections }) => {
     const win = window as unknown as Record<string, unknown>;
     const listeners: Record<string, Array<(payload: unknown) => void>> = {};
-    const state: { connections: Rec[] } = { connections: [] };
+    const state: { connections: Rec[] } = { connections: (connections ?? []).map((c) => ({ ...c })) };
+    // What the import/export channels were called with.
+    win.__bundleCalls = [] as unknown[][];
     const rdpLaunchCalls: string[] = [];
     win.__rdpLaunchCalls = rdpLaunchCalls;
     win.__rdpConnections = state;
@@ -61,6 +64,34 @@ async function boot(page: Page, opts: { launch?: Rec } = {}): Promise<void> {
           }
           case 'rdp_embedded_status':
             return Promise.resolve({});
+          case 'export_rdp_profiles':
+            (win.__bundleCalls as unknown[][]).push([channel, ...args]);
+            return Promise.resolve('/home/user/office-pc.remoty-rdp-profiles.json');
+          case 'preview_rdp_profiles_import':
+            // A file with one profile whose name is taken here, tunnelled through a host
+            // the file carries, and one that's new.
+            return Promise.resolve({
+              token: 't1',
+              fileName: 'team.remoty-rdp-profiles.json',
+              profiles: [
+                { key: 'profile-0', name: 'office-pc', detail: 'admin@10.0.0.7:3389 via jump', conflict: true, suggestedName: 'office-pc (2)', defaultAction: 'rename', onePassword: true, references: ['op://IT/x/password'], passwordOmitted: false, keyOmitted: false, usedBy: [] },
+                { key: 'profile-1', name: 'ts01', detail: 'ts01:3389', conflict: false, suggestedName: 'ts01', defaultAction: 'rename', onePassword: false, references: [], passwordOmitted: true, keyOmitted: false, usedBy: [] }
+              ],
+              hosts: [
+                { key: 'jump', name: 'jump', detail: 'ops@jump.example.com:22', conflict: false, suggestedName: 'jump', defaultAction: 'rename', onePassword: false, references: [], passwordOmitted: false, keyOmitted: true, usedBy: ['office-pc'] }
+              ],
+              missingTunnelHosts: []
+            });
+          case 'apply_connection_import': {
+            (win.__bundleCalls as unknown[][]).push([channel, ...args]);
+            const decisions = args[1] as { profiles: Record<string, { action: string; name?: string }> };
+            const first = decisions.profiles['profile-0'];
+            state.connections.push(
+              { id: 'n1', name: first.action === 'rename' ? first.name : 'office-pc', protocol: 'rdp', hostname: '10.0.0.7', port: 3389, username: 'admin', viaHost: 'jump', passwordRef: 'op://IT/office/password', hasPassword: false },
+              { id: 'n2', name: 'ts01', protocol: 'rdp', hostname: 'ts01', port: 3389, hasPassword: false }
+            );
+            return Promise.resolve({ hosts: 1, profiles: 2 });
+          }
           case 'rdp_launch': {
             rdpLaunchCalls.push(args[0] as string);
             if (launch && 'error' in launch) return Promise.reject({ message: launch.error });
@@ -81,7 +112,7 @@ async function boot(page: Page, opts: { launch?: Rec } = {}): Promise<void> {
       homeDir: () => Promise.resolve('/home/user'),
       getPathForFile: () => ''
     };
-  }, { hosts: HOSTS, launch: opts.launch });
+  }, { hosts: HOSTS, launch: opts.launch, connections: opts.connections });
   await page.goto('/');
 }
 
@@ -324,4 +355,58 @@ test('reopened in Remote Desktop mode, the app shows Remote Desktop, not the SSH
   await expect(page.getByRole('heading', { name: 'Remote Desktop' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Switch to SSH' })).toBeVisible();
+});
+
+test('profiles export to a file, and an import settles a taken name first', async ({ page }) => {
+  await boot(page, { connections: [{ id: 'c1', name: 'office-pc', protocol: 'rdp', hostname: '10.0.0.5', port: 3389, hasPassword: true }] });
+  await page.getByRole('button', { name: 'Switch to Remote Desktop' }).click();
+
+  // Export: one profile from its card, then every profile from the toolbar.
+  await page.getByRole('button', { name: 'Export office-pc' }).click();
+  await page.getByRole('button', { name: 'Export all' }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __bundleCalls: unknown[][] }).__bundleCalls))
+    .toEqual([
+      ['export_rdp_profiles', ['c1']],
+      ['export_rdp_profiles', ['c1'], 'rdp-profiles']
+    ]);
+
+  // Import: the dialog lists the file's profiles and the SSH host they tunnel through.
+  await page.getByRole('button', { name: 'Import…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Import remote desktop profiles' });
+  await expect(dialog.getByText('team.remoty-rdp-profiles.json')).toBeVisible();
+  await expect(dialog.getByText('SSH hosts the profiles tunnel through')).toBeVisible();
+  await expect(dialog.getByText('1Password', { exact: true })).toBeVisible();
+  // A reference sends that item's value to the host, so each one is shown to check.
+  await expect(dialog.getByText('op://IT/x/password')).toBeVisible();
+  await expect(dialog.getByText(/Only import files from people you trust/)).toBeVisible();
+  await expect(dialog.getByText('enter the password after importing')).toBeVisible();
+  await expect(dialog.getByText('used by office-pc')).toBeVisible();
+
+  // The taken name: rename is preselected with a free name; a taken one is refused.
+  const newName = dialog.getByLabel('New name for office-pc');
+  await expect(newName).toHaveValue('office-pc (2)');
+  await newName.fill('office-pc');
+  await expect(dialog.getByRole('alert')).toContainText('different name');
+  await expect(dialog.getByRole('button', { name: 'Import', exact: true })).toBeDisabled();
+  await newName.fill('office-pc (team)');
+  await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Imported 2 profiles and 1 SSH host.')).toBeVisible();
+  await expect(page.getByText('office-pc (team)', { exact: true })).toBeVisible();
+  const apply = await page.evaluate(() =>
+    (window as unknown as { __bundleCalls: unknown[][] }).__bundleCalls.find((c) => c[0] === 'apply_connection_import')
+  );
+  expect(apply).toEqual([
+    'apply_connection_import',
+    't1',
+    { hosts: {}, profiles: { 'profile-0': { action: 'rename', name: 'office-pc (team)' } } }
+  ]);
+
+  // Switching to overwrite sends that instead.
+  await page.getByRole('button', { name: 'Import…' }).click();
+  const again = page.getByRole('dialog', { name: 'Import remote desktop profiles' });
+  await again.getByRole('radio', { name: 'Overwrite' }).first().click();
+  await expect(again.getByText('replaces the one here; its saved password is kept').first()).toBeVisible();
 });

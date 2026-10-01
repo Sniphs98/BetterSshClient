@@ -51,6 +51,7 @@ for what works, what's in progress, and what's still planned.
 | ✅ | **ProxyJump** | Hosts behind one or more bastions work everywhere: dashboard, terminal, SFTP. |
 | ✅ | **Encrypted passwords** | Stored passwords are encrypted with the OS keystore (DPAPI, Keychain, libsecret). |
 | ✅ | **1Password** | Read the address, port, user, domain or password of a host or a remote desktop connection from 1Password when connecting instead of storing it, and use SSH keys from the 1Password SSH agent. [How](#using-1password) |
+| ✅ | **Import & export** | Share SSH hosts and remote desktop profiles as a file — one, a folder, or all of them. Jump hosts and SSH tunnel hosts come along. Passwords and key files never do; 1Password references do, so whoever imports the file just signs in to 1Password. Taken names: overwrite or rename, your choice. [How](#sharing-hosts-and-profiles) |
 | ✅ | **Light & dark theme** | |
 | 🚧 | **Snippets & automations** *(in progress)* | Save commands as snippets and chain them into automations on a canvas, run locally, in WSL or on a host, with parameters and the output of earlier steps, plus built-in steps: upload a file to the host, start a GitHub Actions workflow and wait for it (its release tag becomes the output), download a GitHub release file. Usable, but still changing. |
 | 🚧 | **Remote desktop (RDP)** *(in progress)* | RDP sessions as tabs inside the app, next to your terminals (IronRDP, no extra window), or in the OS's own client (Remote Desktop on Windows, FreeRDP on Linux and macOS), signed in automatically either way. Drag files onto the session to copy them there, and save files copied on the remote desktop. Can tunnel through any SSH host, so machines behind a bastion work without exposing port 3389. Display, monitor, clipboard, drive and sound settings per profile. |
@@ -115,6 +116,24 @@ writes the values to disk.
 asks the SSH agent for keys before anything else, so your 1Password keys just work. On Windows,
 stop and disable the *OpenSSH Authentication Agent* service first, since 1Password's agent
 takes over its place.
+
+### Sharing hosts and profiles
+
+On the dashboard, **Export all**, the export button on a host card or on a folder writes the
+hosts to a `.remoty-ssh-hosts.json` file; on the Remote Desktop page, **Export all** or a
+profile's export button writes a `.remoty-rdp-profiles.json` file. **Import…** on the same page
+reads one back in.
+
+- **Never in the file:** stored passwords and the path of your SSH key. After importing, a host
+  that had a stored password needs it entered again (the import says which). A host without a
+  key path signs in with your SSH agent, the 1Password SSH agent included, or your keys in `~/.ssh`.
+- **In the file:** everything else from the form, and 1Password references (`op://…`). Someone
+  with access to the same 1Password vault connects without typing anything.
+- **Along with it:** the jump hosts a host goes through (ProxyJump), and the SSH host a remote
+  desktop profile tunnels through, so the file works on a machine that has neither yet.
+- **Names already taken:** the import lists them, and for each you pick **Overwrite** (your
+  saved password and key for it stay) or **Rename**. References to a renamed host in the same
+  file follow the new name.
 
 ---
 
