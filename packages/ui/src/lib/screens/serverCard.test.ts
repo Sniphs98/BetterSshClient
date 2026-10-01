@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import type { ConnectionStatusDto, HostDto, MetricsDto } from '$lib/bindings';
 import type { HostServices } from '$lib/stores/services';
-import { deriveCard, metricStatus, QUICK_ACTIONS, filterHosts } from './serverCard';
+import { deriveCard, formatLastSeen, metricStatus, QUICK_ACTIONS, filterHosts } from './serverCard';
 
 function host(name = 'web-1'): HostDto {
   return { name, hostname: '10.0.0.1', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false, monitoring: 'ssh' };
@@ -234,5 +234,34 @@ describe('deriveCard — reachability hosts', () => {
     const card = deriveCard(host(), { kind: 'connected' }, metrics({ cpuPercent: 10 }), undefined);
     expect(card.reachability).toBeUndefined();
     expect(card.metricRows).toHaveLength(3);
+  });
+});
+
+describe('deriveCard — cached info on an offline card', () => {
+  const FAILED: ConnectionStatusDto = { kind: 'failed', message: 'timeout' };
+  const cached = { osInfo: 'Ubuntu 24.04.3 LTS', lastSeen: 1_000 };
+
+  it('shows the last known OS and when the host was last seen, with empty metric bars', () => {
+    const card = deriveCard(host(), FAILED, undefined, undefined, cached);
+    expect(card.offline).toBe(true);
+    expect(card.osInfo).toBe('Ubuntu 24.04.3 LTS');
+    expect(card.lastSeen).toBe(1_000);
+    expect(card.metricRows.map((r) => r.percent)).toEqual([null, null, null]);
+  });
+
+  it('ignores the cache while the host reports live metrics', () => {
+    const card = deriveCard(host(), CONNECTED, metrics({ osInfo: 'Debian 12' }), undefined, cached);
+    expect(card.osInfo).toBe('Debian 12');
+    expect(card.lastSeen).toBeUndefined();
+  });
+});
+
+describe('formatLastSeen', () => {
+  const now = 10 * 24 * 3_600_000;
+  it('rounds down to the coarsest fitting unit', () => {
+    expect(formatLastSeen(now - 30_000, now)).toBe('last seen just now');
+    expect(formatLastSeen(now - 5 * 60_000, now)).toBe('last seen 5m ago');
+    expect(formatLastSeen(now - 3 * 3_600_000, now)).toBe('last seen 3h ago');
+    expect(formatLastSeen(now - 2 * 24 * 3_600_000, now)).toBe('last seen 2d ago');
   });
 });

@@ -35,6 +35,7 @@ import {
 import { hosts } from '$lib/stores/hosts';
 import { statuses } from '$lib/stores/statuses';
 import { metrics, mergeMetrics } from '$lib/stores/metrics';
+import { hostCache } from '$lib/stores/hostCache';
 import { services } from '$lib/stores/services';
 import { sessions } from '$lib/stores/sessions';
 import { sftp } from '$lib/stores/sftp';
@@ -70,6 +71,7 @@ export function applyHostStatusChanged(payload: {
 
 export function applyMetricsUpdated(payload: { hostName: string; metrics: MetricsDto }): void {
   metrics.update((m) => new Map(m).set(payload.hostName, mergeMetrics(m.get(payload.hostName), payload.metrics)));
+  hostCache.record(payload.hostName, payload.metrics.osInfo);
 }
 
 export function applyServicesDetected(payload: { hostName: string; services: ServiceDto[] }): void {
