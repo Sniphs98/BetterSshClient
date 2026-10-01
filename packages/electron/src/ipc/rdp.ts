@@ -1,10 +1,10 @@
 import { clipboard, screen, shell, type IpcMain } from 'electron';
 
 import { loadRemoteDesktopConnections, type RdpSettings, type RemoteDesktopConnection } from '../core/config/remoteDesktop.js';
+import { removeCredentialsOnQuit } from '../core/rdp/credentials/index.js';
 import { fitToWorkArea, launchRdp, pendingCredentialHosts, type LaunchTarget, type RdpLaunchResult } from '../core/rdp/launch.js';
 import { resolveConnection } from '../core/rdp/password.js';
 import { openTunnel, tunnelAddress, type RdpTunnel } from '../core/rdp/tunnel.js';
-import { removeCredentialsOnQuit, sweepStagedCredentials } from '../core/rdp/windowsCredentials.js';
 import { SshSession } from '../core/ssh/session.js';
 import { toCommandError, type RdpLaunchResultDto } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
@@ -129,9 +129,6 @@ export function registerRdpIpc(ipcMain: IpcMain, state: GuiState): void {
       throw toCommandError(err);
     }
   });
-
-  // A launch staged a password but the app died before taking it out again.
-  void sweepStagedCredentials().catch(() => {});
 }
 
 /** For `before-quit`: takes out the passwords of launches still starting up. */
