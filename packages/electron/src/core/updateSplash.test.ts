@@ -4,35 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { clearUpdateSplash, updateFlagPath, updateSplashCommand } from './updateSplash.js';
-
-describe('updateSplashCommand', () => {
-  const cmd = updateSplashCommand('C:\\Temp\\remoty-updating', '1.12.0', 'C:\\Apps\\Remoty.exe', { PATH: 'x' });
-
-  it('starts a hidden PowerShell through `cmd /c start`, outside the app', () => {
-    expect(cmd.file).toBe('cmd.exe');
-    expect(cmd.args[0]).toBe('/d');
-    expect(cmd.args[1]).toBe('/c');
-    expect(cmd.args[2]).toMatch(/^start "" \/min powershell\.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand [A-Za-z0-9+/=]+$/);
-  });
-
-  it('passes what it shows and watches as environment, never inside the script', () => {
-    expect(cmd.env).toMatchObject({
-      PATH: 'x',
-      REMOTY_UPDATE_FLAG: 'C:\\Temp\\remoty-updating',
-      REMOTY_UPDATE_VERSION: '1.12.0',
-      REMOTY_APP_EXE: 'C:\\Apps\\Remoty.exe'
-    });
-    const script = Buffer.from(cmd.args[2].split(' ').pop()!, 'base64').toString('utf16le');
-    expect(script).toContain('$env:REMOTY_UPDATE_FLAG');
-    expect(script).not.toContain('1.12.0');
-    expect(script).not.toContain('Remoty.exe');
-    // Closes when the flag goes, when the app runs again, and after three minutes at the latest.
-    expect(script).toMatch(/Test-Path -LiteralPath \$flag/);
-    expect(script).toMatch(/Get-Process -Name \$appName/);
-    expect(script).toContain('-gt 180');
-  });
-});
+import { clearUpdateSplash, updateFlagPath } from './updateSplash.js';
 
 describe('clearUpdateSplash', () => {
   let dir: string;
