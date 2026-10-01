@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { appConfigDir } from '../../config/platform.js';
-import { CRED_TYPE_GENERIC, loadWindowsCredentialApi, type CredentialApi } from './windowsCredentialStore.js';
+import { CRED_MAX_BLOB_BYTES, CRED_TYPE_GENERIC, loadWindowsCredentialApi, type CredentialApi } from './windowsCredentialStore.js';
 
 /**
  * The Windows credential store side of an RDP launch. `mstsc` has no way to take a
@@ -65,6 +65,12 @@ export function createCredentialStore(api: CredentialApi): RdpCredentialStore {
   return {
     async write(target, username, password) {
       assertTarget(target);
+      if (Buffer.byteLength(password, 'utf16le') > CRED_MAX_BLOB_BYTES) {
+        throw new Error('The password is too long for the Windows credential store');
+      }
+      // CredWriteW replaces a credential with the same target and type: one that
+      // isn't ours is left as it is (and mstsc uses it). A failed read throws, so
+      // nothing is written blind.
       const existing = api.read(target);
       if (existing && !isOurs(existing)) return 'kept-existing';
       const blob = Buffer.from(password, 'utf16le');

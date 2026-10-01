@@ -14,7 +14,13 @@ import {
   stageCredential,
   type RdpCredentialStore
 } from './index.js';
-import { CRED_TYPE_GENERIC, type CredentialApi, type StoredCredential } from './windowsCredentialStore.js';
+import {
+  CRED_TYPE_GENERIC,
+  credentialTypes,
+  loadWindowsCredentialApi,
+  type CredentialApi,
+  type StoredCredential
+} from './windowsCredentialStore.js';
 
 /** An in-memory stand-in for the Win32 credential store. */
 function fakeApi(initial: StoredCredential[] = []) {
@@ -72,6 +78,25 @@ describe('createCredentialStore', () => {
     store.removeSync('TERMSRV/10.0.0.5');
     expect(api.delete).not.toHaveBeenCalled();
     expect(creds.has('TERMSRV/10.0.0.5')).toBe(true);
+  });
+
+  it('refuses a password over the 2560-byte blob limit before touching the store', async () => {
+    const { api } = fakeApi();
+    const store = createCredentialStore(api);
+    const error = await store.write('TERMSRV/h', 'u', 'ä'.repeat(1281)).catch((e: Error) => e);
+    expect((error as Error).message).toMatch(/too long/);
+    expect((error as Error).message).not.toContain('ää');
+    expect(api.read).not.toHaveBeenCalled();
+    expect(await store.write('TERMSRV/h', 'u', 'ä'.repeat(1280))).toBe('staged');
+  });
+
+  it('writes nothing when the existing credential cannot be read', async () => {
+    const { api } = fakeApi();
+    vi.mocked(api.read).mockImplementation(() => {
+      throw new Error('CredReadW failed (error 5)');
+    });
+    await expect(createCredentialStore(api).write('TERMSRV/h', 'u', 'p')).rejects.toThrow('error 5');
+    expect(api.write).not.toHaveBeenCalled();
   });
 
   it('refuses targets outside TERMSRV/, and wildcards', async () => {
@@ -163,5 +188,73 @@ describe('staging for a launch', () => {
     const error = await stageCredential('host1', 'admin', 'top-secret').catch((e: Error) => e);
     expect(String((error as Error).message)).not.toContain('top-secret');
     expect(() => removeCredentialsOnQuit(['host1'])).not.toThrow();
+  });
+});
+
+// wincred.h's CREDENTIALW as MSVC lays it out on 64-bit Windows.
+describe.skipIf(process.arch !== 'x64' && process.arch !== 'arm64')('CREDENTIALW layout', () => {
+  it('matches the Win64 sizes and offsets', () => {
+    const { koffi, CREDENTIALW } = credentialTypes();
+    expect(koffi.sizeof(CREDENTIALW)).toBe(80);
+    const offsets = Object.fromEntries(
+      ['Flags', 'Type', 'TargetName', 'Comment', 'LastWritten', 'CredentialBlobSize', 'CredentialBlob', 'Persist', 'AttributeCount', 'Attributes', 'TargetAlias', 'UserName'].map(
+        (m) => [m, koffi.offsetof(CREDENTIALW, m)]
+      )
+    );
+    expect(offsets).toEqual({
+      Flags: 0,
+      Type: 4,
+      TargetName: 8,
+      Comment: 16,
+      LastWritten: 24,
+      CredentialBlobSize: 32,
+      CredentialBlob: 40,
+      Persist: 48,
+      AttributeCount: 52,
+      Attributes: 56,
+      TargetAlias: 64,
+      UserName: 72
+    });
+  });
+});
+
+// Against the real credential store: runs in the windows-latest CI job. Uses a target
+// of its own and removes it again.
+describe.skipIf(process.platform !== 'win32')('the real Windows credential store', () => {
+  const target = `TERMSRV/remoty-selftest-${process.pid}-${Date.now()}`;
+
+  afterEach(() => {
+    const api = loadWindowsCredentialApi();
+    api.delete(target);
+  });
+
+  it('writes, reads, enumerates and deletes its own credential', async () => {
+    const api = loadWindowsCredentialApi();
+    const store = createCredentialStore(api);
+    expect(api.read(target)).toBeNull();
+
+    expect(await store.write(target, 'CORP\\admin', 'pässwörd €')).toBe('staged');
+    expect(api.read(target)).toEqual({ target, type: CRED_TYPE_GENERIC, comment: CREDENTIAL_COMMENT });
+    expect(api.enumerate('TERMSRV/remoty-selftest-*').map((c) => c.target)).toContain(target);
+
+    await store.remove(target);
+    expect(api.read(target)).toBeNull();
+  });
+
+  it('leaves a foreign credential with the same target alone', async () => {
+    const api = loadWindowsCredentialApi();
+    const store = createCredentialStore(api);
+    const secret = Buffer.from('users-own', 'utf16le');
+    api.write(target, 'someone', secret, 'vom Benutzer gespeichert – ä€');
+
+    expect(await store.write(target, 'admin', 'x')).toBe('kept-existing');
+    await store.remove(target);
+    await store.cleanupOwned();
+
+    expect(api.read(target)).toEqual({ target, type: CRED_TYPE_GENERIC, comment: 'vom Benutzer gespeichert – ä€' });
+  });
+
+  it('enumerating with no match is no error', () => {
+    expect(loadWindowsCredentialApi().enumerate('TERMSRV/remoty-nothing-here-*')).toEqual([]);
   });
 });

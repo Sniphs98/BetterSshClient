@@ -26,30 +26,44 @@ export interface CredentialApi {
 }
 
 export const CRED_TYPE_GENERIC = 1;
+/** CRED_MAX_CREDENTIAL_BLOB_SIZE (5 * 512 bytes). */
+export const CRED_MAX_BLOB_BYTES = 2560;
 /** Gone at sign-out even if it is never deleted. */
 const CRED_PERSIST_SESSION = 1;
+/** CredReadW: no such credential. CredEnumerateW: nothing matches the filter. */
 const ERROR_NOT_FOUND = 1168;
 
-export function loadWindowsCredentialApi(): CredentialApi {
-  const koffi = require('koffi') as typeof import('koffi');
-  const advapi32 = koffi.load('advapi32.dll');
-  const kernel32 = koffi.load('kernel32.dll');
+type Koffi = typeof import('koffi');
+let types: { koffi: Koffi; CREDENTIALW: ReturnType<Koffi['struct']> } | undefined;
 
+/** `CREDENTIALW` as wincred.h declares it, field for field. koffi lays it out with the
+ *  platform's natural alignment, as MSVC does (checked in the tests). */
+export function credentialTypes(): NonNullable<typeof types> {
+  if (types) return types;
+  const koffi = require('koffi') as Koffi;
   const FILETIME = koffi.struct('REMOTY_FILETIME', { dwLowDateTime: 'uint32_t', dwHighDateTime: 'uint32_t' });
   const CREDENTIALW = koffi.struct('REMOTY_CREDENTIALW', {
-    Flags: 'uint32_t',
-    Type: 'uint32_t',
-    TargetName: 'str16',
-    Comment: 'str16',
+    Flags: 'uint32_t', // DWORD
+    Type: 'uint32_t', // DWORD
+    TargetName: 'str16', // LPWSTR
+    Comment: 'str16', // LPWSTR
     LastWritten: FILETIME,
-    CredentialBlobSize: 'uint32_t',
-    CredentialBlob: 'void *',
-    Persist: 'uint32_t',
-    AttributeCount: 'uint32_t',
-    Attributes: 'void *',
-    TargetAlias: 'str16',
-    UserName: 'str16'
+    CredentialBlobSize: 'uint32_t', // DWORD
+    CredentialBlob: 'void *', // LPBYTE
+    Persist: 'uint32_t', // DWORD
+    AttributeCount: 'uint32_t', // DWORD
+    Attributes: 'void *', // PCREDENTIAL_ATTRIBUTEW
+    TargetAlias: 'str16', // LPWSTR
+    UserName: 'str16' // LPWSTR
   });
+  types = { koffi, CREDENTIALW };
+  return types;
+}
+
+export function loadWindowsCredentialApi(): CredentialApi {
+  const { koffi, CREDENTIALW } = credentialTypes();
+  const advapi32 = koffi.load('advapi32.dll');
+  const kernel32 = koffi.load('kernel32.dll');
 
   const CredReadW = advapi32.func('__stdcall', 'CredReadW', 'bool', ['str16', 'uint32_t', 'uint32_t', koffi.out(koffi.pointer('void *'))]);
   const CredWriteW = advapi32.func('__stdcall', 'CredWriteW', 'bool', [koffi.pointer(CREDENTIALW), 'uint32_t']);
@@ -61,6 +75,7 @@ export function loadWindowsCredentialApi(): CredentialApi {
     koffi.out(koffi.pointer('void *'))
   ]);
   const CredFree = advapi32.func('__stdcall', 'CredFree', 'void', ['void *']);
+  // koffi keeps the last-error value of each call safe from Node and V8.
   const GetLastError = kernel32.func('__stdcall', 'GetLastError', 'uint32_t', []);
 
   const describe = (ptr: unknown): StoredCredential => {
@@ -76,6 +91,7 @@ export function loadWindowsCredentialApi(): CredentialApi {
         if (code === ERROR_NOT_FOUND) return null;
         throw new Error(`CredReadW failed (error ${code})`);
       }
+      // Everything CredReadW allocates is one block, freed with CredFree.
       try {
         return describe(out[0]);
       } finally {
@@ -84,6 +100,7 @@ export function loadWindowsCredentialApi(): CredentialApi {
     },
 
     write(target, user, password, comment) {
+      if (password.length > CRED_MAX_BLOB_BYTES) throw new Error('The password is too long for the Windows credential store');
       const ok = CredWriteW(
         {
           Flags: 0,
@@ -111,7 +128,12 @@ export function loadWindowsCredentialApi(): CredentialApi {
     enumerate(filter) {
       const count: number[] = [0];
       const list: unknown[] = [null];
-      if (!CredEnumerateW(filter, 0, count, list)) return [];
+      if (!CredEnumerateW(filter, 0, count, list)) {
+        const code = GetLastError() as number;
+        if (code === ERROR_NOT_FOUND) return [];
+        throw new Error(`CredEnumerateW failed (error ${code})`);
+      }
+      // The array and every credential in it are one block: one CredFree, after decoding.
       try {
         const pointers = koffi.decode(list[0], 'void *', count[0]) as unknown[];
         return pointers.map(describe);
