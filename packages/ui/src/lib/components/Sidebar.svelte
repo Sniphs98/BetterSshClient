@@ -103,7 +103,7 @@
   class="col-start-1 row-start-1 flex h-full flex-col overflow-hidden border-r border-default bg-surface pt-[var(--titlebar-h)]"
 >
   <header
-    class="flex items-center gap-3 px-3 py-4 {$sidebarCollapsed ? 'justify-center' : ''}"
+    class="flex items-center gap-3 px-3 pb-1 pt-4 {$sidebarCollapsed ? 'justify-center' : ''}"
   >
     {#if !$sidebarCollapsed}
       <Logo size={28} />
