@@ -92,6 +92,7 @@ describe('createCredentialStore', () => {
 });
 
 describe('staging for a launch', () => {
+  const originalPlatform = process.platform;
   const originalAppData = process.env.APPDATA;
   let configRoot: string;
   let api: ReturnType<typeof fakeApi>['api'];
@@ -102,12 +103,15 @@ describe('staging for a launch', () => {
     configRoot = await mkdtemp(join(tmpdir(), 'remoty-cred-'));
     process.env.APPDATA = configRoot;
     process.env.XDG_CONFIG_HOME = configRoot;
+    // So the marker file lands under APPDATA, i.e. configRoot, on every OS.
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     ({ api, creds } = fakeApi([foreign]));
     setCredentialStore(createCredentialStore(api));
   });
 
   afterEach(async () => {
     setCredentialStore(null);
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     process.env.APPDATA = originalAppData;
     delete process.env.XDG_CONFIG_HOME;
     await rm(configRoot, { recursive: true, force: true });
