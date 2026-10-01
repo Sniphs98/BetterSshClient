@@ -81,6 +81,16 @@ describe('pasteFromClipboard', () => {
     vi.unstubAllGlobals();
   });
 
+  it('focuses the terminal so Enter runs the pasted text without another click', async () => {
+    vi.stubGlobal('navigator', { clipboard: { readText: vi.fn().mockResolvedValue('echo hi') } });
+    const term = fakeTerm();
+
+    await pasteFromClipboard(term);
+
+    expect(term.focus).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('does nothing on an empty clipboard', async () => {
     vi.stubGlobal('navigator', { clipboard: { readText: vi.fn().mockResolvedValue('') } });
     const term = fakeTerm();
