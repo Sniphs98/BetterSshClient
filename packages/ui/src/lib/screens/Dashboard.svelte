@@ -607,14 +607,20 @@
           </div>
 
           {#if card.offline}
-            {#if card.lastSeen != null || card.osInfo}
-              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                {#if card.lastSeen != null}<span>{formatLastSeen(card.lastSeen, Date.now())}</span>{/if}
-                {#if card.lastSeen != null && card.osInfo}<span class="text-faint">·</span>{/if}
-                {#if card.osInfo}<span class="min-w-0 truncate">{card.osInfo}</span>{/if}
-              </div>
-            {/if}
-            <div class="text-xs text-faint">offline</div>
+            <!-- The offline panel fills the space the live info would, under the bars. -->
+            <div
+              class="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg bg-surface-inset px-3 py-3 text-center text-xs"
+              data-testid="offline-panel"
+            >
+              <span class="font-medium text-faint">offline</span>
+              {#if card.lastSeen != null || card.osInfo}
+                <span class="flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-muted">
+                  {#if card.lastSeen != null}<span>{formatLastSeen(card.lastSeen, Date.now())}</span>{/if}
+                  {#if card.lastSeen != null && card.osInfo}<span class="text-faint">·</span>{/if}
+                  {#if card.osInfo}<span class="min-w-0 truncate">{card.osInfo}</span>{/if}
+                </span>
+              {/if}
+            </div>
           {:else if card.uptime || card.osInfo}
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
               {#if card.uptime}<span>up {card.uptime}</span>{/if}
