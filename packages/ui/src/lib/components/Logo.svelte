@@ -3,6 +3,8 @@
   // mask. Drawn via a CSS mask rather than an <img> so it takes its colour from a theme
   // token — it stays legible on both light and dark (ink on light, paper on dark) and
   // never disappears into a same-colour surface.
+  // The glyph covers only the middle 152 of logo.png's 256 px; the mask is scaled up
+  // past its transparent margin, so `size` is the width of the glyph itself.
   export let size = 24;
   export let color = 'var(--accent)'; // any theme token: --accent | --text | ...
   export let title = 'Remoty';
@@ -21,7 +23,7 @@
     width: var(--logo-size);
     height: var(--logo-size);
     background-color: var(--logo-color);
-    -webkit-mask: url(/logo.png) center / contain no-repeat;
-    mask: url(/logo.png) center / contain no-repeat;
+    -webkit-mask: url(/logo.png) center / 168% no-repeat;
+    mask: url(/logo.png) center / 168% no-repeat;
   }
 </style>
