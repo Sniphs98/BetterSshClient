@@ -103,11 +103,11 @@
   class="col-start-1 row-start-1 flex h-full flex-col overflow-hidden border-r border-default bg-surface pt-[var(--titlebar-h)]"
 >
   <header
-    class="flex items-center gap-2.5 px-3 py-4 {$sidebarCollapsed ? 'justify-center' : ''}"
+    class="flex items-center gap-3 px-3 py-4 {$sidebarCollapsed ? 'justify-center' : ''}"
   >
     {#if !$sidebarCollapsed}
-      <Logo size={22} />
-      <span class="flex-1 truncate text-sm font-bold tracking-wide">Remoty</span>
+      <Logo size={28} />
+      <span class="flex-1 truncate text-lg font-bold tracking-wide">Remoty</span>
     {/if}
     <Button
       variant="icon"
