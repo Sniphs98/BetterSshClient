@@ -10,7 +10,7 @@
   import { get } from 'svelte/store';
   import type { ConnectionImportPreviewDto, HostDto, HostInputDto, TerminalProfileDto } from '$lib/bindings';
   import { Surface, Chip, StatusDot, Icon, Button, statusToken } from '$lib/theme';
-  import { serverCards, filterHosts, QUICK_ACTIONS, type ServerCard } from './serverCard';
+  import { serverCards, filterHosts, formatLastSeen, QUICK_ACTIONS, type ServerCard } from './serverCard';
   import { folderNameProblem, folderNames, groupCards, LOCAL_KEY } from './dashboardSections';
   import { collapsedSections, keptFolders } from '$lib/stores/dashboardLayout';
   import { spawnSession, spawnLocalTerminal } from '$lib/stores/navigation';
@@ -575,16 +575,14 @@
         <!-- Reachability, live metrics, or an offline state -->
         {#if card.reachability}
           <div
-            class="flex flex-1 items-center justify-center rounded-lg bg-surface-inset px-3 py-3 text-center text-xs"
+            class="rounded-lg bg-surface-inset px-3 py-3 text-center text-xs"
             style="color: {statusToken(card.overall)};"
           >
             {card.reachability}{card.host.monitorPort ? ` · port ${card.host.monitorPort}` : ''}
           </div>
-        {:else if card.offline}
-          <div class="flex flex-1 items-center justify-center rounded-lg bg-surface-inset px-3 py-3 text-xs text-faint">
-            offline
-          </div>
         {:else}
+          <!-- Offline cards keep the same layout, with empty bars and what the cache
+               still knows (last seen, OS) in place of the live line. -->
           <div class="space-y-2">
             {#each card.metricRows as row (row.label)}
               <div class="flex items-center gap-3">
@@ -608,7 +606,16 @@
             {/each}
           </div>
 
-          {#if card.uptime || card.osInfo}
+          {#if card.offline}
+            {#if card.lastSeen != null || card.osInfo}
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                {#if card.lastSeen != null}<span>{formatLastSeen(card.lastSeen, Date.now())}</span>{/if}
+                {#if card.lastSeen != null && card.osInfo}<span class="text-faint">·</span>{/if}
+                {#if card.osInfo}<span class="min-w-0 truncate">{card.osInfo}</span>{/if}
+              </div>
+            {/if}
+            <div class="text-xs text-faint">offline</div>
+          {:else if card.uptime || card.osInfo}
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
               {#if card.uptime}<span>up {card.uptime}</span>{/if}
               {#if card.uptime && card.osInfo}<span class="text-faint">·</span>{/if}

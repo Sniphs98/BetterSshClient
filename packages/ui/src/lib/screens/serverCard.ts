@@ -17,6 +17,7 @@ import { hosts } from '$lib/stores/hosts';
 import { statuses } from '$lib/stores/statuses';
 import { metrics } from '$lib/stores/metrics';
 import { services, type HostServices } from '$lib/stores/services';
+import { hostCache, type HostCacheEntry } from '$lib/stores/hostCache';
 
 // Metric severity mirrors the core's `metrics::threshold_level` (Ok < 60 <= Warn <=
 // 85 < Crit) — the single source of truth for server-state colour (tech-gui.md §5).
@@ -44,6 +45,8 @@ export interface ServerCard {
   metricRows: MetricRow[];
   uptime?: string;
   osInfo?: string;
+  /** Offline cards only: when the host last reported metrics (epoch ms), from the cache. */
+  lastSeen?: number;
   topProcesses: ProcessDto[];
   detectedServices: CardService[];
   servicesError?: string;
@@ -95,7 +98,8 @@ export function deriveCard(
   host: HostDto,
   status: ConnectionStatusDto | undefined,
   m: MetricsDto | undefined,
-  svc: HostServices | undefined
+  svc: HostServices | undefined,
+  cached?: HostCacheEntry
 ): ServerCard {
   // A reachability host is probed by a TCP connect and never reports metrics, so
   // the tiles would be a fiction — the card shows the probe result instead.
@@ -136,7 +140,9 @@ export function deriveCard(
     offline,
     metricRows,
     uptime: m?.uptime ?? undefined,
-    osInfo: m?.osInfo ?? undefined,
+    // An offline card has no live sample, so it falls back to what the host last told us.
+    osInfo: m?.osInfo ?? (offline ? cached?.osInfo : undefined),
+    lastSeen: offline ? cached?.lastSeen : undefined,
     topProcesses: m?.topProcesses ?? [],
     detectedServices,
     servicesError: svc?.kind === 'failed' ? svc.message : undefined
@@ -145,12 +151,29 @@ export function deriveCard(
 
 /** Live dashboard cards, one per host, recomputed as any live store changes. */
 export const serverCards = derived(
-  [hosts, statuses, metrics, services],
-  ([$hosts, $statuses, $metrics, $services]) =>
+  [hosts, statuses, metrics, services, hostCache],
+  ([$hosts, $statuses, $metrics, $services, $hostCache]) =>
     $hosts.map((host) =>
-      deriveCard(host, $statuses.get(host.name), $metrics.get(host.name), $services.get(host.name))
+      deriveCard(
+        host,
+        $statuses.get(host.name),
+        $metrics.get(host.name),
+        $services.get(host.name),
+        $hostCache.get(host.name)
+      )
     )
 );
+
+/** "last seen" wording for an offline card: coarse, since it only needs to say roughly
+ *  how long the host has been gone. */
+export function formatLastSeen(lastSeen: number, now: number): string {
+  const minutes = Math.floor(Math.max(0, now - lastSeen) / 60_000);
+  if (minutes < 1) return 'last seen just now';
+  if (minutes < 60) return `last seen ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `last seen ${hours}h ago`;
+  return `last seen ${Math.floor(hours / 24)}d ago`;
+}
 
 // Case-insensitive substring filter over a card's name / hostname / tags / notes,
 // mirroring the TUI host search (crates/omnyssh/src/app/host.rs `filter_hosts`). An
