@@ -7,7 +7,6 @@ import { autoUpdater, type ProgressInfo } from 'electron-updater';
 import { loadAppConfig, saveUpdateConfig as persistUpdateConfig, type UpdateConfig } from '../core/config/appConfig.js';
 import { selfUpdateSupport, type SelfUpdateSupport } from '../core/selfUpdate.js';
 import { checkUpdate as checkForUpdate } from '../core/update.js';
-import { showUpdateSplash } from '../core/updateSplash.js';
 import { toCommandError } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
 
@@ -51,9 +50,6 @@ export function checkForAppUpdate(): ReturnType<typeof checkForUpdate> {
   return checkForUpdate(app.getVersion(), currentSelfUpdateSupport().supported);
 }
 
-/** The version downloaded and waiting to be installed, for the "Updating…" window. */
-let downloadedVersion: string | undefined;
-
 async function downloadUpdate(state: GuiState): Promise<void> {
   autoUpdater.autoDownload = false;
   // A downloaded update the user never restarts for still installs when they quit.
@@ -67,7 +63,6 @@ async function downloadUpdate(state: GuiState): Promise<void> {
     const result = await autoUpdater.checkForUpdates();
     if (result === null || !result.isUpdateAvailable) throw new Error('There is no newer release to install.');
     await autoUpdater.downloadUpdate();
-    downloadedVersion = result.updateInfo.version;
     state.emit('update-downloaded', { version: result.updateInfo.version });
   } finally {
     autoUpdater.off('download-progress', onProgress);
@@ -100,12 +95,11 @@ export function registerUpdateIpc(ipcMain: IpcMain, state: GuiState): void {
 
   ipcMain.handle('restart_to_update', () => {
     // After the reply has gone out: quitting closes the window that is waiting for it.
-    // Silent, and relaunched afterwards — the user already chose to update. On Windows
-    // the silent install takes half a minute with nothing on screen, so a small
-    // "Updating…" window stands in for the app until the new version opens.
-    setImmediate(() => {
-      void showUpdateSplash(downloadedVersion ?? '').finally(() => autoUpdater.quitAndInstall(true, true));
-    });
+    // Not silent: a silent install takes half a minute with nothing on screen, long
+    // enough to think it's broken. Started for an update, the installer skips its
+    // questions and shows only its progress window, then opens the new version itself
+    // (build/installer.nsh).
+    setImmediate(() => autoUpdater.quitAndInstall(false, true));
   });
 
   ipcMain.handle('load_update_config', async () => {
