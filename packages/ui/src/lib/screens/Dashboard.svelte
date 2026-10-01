@@ -395,9 +395,11 @@
             Drag host cards here to put them in {section.title}.
           </div>
         {:else if !isCollapsed(section.key)}
-          <div class="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
+          <!-- `grid-auto-rows:1fr` gives every row the height of the section's tallest
+               card, so an offline card is as big as one showing live metrics. -->
+          <div class="grid gap-4 [grid-auto-rows:1fr] [grid-template-columns:repeat(auto-fill,minmax(19rem,1fr))]">
             {#each section.cards as card (card.host.name)}
-              <div draggable="true" ondragstart={(e) => onDragStart(e, card.host.name)} ondragend={() => (dropTarget = null)} role="listitem">
+              <div draggable="true" ondragstart={(e) => onDragStart(e, card.host.name)} ondragend={() => (dropTarget = null)} role="listitem" class="h-full">
                 {@render hostCard(card)}
               </div>
             {/each}
@@ -460,7 +462,7 @@
 {/snippet}
 
 {#snippet hostCard(card: ServerCard)}
-      <Surface class="flex flex-col gap-4 p-5">
+      <Surface class="flex h-full flex-col gap-4 p-5">
         <!-- Drag handle: the whole card; dropped on another section it moves there. -->
         <!-- Identity, then the actions on their own row so the name and address
              stay readable at any card width (a full row instead of sharing it). -->
@@ -573,13 +575,15 @@
         <!-- Reachability, live metrics, or an offline state -->
         {#if card.reachability}
           <div
-            class="rounded-lg bg-surface-inset px-3 py-3 text-center text-xs"
+            class="flex flex-1 items-center justify-center rounded-lg bg-surface-inset px-3 py-3 text-center text-xs"
             style="color: {statusToken(card.overall)};"
           >
             {card.reachability}{card.host.monitorPort ? ` · port ${card.host.monitorPort}` : ''}
           </div>
         {:else if card.offline}
-          <div class="rounded-lg bg-surface-inset px-3 py-3 text-center text-xs text-faint">offline</div>
+          <div class="flex flex-1 items-center justify-center rounded-lg bg-surface-inset px-3 py-3 text-xs text-faint">
+            offline
+          </div>
         {:else}
           <div class="space-y-2">
             {#each card.metricRows as row (row.label)}

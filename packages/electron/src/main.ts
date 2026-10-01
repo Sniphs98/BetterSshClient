@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, screen } from 'electron';
 import { join } from 'node:path';
 
 import { APP_ORIGIN, registerAppProtocolHandler, registerAppScheme } from './appProtocol.js';
@@ -21,7 +21,7 @@ import { registerUpdateIpc } from './ipc/update.js';
 import { loadAllHosts } from './core/config/hosts.js';
 import { setSecretCipher } from './core/config/secretCipher.js';
 import { GuiState } from './state/guiState.js';
-import { loadWindowGeometry, trackWindowGeometry } from './windowState.js';
+import { loadWindowState, revealWindow, trackWindowState } from './windowState.js';
 
 /**
  * Remoty Desktop entry point. Ports the startup contract from
@@ -56,7 +56,7 @@ const state = new GuiState(() => mainWindow);
 registerAppScheme();
 
 function createWindow(): BrowserWindow {
-  const geometry = loadWindowGeometry();
+  const geometry = loadWindowState(screen.getAllDisplays().map((d) => d.workArea));
 
   const win = new BrowserWindow({
     title: 'Remoty',
@@ -77,13 +77,13 @@ function createWindow(): BrowserWindow {
     }
   });
 
-  trackWindowGeometry(win);
+  trackWindowState(win);
 
   let revealed = false;
   const reveal = (): void => {
     if (revealed || win.isDestroyed()) return;
     revealed = true;
-    win.show();
+    revealWindow(win, geometry.maximized);
     win.focus();
   };
 
