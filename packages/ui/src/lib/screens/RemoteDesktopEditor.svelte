@@ -64,17 +64,7 @@
     return fields.viaHost && !names.includes(fields.viaHost) ? [fields.viaHost, ...names] : names;
   });
 
-  // Starts open when the profile already deviates from the defaults (seeded once, like `fields`).
-  let settingsOpen = $state(
-    // svelte-ignore state_referenced_locally
-    initial.display !== '' ||
-      initial.multiMonitor ||
-      !initial.clipboard ||
-      initial.drives ||
-      initial.dynamicResolution ||
-      initial.audio !== 'local'
-  );
-  // Shown on the collapsed header, so what's set is visible without opening it.
+  // Shown under the section's title: what's set, in one line.
   const settingsSummary = $derived(describeSettings(fields).join(' · '));
 
   // Windows asks before sharing drives from a .rdp file (see core/rdp/launch.ts).
@@ -88,7 +78,7 @@
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
 </script>
 
-<Modal label={mode === 'add' ? 'New RDP connection' : 'Edit RDP connection'} onClose={onCancel}>
+<Modal label={mode === 'add' ? 'New RDP connection' : 'Edit RDP connection'} size="large" onClose={onCancel}>
   <form
     onsubmit={(e) => {
       e.preventDefault();
@@ -100,7 +90,10 @@
       <h2 class="text-sm font-semibold">{mode === 'add' ? 'New RDP connection' : 'Edit RDP connection'}</h2>
     </header>
 
-    <div class="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4">
+    <!-- Two columns side by side where there's room (screens are wider than tall):
+         the connection on the left, display & devices on the right. Stacked otherwise. -->
+    <div class="grid min-h-0 flex-1 items-start gap-5 overflow-y-auto px-5 py-4 md:grid-cols-2">
+    <div class="space-y-3.5">
       <label class={label}>
         <span>Name</span>
         <input bind:this={nameEl} bind:value={fields.name} class={field} placeholder="office-pc" />
@@ -218,37 +211,19 @@
         </p>
         <OnePasswordCliHint />
       {/if}
+    </div>
 
-      <section class="rounded-xl border border-default bg-surface-inset/40">
-        <button
-          type="button"
-          class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-surface-inset focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-          aria-expanded={settingsOpen}
-          aria-controls="rdp-display-devices"
-          onclick={() => (settingsOpen = !settingsOpen)}
-        >
+      <section class="rounded-xl border border-default bg-surface-inset/40" aria-labelledby="rdp-display-devices-title">
+        <div class="flex items-center gap-3 px-4 py-3">
           <span class="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted">
             <Icon name="monitor" size={15} />
           </span>
           <span class="min-w-0 flex-1">
-            <span class="block text-sm font-medium">Display &amp; devices</span>
+            <span id="rdp-display-devices-title" class="block text-sm font-medium">Display &amp; devices</span>
             <span class="block truncate text-xs text-faint">{settingsSummary}</span>
           </span>
-          <svg
-            class="h-3 w-3 shrink-0 text-faint transition-transform {settingsOpen ? 'rotate-180' : ''}"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3 4.5 6 7.5 9 4.5" />
-          </svg>
-        </button>
-        {#if settingsOpen}
-        <div id="rdp-display-devices" class="space-y-4 border-t border-default px-4 pb-4 pt-4">
+        </div>
+        <div class="space-y-4 border-t border-default px-4 pb-4 pt-4">
           <div class="grid grid-cols-[1fr,6rem,6rem] gap-3">
             <label class={label}>
               <span>Display</span>
@@ -317,13 +292,12 @@
             </div>
           </div>
         </div>
-        {/if}
       </section>
-
-      {#if error}
-        <p class="text-xs text-status-crit">{error}</p>
-      {/if}
     </div>
+
+    {#if error}
+      <p class="px-5 pb-3 text-xs text-status-crit">{error}</p>
+    {/if}
 
     <footer class="flex justify-end gap-2 border-t border-default px-5 py-3">
       <Button variant="ghost" onclick={onCancel}>Cancel</Button>

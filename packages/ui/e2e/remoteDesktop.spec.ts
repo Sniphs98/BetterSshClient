@@ -253,8 +253,11 @@ test('a connection through an SSH host, with display and device settings', async
   await editor.getByLabel('Connect').selectOption('bastion');
   await expect(editor.getByText('Hostname and port are as seen from bastion.')).toBeVisible();
 
-  await editor.getByText('Display & devices').click();
-  await editor.getByLabel('Display').selectOption('window');
+  // Display & devices sits next to the connection fields, always open.
+  const settings = editor.getByRole('region', { name: 'Display & devices' });
+  const name = editor.getByLabel('Name', { exact: true });
+  expect((await settings.boundingBox())!.x).toBeGreaterThan((await name.boundingBox())!.x + 200);
+  await editor.getByRole('combobox', { name: 'Display' }).selectOption('window');
   await editor.getByLabel('Width').fill('1600');
   await editor.getByLabel('Height').fill('90');
   await editor.getByLabel('Sound').selectOption('off');
