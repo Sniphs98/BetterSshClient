@@ -268,7 +268,11 @@
     x={terminalMenu.x}
     y={terminalMenu.y}
     items={terminalMenu.items}
-    onClose={() => (terminalMenu = null)}
+    onClose={() => {
+      terminalMenu = null;
+      // Back to the terminal, so typing (or Enter after a paste) goes to the shell.
+      term?.focus();
+    }}
   />
 {/if}
 

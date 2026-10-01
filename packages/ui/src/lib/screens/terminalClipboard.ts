@@ -59,8 +59,12 @@ export async function copySelection(term: ClipboardTerminal): Promise<boolean> {
 }
 
 /** Reads the clipboard into the terminal. `term.paste` handles bracketed-paste mode
- *  and the chunking that a large paste needs, so this never writes raw bytes itself. */
+ *  and the chunking that a large paste needs, so this never writes raw bytes itself.
+ *  Focuses the terminal too: a right-click paste (directly or via the context menu)
+ *  leaves focus elsewhere, and the pasted command should run on the very next Enter
+ *  without another click into the terminal first. */
 export async function pasteFromClipboard(term: ClipboardTerminal): Promise<void> {
+  term.focus();
   const text = await navigator.clipboard.readText();
   if (text) term.paste(text);
 }
