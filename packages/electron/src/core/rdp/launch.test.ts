@@ -12,7 +12,7 @@ const removeMock = vi.fn();
 vi.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => spawnMock(...args)
 }));
-vi.mock('./windowsCredentials.js', () => ({
+vi.mock('./credentials/index.js', () => ({
   stageCredential: (...args: unknown[]) => stageMock(...args),
   removeCredential: (...args: unknown[]) => removeMock(...args)
 }));

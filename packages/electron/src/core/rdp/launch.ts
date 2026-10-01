@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 
 import type { RdpSettings, RemoteDesktopConnection } from '../config/remoteDesktop.js';
-import { removeCredential, stageCredential, type StageOutcome } from './windowsCredentials.js';
+import { removeCredential, stageCredential, type StageOutcome } from './credentials/index.js';
 import { maximizeWhenConnected } from './windowsWindow.js';
 
 /**
@@ -15,7 +15,7 @@ import { maximizeWhenConnected } from './windowsWindow.js';
  * real per-OS packaging burden disproportionate to what was asked for).
  *
  * The password never goes on a command line: on Windows it is staged in the credential
- * store (`windowsCredentials.ts`), FreeRDP reads it from stdin.
+ * store (`credentials/`), FreeRDP reads it from stdin.
  */
 
 export interface RdpLaunchResult {
