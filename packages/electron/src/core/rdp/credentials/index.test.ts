@@ -15,6 +15,7 @@ import {
   type RdpCredentialStore
 } from './index.js';
 import {
+  CRED_TYPE_DOMAIN_PASSWORD,
   CRED_TYPE_GENERIC,
   credentialTypes,
   loadWindowsCredentialApi,
@@ -24,11 +25,13 @@ import {
 
 /** An in-memory stand-in for the Win32 credential store. */
 function fakeApi(initial: StoredCredential[] = []) {
+  // Keyed by target and type, as Windows does: one of each type per target.
   const creds = new Map<string, StoredCredential & { user?: string; password?: string }>();
-  for (const c of initial) creds.set(c.target, c);
+  const key = (target: string, type: number): string => (type === CRED_TYPE_GENERIC ? target : `${type}:${target}`);
+  for (const c of initial) creds.set(key(c.target, c.type), c);
   const written: Buffer[] = [];
   const api: CredentialApi = {
-    read: vi.fn((target: string) => creds.get(target) ?? null),
+    read: vi.fn((target: string, type: number = CRED_TYPE_GENERIC) => creds.get(key(target, type)) ?? null),
     write: vi.fn((target: string, user: string, password: Buffer, comment: string) => {
       written.push(password);
       creds.set(target, { target, type: CRED_TYPE_GENERIC, comment, user, password: password.toString('utf16le') });
@@ -58,6 +61,19 @@ describe('createCredentialStore', () => {
     expect(await createCredentialStore(api).write('TERMSRV/10.0.0.5', 'admin', 'x')).toBe('kept-existing');
     expect(api.write).not.toHaveBeenCalled();
     expect(creds.get('TERMSRV/10.0.0.5')).toEqual(foreign);
+  });
+
+  it('stages beside RDP credentials Windows saved for the same host, never touching them', async () => {
+    const saved = { target: 'TERMSRV/10.0.0.5', type: CRED_TYPE_DOMAIN_PASSWORD, comment: null };
+    const { api, creds } = fakeApi([saved]);
+    const store = createCredentialStore(api);
+
+    expect(await store.write('TERMSRV/10.0.0.5', 'admin', 'x')).toBe('staged-beside-saved');
+    expect(creds.get('TERMSRV/10.0.0.5')?.comment).toBe(CREDENTIAL_COMMENT);
+
+    await store.remove('TERMSRV/10.0.0.5');
+    await store.cleanupOwned();
+    expect([...creds.values()]).toEqual([saved]);
   });
 
   it('replaces one of its own', async () => {
@@ -112,7 +128,7 @@ describe('createCredentialStore', () => {
 
     expect(await createCredentialStore(api).cleanupOwned()).toBe(2);
 
-    expect([...creds.keys()].sort()).toEqual(['TERMSRV/10.0.0.5', 'TERMSRV/dc', 'git:https://github.com']);
+    expect([...creds.values()].map((c) => c.target).sort()).toEqual(['TERMSRV/10.0.0.5', 'TERMSRV/dc', 'git:https://github.com']);
   });
 });
 

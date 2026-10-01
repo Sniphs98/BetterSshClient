@@ -17,8 +17,8 @@ export interface StoredCredential {
 /** The handful of Win32 credential calls the RDP launch needs. All synchronous: each
  *  is a single quick system call, and `before-quit` needs them without awaiting. */
 export interface CredentialApi {
-  /** `null` when there is no such credential. */
-  read(target: string): StoredCredential | null;
+  /** `null` when there is no such credential. Generic credentials unless `type` says otherwise. */
+  read(target: string, type?: number): StoredCredential | null;
   /** `password` is UTF-16LE; the caller wipes it afterwards. */
   write(target: string, user: string, password: Buffer, comment: string): void;
   delete(target: string): boolean;
@@ -26,6 +26,8 @@ export interface CredentialApi {
 }
 
 export const CRED_TYPE_GENERIC = 1;
+/** What mstsc saves ("Remember me"); only ever read, never written or deleted. */
+export const CRED_TYPE_DOMAIN_PASSWORD = 2;
 /** CRED_MAX_CREDENTIAL_BLOB_SIZE (5 * 512 bytes). */
 export const CRED_MAX_BLOB_BYTES = 2560;
 /** Gone at sign-out even if it is never deleted. */
@@ -84,9 +86,9 @@ export function loadWindowsCredentialApi(): CredentialApi {
   };
 
   return {
-    read(target) {
+    read(target, type = CRED_TYPE_GENERIC) {
       const out: unknown[] = [null];
-      if (!CredReadW(target, CRED_TYPE_GENERIC, 0, out)) {
+      if (!CredReadW(target, type, 0, out)) {
         const code = GetLastError() as number;
         if (code === ERROR_NOT_FOUND) return null;
         throw new Error(`CredReadW failed (error ${code})`);

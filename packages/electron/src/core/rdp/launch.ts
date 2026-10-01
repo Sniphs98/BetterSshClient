@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 
 import type { RdpSettings, RemoteDesktopConnection } from '../config/remoteDesktop.js';
-import { removeCredential, stageCredential, type StageOutcome } from './credentials/index.js';
+import { holdsOurs, removeCredential, stageCredential, type StageOutcome } from './credentials/index.js';
 import { maximizeWhenConnected } from './windowsWindow.js';
 
 /**
@@ -24,8 +24,9 @@ export interface RdpLaunchResult {
    *  that's an Electron API `core/` doesn't import. */
   opened: 'mstsc' | 'xfreerdp' | 'file';
   filePath?: string;
-  /** Windows only: whether the password was staged, or a credential the user saved
-   *  themselves for this host was left to be used instead. */
+  /** Windows only: whether the password was staged (and whether Windows has RDP
+   *  credentials of its own for this host too), or another credential for this host
+   *  was left to be used instead. */
   credential?: StageOutcome;
   /** The started client, for a caller that ties something (an SSH tunnel) to its
    *  lifetime. Absent for `'file'`. */
@@ -323,12 +324,12 @@ async function launchWindows(connection: LaunchTarget): Promise<RdpLaunchResult>
     } catch (err) {
       throw new Error(`Could not hand the password to Remote Desktop: ${(err as Error).message}`);
     }
-    if (credential === 'staged') pendingCredentialHosts.add(hostname);
+    if (holdsOurs(credential)) pendingCredentialHosts.add(hostname);
   }
 
   // Whichever comes first — mstsc having connected, mstsc exiting, or the hold
   // running out — drops the credential.
-  let dropped = credential !== 'staged';
+  let dropped = !holdsOurs(credential);
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   const dropCredential = (): void => {
     if (dropped) return;
