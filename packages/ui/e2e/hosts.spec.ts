@@ -16,6 +16,9 @@ async function boot(page: Page): Promise<void> {
     ({ hosts }) => {
       const listeners: Record<string, Array<(payload: unknown) => void>> = {};
       const state: { hosts: Array<Record<string, unknown>> } = { hosts: hosts.map((h) => ({ ...h })) };
+      // What the import/export channels were called with.
+      const bundleCalls: unknown[][] = [];
+      (window as unknown as { __bundleCalls: unknown[][] }).__bundleCalls = bundleCalls;
 
       function fire(channel: string, payload: unknown): void {
         for (const cb of listeners[channel] ?? []) cb(payload);
@@ -56,6 +59,28 @@ async function boot(page: Page): Promise<void> {
               return Promise.resolve([{ id: 'pwsh', label: 'PowerShell', kind: 'powershell' }]);
             case 'terminal_open_local':
               return Promise.resolve(99);
+            case 'export_ssh_hosts':
+              bundleCalls.push([channel, ...args]);
+              return Promise.resolve('/home/user/hosts.remoty-ssh-hosts.json');
+            case 'preview_ssh_hosts_import':
+              // web-1 is taken here (same machine, so overwrite is preselected); db is new
+              // and goes through web-1.
+              return Promise.resolve({
+                token: 't1',
+                fileName: 'team.remoty-ssh-hosts.json',
+                hosts: [
+                  { key: 'db', name: 'db', detail: 'postgres@db.internal:22', conflict: false, suggestedName: 'db', defaultAction: 'rename', onePassword: true, references: ['op://IT/x/password'], passwordOmitted: false, keyOmitted: false, usedBy: [] },
+                  { key: 'web-1', name: 'web-1', detail: 'deploy@web-1.example.com:22', conflict: true, suggestedName: 'web-1 (2)', defaultAction: 'overwrite', onePassword: false, references: [], passwordOmitted: false, keyOmitted: true, usedBy: ['db'] }
+                ],
+                profiles: [],
+                missingTunnelHosts: []
+              });
+            case 'apply_connection_import':
+              bundleCalls.push([channel, ...args]);
+              // The real command saves and reloads the hosts, which broadcasts them.
+              state.hosts.push({ name: 'db', hostname: 'db.internal', user: 'postgres', port: 22, tags: [], source: 'manual', hasKey: false, passwordRef: 'op://IT/db/password' });
+              setTimeout(() => fire('hosts-loaded', [...state.hosts]), 0);
+              return Promise.resolve({ hosts: 2, profiles: 0 });
             case 'delete_host':
               state.hosts = state.hosts.filter((x) => (x as { name: string }).name !== args[0]);
               return Promise.resolve(null);
@@ -251,4 +276,36 @@ test('"New folder" makes an empty section to drag cards into; an empty folder ca
   await page.getByRole('button', { name: 'Remove folder Homelab' }).click();
   await expect(section('Homelab')).toHaveCount(0);
   await expect(section('Hosts')).toBeVisible();
+});
+
+test('hosts export to a file — one, a folder, or all — and an import asks about taken names', async ({ page }) => {
+  await boot(page);
+  const calls = () => page.evaluate(() => (window as unknown as { __bundleCalls: unknown[][] }).__bundleCalls);
+
+  await page.getByRole('button', { name: 'Export web-1' }).click();
+  await page.getByRole('button', { name: 'Export all' }).click();
+  await expect.poll(calls).toEqual([
+    ['export_ssh_hosts', ['web-1']],
+    ['export_ssh_hosts', ['web-1', 'imported'], 'ssh-hosts']
+  ]);
+
+  // A folder's header exports the hosts in it.
+  await page.getByRole('button', { name: 'Edit web-1' }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit host' });
+  await editor.getByLabel('Folder').fill('Homelab');
+  await editor.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Export folder Homelab' }).click();
+  await expect.poll(async () => (await calls()).at(-1)).toEqual(['export_ssh_hosts', ['web-1'], 'Homelab']);
+
+  await page.getByRole('button', { name: 'Import…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Import SSH hosts' });
+  await expect(dialog.getByText('used by db')).toBeVisible();
+  await expect(dialog.getByText('signs in with your SSH agent or ~/.ssh key')).toBeVisible();
+  await expect(dialog.getByRole('radio', { name: 'Overwrite' })).toHaveAttribute('aria-checked', 'true');
+  await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Imported 2 SSH hosts.')).toBeVisible();
+  await expect(page.getByText('db', { exact: true })).toBeVisible();
+  expect((await calls()).at(-1)).toEqual(['apply_connection_import', 't1', { hosts: { 'web-1': { action: 'overwrite' } }, profiles: {} }]);
 });

@@ -4,12 +4,14 @@
   // native RDP client as its own external window — no in-app session/tab, unlike
   // Terminal/SFTP. Mirrors the Snippets screen's list+CRUD shape. VNC is a later pass.
   import { onMount } from 'svelte';
-  import type { RemoteDesktopConnectionDto, RemoteDesktopConnectionInputDto } from '$lib/bindings';
+  import type { ConnectionImportPreviewDto, RemoteDesktopConnectionDto, RemoteDesktopConnectionInputDto } from '$lib/bindings';
   import { Surface, Chip, Icon, Button } from '$lib/theme';
   import {
     listRemoteDesktopConnections,
     saveRemoteDesktopConnection,
     deleteRemoteDesktopConnection,
+    exportRdpProfiles,
+    previewRdpProfilesImport,
     rdpLaunch
   } from '$lib/ipc/commands';
   import { remoteDesktopConnections } from '$lib/stores/remoteDesktop';
@@ -21,12 +23,15 @@
   import { addressLine } from './onePasswordRef';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import RemoteDesktopEditor from './RemoteDesktopEditor.svelte';
+  import ConnectionImportDialog from './ConnectionImportDialog.svelte';
+  import { importSummary } from './connectionImport';
   import Modal from '$lib/components/Modal.svelte';
 
   type Dialog =
     | { kind: 'add' }
     | { kind: 'edit'; connection: RemoteDesktopConnectionDto }
-    | { kind: 'delete'; connection: RemoteDesktopConnectionDto };
+    | { kind: 'delete'; connection: RemoteDesktopConnectionDto }
+    | { kind: 'import'; preview: ConnectionImportPreviewDto };
 
   let query = $state('');
   let dialog = $state<Dialog | null>(null);
@@ -64,6 +69,31 @@
     dialog = null;
   }
 
+  function showNotice(text: string): void {
+    notice = text;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => (notice = null), 12_000);
+  }
+
+  /** Saves profiles to a file to share — without passwords; 1Password references stay. */
+  async function exportProfiles(ids: string[], label?: string): Promise<void> {
+    try {
+      await exportRdpProfiles(ids, label);
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
+  /** Reads a profiles file; the dialog then settles name conflicts before importing. */
+  async function startImport(): Promise<void> {
+    try {
+      const preview = await previewRdpProfilesImport();
+      if (preview) dialog = { kind: 'import', preview };
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
   /** Opens the connection in a tab inside the app — or goes to its tab if it has one. */
   function connect(connection: RemoteDesktopConnectionDto): void {
     const open = $sessions.find((s) => s.kind === 'rdp' && s.rdpConnectionId === connection.id);
@@ -77,11 +107,7 @@
     notice = null;
     try {
       const result = await rdpLaunch(connection.id);
-      if (result?.notice) {
-        notice = result.notice;
-        clearTimeout(noticeTimer);
-        noticeTimer = setTimeout(() => (notice = null), 12_000);
-      }
+      if (result?.notice) showNotice(result.notice);
     } catch (e) {
       lastError.set(message(e));
     } finally {
@@ -107,6 +133,21 @@
     <div class="ml-auto w-full max-w-xs">
       <input bind:value={query} class={search} placeholder="Search connections…" aria-label="Search connections" />
     </div>
+    <button type="button" class={pill} title="Import remote desktop profiles from a file" onclick={startImport}>
+      <Icon name="upload" size={13} />
+      Import…
+    </button>
+    {#if $remoteDesktopConnections.length > 0}
+      <button
+        type="button"
+        class={pill}
+        title="Export every profile to a file, without passwords"
+        onclick={() => exportProfiles($remoteDesktopConnections.map((c) => c.id), 'rdp-profiles')}
+      >
+        <Icon name="download" size={13} />
+        Export all
+      </button>
+    {/if}
     <button type="button" class={pill} onclick={() => (dialog = { kind: 'add' })}>
       <Icon name="plus" size={13} />
       New connection
@@ -208,6 +249,15 @@
               <button
                 type="button"
                 class={iconBtn}
+                title="Export {connection.name} to a file, without its password"
+                aria-label="Export {connection.name}"
+                onclick={() => exportProfiles([connection.id])}
+              >
+                <Icon name="download" size={14} />
+              </button>
+              <button
+                type="button"
+                class={iconBtn}
                 title="Delete {connection.name}"
                 aria-label="Delete {connection.name}"
                 onclick={() => (dialog = { kind: 'delete', connection })}
@@ -250,6 +300,17 @@
     initial={formFromConnection(connection)}
     onSubmit={submit}
     onCancel={() => (dialog = null)}
+  />
+{:else if dialog?.kind === 'import'}
+  <ConnectionImportDialog
+    title="Import remote desktop profiles"
+    preview={dialog.preview}
+    onCancel={() => (dialog = null)}
+    onDone={(result) => {
+      dialog = null;
+      showNotice(importSummary(result));
+      void refresh();
+    }}
   />
 {:else if dialog?.kind === 'delete'}
   {@const connection = dialog.connection}

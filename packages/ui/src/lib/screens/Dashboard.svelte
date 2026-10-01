@@ -8,7 +8,7 @@
   // written, so only Delete stays manual-only.
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import type { HostDto, HostInputDto, TerminalProfileDto } from '$lib/bindings';
+  import type { ConnectionImportPreviewDto, HostDto, HostInputDto, TerminalProfileDto } from '$lib/bindings';
   import { Surface, Chip, StatusDot, Icon, Button, statusToken } from '$lib/theme';
   import { serverCards, filterHosts, QUICK_ACTIONS, type ServerCard } from './serverCard';
   import { folderNameProblem, folderNames, groupCards, LOCAL_KEY } from './dashboardSections';
@@ -18,11 +18,22 @@
   import { addressLine } from './onePasswordRef';
   import { hosts } from '$lib/stores/hosts';
   import { lastError } from '$lib/stores/notifications';
-  import { saveHost, deleteHost, reloadHosts, startKeySetup, refreshMetrics, terminalProfiles } from '$lib/ipc/commands';
+  import {
+    saveHost,
+    deleteHost,
+    reloadHosts,
+    startKeySetup,
+    refreshMetrics,
+    terminalProfiles,
+    exportSshHosts,
+    previewSshHostsImport
+  } from '$lib/ipc/commands';
   import { isRefreshHotkey } from '$lib/stores/ui';
   import { beginKeySetup, dismissKeySetup } from '$lib/stores/keySetup';
   import { emptyForm, formFromHost, formToInput } from './hostForm';
   import HostEditor from './HostEditor.svelte';
+  import ConnectionImportDialog from './ConnectionImportDialog.svelte';
+  import { importSummary } from './connectionImport';
   import Modal from '$lib/components/Modal.svelte';
 
   type Dialog =
@@ -30,7 +41,8 @@
     | { kind: 'edit'; host: HostDto }
     | { kind: 'delete'; host: HostDto }
     | { kind: 'keySetupConfirm'; host: HostDto }
-    | { kind: 'newFolder' };
+    | { kind: 'newFolder' }
+    | { kind: 'import'; preview: ConnectionImportPreviewDto };
 
   let dialog = $state<Dialog | null>(null);
   // Reset to the safer default (disable password login) each time the confirm dialog
@@ -48,6 +60,35 @@
   const sections = $derived(groupCards(visibleCards, query.trim() ? [] : $keptFolders));
   // Every folder a host is in is kept, so it outlives its last card (dragged out).
   $effect(() => keptFolders.keepAll(folderNames($hosts)));
+
+  // Export/import of hosts as a file to share (connectionBundles.ts in the main process):
+  // never with a password or key path; 1Password references and jump hosts come along.
+  let notice = $state<string | null>(null);
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function exportHosts(names: string[], label?: string): Promise<void> {
+    try {
+      await exportSshHosts(names, label);
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
+  async function startImport(): Promise<void> {
+    try {
+      const preview = await previewSshHostsImport();
+      if (preview) dialog = { kind: 'import', preview };
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
+  function importDone(text: string): void {
+    dialog = null;
+    notice = text;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => (notice = null), 8_000);
+  }
 
   // "New folder": an empty section to drag cards into.
   let newFolderName = $state('');
@@ -270,6 +311,21 @@
           <Icon name="refresh" size={15} />
         </span>
       </button>
+      <button type="button" class={pill} title="Import SSH hosts from a file" onclick={startImport}>
+        <Icon name="upload" size={13} />
+        Import…
+      </button>
+      {#if $hosts.length > 0}
+        <button
+          type="button"
+          class={pill}
+          title="Export every host to a file, without passwords or keys"
+          onclick={() => exportHosts($hosts.map((h) => h.name), 'ssh-hosts')}
+        >
+          <Icon name="download" size={13} />
+          Export all
+        </button>
+      {/if}
       <button type="button" class={pill} onclick={openNewFolder}>
         <Icon name="folder" size={13} />
         New folder
@@ -280,6 +336,10 @@
       </button>
     </div>
   </div>
+
+  {#if notice}
+    <p class="mb-4 rounded-lg bg-surface-inset px-3 py-2 text-sm text-muted" role="status">{notice}</p>
+  {/if}
 
   <!-- This computer: the local shells, always first (a fixed section, not a folder). -->
   {#if visibleLocal.length > 0}
@@ -373,6 +433,17 @@
     <span class="truncate">{title}</span>
     <span class="rounded-full bg-surface-inset px-1.5 text-[11px] font-medium text-faint">{count}</span>
   </button>
+  {#if folder && count > 0}
+    <button
+      type="button"
+      class={iconBtn}
+      title="Export the hosts in {title} to a file, without passwords or keys"
+      aria-label="Export folder {title}"
+      onclick={() => exportHosts($hosts.filter((h) => h.folder === folder).map((h) => h.name), folder)}
+    >
+      <Icon name="download" size={13} />
+    </button>
+  {/if}
   <!-- Only an empty folder can go: one with hosts in it would just come back. -->
   {#if folder && count === 0}
     <button
@@ -470,6 +541,15 @@
             <button
               type="button"
               class={iconBtn}
+              title="Export {card.host.name} to a file, without its password or key"
+              aria-label="Export {card.host.name}"
+              onclick={() => exportHosts([card.host.name])}
+            >
+              <Icon name="download" size={14} />
+            </button>
+            <button
+              type="button"
+              class={iconBtn}
               title="Edit {card.host.name}"
               aria-label="Edit {card.host.name}"
               onclick={() => (dialog = { kind: 'edit', host: card.host })}
@@ -557,7 +637,15 @@
       </Surface>
 {/snippet}
 
-{#if dialog?.kind === 'newFolder'}
+{#if dialog?.kind === 'import'}
+  <!-- The import reloads the hosts itself (hosts-loaded), so the grid updates on its own. -->
+  <ConnectionImportDialog
+    title="Import SSH hosts"
+    preview={dialog.preview}
+    onCancel={() => (dialog = null)}
+    onDone={(result) => importDone(importSummary(result))}
+  />
+{:else if dialog?.kind === 'newFolder'}
   <Modal label="New folder" onClose={() => (dialog = null)}>
     <form
       class="space-y-3 px-5 py-4"

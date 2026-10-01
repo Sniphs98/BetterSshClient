@@ -12,6 +12,9 @@ import type {
   GitHubWorkflowInputDto,
   FileEntryDto,
   AutomationDto,
+  ConnectionImportDecisionsDto,
+  ConnectionImportPreviewDto,
+  ConnectionImportResultDto,
   HostDto,
   HostInputDto,
   ImportResultDto,
@@ -362,6 +365,53 @@ export async function importBundle(): Promise<ImportResultDto | null> {
   const res = await commands.importBundle();
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
+}
+
+/** Saves the named hosts — and the jump hosts they go through — to a file the user
+ *  picks, without passwords or key paths (1Password references stay). `label` names
+ *  the file by default. Resolves the chosen path, or `null` if the dialog was canceled. */
+export async function exportSshHosts(names: string[], label?: string): Promise<string | null> {
+  const res = await commands.exportSshHosts(names, label);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Same as `exportSshHosts`, for RDP profiles (by id), with the SSH hosts they tunnel
+ *  through. */
+export async function exportRdpProfiles(ids: string[], label?: string): Promise<string | null> {
+  const res = await commands.exportRdpProfiles(ids, label);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Asks for an SSH hosts file and reads it, nothing written yet: what it holds, and
+ *  which names are taken here. `null` if the dialog was canceled. */
+export async function previewSshHostsImport(): Promise<ConnectionImportPreviewDto | null> {
+  const res = await commands.previewSshHostsImport();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Same as `previewSshHostsImport`, for an RDP profiles file. */
+export async function previewRdpProfilesImport(): Promise<ConnectionImportPreviewDto | null> {
+  const res = await commands.previewRdpProfilesImport();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Imports a previewed file with the user's overwrite/rename choices. */
+export async function applyConnectionImport(
+  token: string,
+  decisions: ConnectionImportDecisionsDto
+): Promise<ConnectionImportResultDto> {
+  const res = await commands.applyConnectionImport(token, decisions);
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
+/** Drops a previewed file the user decided not to import. */
+export async function discardConnectionImport(token: string): Promise<void> {
+  await commands.discardConnectionImport(token);
 }
 
 /** Read the saved RDP/VNC connection profiles. */

@@ -64,6 +64,15 @@ export function removeHost(hosts: Host[], name: string): void {
   if (idx !== -1) hosts.splice(idx, 1);
 }
 
+/** Re-reads hosts.toml + ~/.ssh/config, tells the renderer (`hosts-loaded`) and
+ *  restarts the pollers for the new list. */
+export async function reloadHostsState(state: GuiState): Promise<void> {
+  const hosts = await loadAllHosts();
+  state.setHosts(hosts);
+  state.emit('hosts-loaded', state.hostDtos());
+  await state.restartPollers();
+}
+
 async function persist(mutate: (hosts: Host[]) => void): Promise<void> {
   const hosts = await loadHosts();
   mutate(hosts);
@@ -86,10 +95,7 @@ export function registerHostsIpc(ipcMain: IpcMain, state: GuiState): void {
     if (state.claimUpdateCheck()) void startupUpdateCheck(state);
 
     try {
-      const hosts = await loadAllHosts();
-      state.setHosts(hosts);
-      state.emit('hosts-loaded', state.hostDtos());
-      await state.restartPollers();
+      await reloadHostsState(state);
     } catch (err) {
       throw toCommandError(err);
     }

@@ -144,6 +144,38 @@ function resolveHop(spec: JumpSpec, known: Host[]): Host {
   return host;
 }
 
+/** The host part of every hop in a ProxyJump value (`ops@bastion:2222,b` →
+ *  `['bastion', 'b']`), for finding the host entries it names. Empty for a direct
+ *  host, or a value too broken to connect through anyway. */
+export function jumpHopHosts(value: string | undefined): string[] {
+  const spec = value?.trim();
+  if (spec === undefined || spec === '' || spec.toLowerCase() === 'none') return [];
+  try {
+    return parseJumpSpec(spec).map((hop) => hop.host);
+  } catch {
+    return [];
+  }
+}
+
+/** `value` with each hop whose host `rename` maps rewritten to the new name, keeping
+ *  its `user@` and `:port`; every other hop is left exactly as written. */
+export function renameJumpHops(value: string, rename: (host: string) => string | undefined): string {
+  return value
+    .split(',')
+    .map((rawHop) => {
+      let hop: JumpSpec;
+      try {
+        hop = parseHop(rawHop);
+      } catch {
+        return rawHop;
+      }
+      const name = rename(hop.host);
+      if (name === undefined) return rawHop;
+      return `${hop.user !== undefined ? `${hop.user}@` : ''}${name}${hop.port !== undefined ? `:${hop.port}` : ''}`;
+    })
+    .join(',');
+}
+
 /** Splits a ProxyJump value into its comma-separated hops, nearest first.
  *  An unusable hop fails the whole value: dropping it would shorten the
  *  route, and dropping the only hop would connect straight to the target —
