@@ -42,9 +42,17 @@ export function bumpVersion(version, bump) {
   return `${major}.${minor}.${patch + 1}`;
 }
 
-/** A commit message's Conventional Commit parts, or `undefined` if it isn't one. */
+/** A commit message's Conventional Commit parts, or `undefined` if it isn't one.
+ *  A GitHub merge commit ("Merge pull request #12 from …") is read by the pull
+ *  request's title, which GitHub puts in its body — so a PR titled `feat: …` releases
+ *  whether it was squashed or merged. */
 export function parseCommit(message) {
-  const [subject = '', ...rest] = message.trim().split('\n');
+  const lines = message.trim().split('\n');
+  if (/^Merge pull request #\d+ from \S+/.test(lines[0] ?? '')) {
+    const title = lines.slice(1).findIndex((l) => l.trim() !== '');
+    return title === -1 ? undefined : parseCommit(lines.slice(1 + title).join('\n'));
+  }
+  const [subject = '', ...rest] = lines;
   const match = /^(\w+)(?:\(([^)]*)\))?(!)?:\s+(.+)$/.exec(subject.trim());
   if (!match) return undefined;
   const body = rest.join('\n');
@@ -99,8 +107,9 @@ export function releaseNotes(messages, { previousTag, version, repo } = {}) {
     const commit = parseCommit(message);
     if (!commit) continue;
     const line = `- ${commit.scope ? `**${commit.scope}:** ` : ''}${commit.summary}`;
-    if (commit.breaking) groups.get('breaking').push(line);
-    else if (groups.has(commit.type)) groups.get(commit.type).push(line);
+    const group = commit.breaking ? groups.get('breaking') : groups.get(commit.type);
+    // A merged PR's title and its own commits may say the same thing.
+    if (group && !group.includes(line)) group.push(line);
   }
   const parts = [];
   for (const [key, title] of SECTIONS) {
