@@ -11,7 +11,7 @@
     onClose,
     size = 'default',
     children
-  }: { label: string; onClose: () => void; size?: 'default' | 'large'; children: Snippet } = $props();
+  }: { label: string; onClose: () => void; size?: 'default' | 'large' | 'wide'; children: Snippet } = $props();
 
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Escape') {
@@ -39,7 +39,7 @@
 
   <div
     class="relative flex w-full flex-col overflow-hidden rounded-2xl border border-default bg-surface-raised shadow-soft
-      {size === 'large' ? 'max-h-[85vh] max-w-4xl' : 'max-h-[76vh] max-w-lg'}"
+      {size === 'wide' ? 'max-h-[88vh] max-w-6xl' : size === 'large' ? 'max-h-[85vh] max-w-4xl' : 'max-h-[76vh] max-w-lg'}"
   >
     {@render children()}
   </div>
