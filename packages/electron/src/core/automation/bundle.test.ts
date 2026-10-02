@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSnippetBundle,
   buildAutomationBundle,
+  buildLibraryBundle,
   mergeSnippetBundle,
   mergeAutomationBundle,
+  mergeLibraryBundle,
   parseBundle,
   type SnippetBundle,
   type AutomationBundle
@@ -203,5 +205,45 @@ describe('bundles exported before the rename', () => {
     expect(parseBundle(legacy).kind).toBe('remoty-automation');
     const snippetFile = { kind: 'better-ssh-client-snippet', version: 1, snippet: snippet({ id: 'a1', name: 'Build' }) };
     expect(parseBundle(snippetFile).kind).toBe('remoty-snippet');
+  });
+});
+
+describe('library bundles (every automation and snippet)', () => {
+  const build = snippet({ id: 'a1', name: 'Build' });
+  const spare = snippet({ id: 'a2', name: 'Not used by any automation' });
+  const deploy = automation({
+    name: 'deploy',
+    params: [{ name: 'host', kind: 'host' }],
+    nodes: [
+      node({ id: 'n1', snippetId: 'a1' }),
+      node({
+        id: 'u',
+        snippetId: '',
+        target: 'remote',
+        upload: { from: '/tmp/frontend.tar.gz', to: '/tmp/', source: 'wsl', wslDistro: 'Ubuntu' }
+      })
+    ],
+    edges: [{ from: 'n1', to: 'u' }]
+  });
+  const backup = automation({ name: 'backup', nodes: [node({ id: 'b1', snippetId: 'a1' })] });
+
+  it('carries the whole library, snippets no automation uses included, and comes back through JSON', () => {
+    const bundle = buildLibraryBundle([deploy, backup], [build, spare]);
+    expect(bundle).toEqual({ kind: 'remoty-library', version: 1, automations: [deploy, backup], snippets: [build, spare] });
+    expect(parseBundle(JSON.parse(JSON.stringify(bundle)))).toEqual(bundle);
+  });
+
+  it('merges with fresh snippet ids, remapped nodes, and renamed clashes — also within the file', () => {
+    const bundle = buildLibraryBundle([deploy, backup, { ...backup }], [build, spare]);
+    const existing = automation({ name: 'deploy', nodes: [] });
+    const merged = mergeLibraryBundle(bundle, [snippet({ id: 'mine', name: 'Mine' })], [existing]);
+
+    expect(merged.snippets.map((a) => a.name)).toEqual(['Mine', 'Build', 'Not used by any automation']);
+    const newBuildId = merged.snippets[1].id;
+    expect(newBuildId).not.toBe('a1');
+    expect(merged.automations.map((f) => f.name)).toEqual(['deploy', 'deploy (2)', 'backup', 'backup (2)']);
+    expect(merged.automations[1].nodes.map((n) => n.snippetId)).toEqual([newBuildId, '']);
+    expect(merged.automations[1].nodes[1].upload).toEqual(deploy.nodes[1].upload);
+    expect(merged.result).toEqual({ kind: 'library', name: '3 automations, 2 snippets' });
   });
 });

@@ -89,8 +89,9 @@ async function boot(page: Page): Promise<void> {
           }
           case 'export_snippet':
           case 'export_automation':
+          case 'export_all_automations':
             exportCalls.push({ channel, args });
-            return Promise.resolve(`/fake/path/${String(args[0])}.json`);
+            return Promise.resolve(`/fake/path/${String(args[0] ?? 'all')}.json`);
           case 'import_bundle': {
             // Simulates the user picking a file that bundles one new Snippet —
             // the real merge/parse logic is covered by bundle.test.ts on the electron
@@ -659,6 +660,16 @@ test('export and import — sharing a snippet or automation as a file', async ({
   );
   expect(calls).toHaveLength(2);
   expect(calls[1]).toEqual({ channel: 'export_automation', args: ['release'] });
+
+  // Or everything at once: every automation and the whole snippet library.
+  await page.getByRole('button', { name: 'Export all…' }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __exportCalls: unknown[] }).__exportCalls.length))
+    .toBe(3);
+  const allCall = await page.evaluate(
+    () => (window as unknown as { __exportCalls: Array<{ channel: string; args: unknown[] }> }).__exportCalls[2]
+  );
+  expect(allCall).toEqual({ channel: 'export_all_automations', args: [] });
 
   // Importing adds whatever the (stubbed) file picker returned straight to the
   // library — no second click needed to place it, unlike picking from a list.

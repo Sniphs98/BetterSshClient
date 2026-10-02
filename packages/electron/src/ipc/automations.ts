@@ -13,8 +13,10 @@ import { missingParamValues, runAutomation, validateAutomation, type RunAutomati
 import {
   buildSnippetBundle,
   buildAutomationBundle,
+  buildLibraryBundle,
   mergeSnippetBundle,
   mergeAutomationBundle,
+  mergeLibraryBundle,
   parseBundle
 } from '../core/automation/bundle.js';
 import type { Snippet, Automation } from '../core/automation/types.js';
@@ -178,10 +180,28 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
     }
   });
 
+  // Every automation and the whole snippet library in one file — to share a whole setup.
+  ipcMain.handle('export_all_automations', async (): Promise<string | null> => {
+    try {
+      const [automations, snippets] = await Promise.all([loadAutomations(), loadSnippets()]);
+      const bundle = buildLibraryBundle(automations, snippets);
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export all automations and snippets',
+        defaultPath: 'remoty-automations.remoty-library.json',
+        filters: [{ name: 'Remoty automations and snippets', extensions: ['json'] }]
+      });
+      if (canceled || !filePath) return null;
+      await writeFile(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
+      return filePath;
+    } catch (err) {
+      throw toCommandError(err);
+    }
+  });
+
   ipcMain.handle('import_bundle', async (): Promise<ImportResultDto | null> => {
     try {
       const { canceled, filePaths } = await dialog.showOpenDialog({
-        title: 'Import snippet or automation',
+        title: 'Import snippets or automations',
         filters: [{ name: 'Remoty snippet/automation', extensions: ['json'] }],
         properties: ['openFile']
       });
@@ -202,7 +222,10 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
         await saveSnippets(merged.snippets);
         return merged.result;
       }
-      const merged = mergeAutomationBundle(bundle, snippets, automations);
+      const merged =
+        bundle.kind === 'remoty-library'
+          ? mergeLibraryBundle(bundle, snippets, automations)
+          : mergeAutomationBundle(bundle, snippets, automations);
       await saveSnippets(merged.snippets);
       await saveAutomations(merged.automations);
       return merged.result;

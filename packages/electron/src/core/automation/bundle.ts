@@ -27,7 +27,16 @@ export interface AutomationBundle {
   snippets: Snippet[];
 }
 
-export type Bundle = SnippetBundle | AutomationBundle;
+/** Everything at once — every automation and the whole snippet library (snippets no
+ *  automation uses included), to move a whole setup to another machine or person. */
+export interface LibraryBundle {
+  kind: 'remoty-library';
+  version: number;
+  automations: Automation[];
+  snippets: Snippet[];
+}
+
+export type Bundle = SnippetBundle | AutomationBundle | LibraryBundle;
 
 export function buildSnippetBundle(snippet: Snippet): SnippetBundle {
   return { kind: 'remoty-snippet', version: BUNDLE_VERSION, snippet };
@@ -50,6 +59,10 @@ export function buildAutomationBundle(automation: Automation, snippetsById: Map<
     snippets.push(snippet);
   }
   return { kind: 'remoty-automation', version: BUNDLE_VERSION, automation, snippets };
+}
+
+export function buildLibraryBundle(automations: Automation[], snippets: Snippet[]): LibraryBundle {
+  return { kind: 'remoty-library', version: BUNDLE_VERSION, automations, snippets };
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +95,11 @@ function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
   if (o.upload !== undefined && o.upload !== null) {
     const u = obj(o.upload, `${ctx}.upload`);
     upload = { from: str(u.from, `${ctx}.upload.from`), to: str(u.to, `${ctx}.upload.to`) };
+    if (u.source === 'wsl') {
+      upload.source = 'wsl';
+      const distro = optionalStr(u.wslDistro, `${ctx}.upload.wslDistro`);
+      if (distro) upload.wslDistro = distro;
+    }
   }
   const github = o.github === undefined || o.github === null ? undefined : parseGitHubStep(o.github, `${ctx}.github`);
   return {
@@ -130,7 +148,7 @@ function parseAutomation(raw: unknown, ctx: string): Automation {
 
 const NAMES = ['remoty', 'better-ssh-client', 'omnyssh'];
 
-function isKind(kind: unknown, what: 'snippet' | 'automation'): boolean {
+function isKind(kind: unknown, what: 'snippet' | 'automation' | 'library'): boolean {
   return NAMES.some((name) => kind === `${name}-${what}`);
 }
 
@@ -155,11 +173,20 @@ export function parseBundle(raw: unknown): Bundle {
       snippets: arr(o.snippets, 'file.snippets').map((a, i) => parseSnippet(a, `file.snippets[${i}]`))
     };
   }
+  if (isKind(o.kind, 'library')) {
+    return {
+      kind: 'remoty-library',
+      version: num(o.version, 'file.version'),
+      automations: arr(o.automations, 'file.automations').map((f, i) => parseAutomation(f, `file.automations[${i}]`)),
+      snippets: arr(o.snippets, 'file.snippets').map((a, i) => parseSnippet(a, `file.snippets[${i}]`))
+    };
+  }
   throw new Error('not a Remoty snippet/automation file');
 }
 
 export interface ImportResult {
-  kind: 'snippet' | 'automation';
+  kind: 'snippet' | 'automation' | 'library';
+  /** The snippet's or automation's name — for a library, what it held ("3 automations, 5 snippets"). */
   name: string;
 }
 
@@ -201,5 +228,39 @@ export function mergeAutomationBundle(
     snippets: [...snippets, ...importedSnippets],
     automations: [...automations, importedAutomation],
     result: { kind: 'automation', name }
+  };
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/** Adds every bundled Snippet and Automation, as `mergeAutomationBundle` does for one:
+ *  fresh snippet ids with every node remapped to them, and an automation renamed when its
+ *  name is already taken — here or by one imported before it from the same file. */
+export function mergeLibraryBundle(
+  bundle: LibraryBundle,
+  snippets: Snippet[],
+  automations: Automation[]
+): { snippets: Snippet[]; automations: Automation[]; result: ImportResult } {
+  const idMap = new Map<string, string>();
+  const importedSnippets = bundle.snippets.map((a) => {
+    const id = randomUUID();
+    idMap.set(a.id, id);
+    return { ...a, id };
+  });
+  const taken = new Set(automations.map((f) => f.name));
+  const importedAutomations = bundle.automations.map((f) => {
+    const name = uniqueName(f.name, taken);
+    taken.add(name);
+    return { ...f, name, nodes: f.nodes.map((n) => ({ ...n, snippetId: idMap.get(n.snippetId) ?? n.snippetId })) };
+  });
+  return {
+    snippets: [...snippets, ...importedSnippets],
+    automations: [...automations, ...importedAutomations],
+    result: {
+      kind: 'library',
+      name: `${plural(importedAutomations.length, 'automation')}, ${plural(importedSnippets.length, 'snippet')}`
+    }
   };
 }

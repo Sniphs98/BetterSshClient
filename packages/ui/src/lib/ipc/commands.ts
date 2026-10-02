@@ -357,6 +357,15 @@ export async function exportAutomation(name: string): Promise<string | null> {
   return res.data;
 }
 
+/** Every automation and the whole snippet library in one file (a save dialog) — to move
+ *  a whole setup to another machine or person. Resolves the chosen path, or `null` if
+ *  the dialog was canceled. */
+export async function exportAllAutomations(): Promise<string | null> {
+  const res = await commands.exportAllAutomations();
+  if (res.status === 'error') throw new Error(res.error.message);
+  return res.data;
+}
+
 /** Prompts a native open dialog for an exported `.json` file and merges it into the
  *  local library (a fresh id for every imported Snippet; an imported Automation is renamed
  *  on a name collision rather than overwriting the existing one). Resolves what was
