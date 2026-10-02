@@ -16,6 +16,7 @@
     deleteAutomation,
     exportSnippet,
     exportAutomation,
+    exportAllAutomations,
     importBundle
   } from '$lib/ipc/commands';
   import { snippets, automations, automationsTab, automationRun, runAutomationNow } from '$lib/stores/automations';
@@ -96,6 +97,14 @@
     }
   }
 
+  async function exportAllAction(): Promise<void> {
+    try {
+      await exportAllAutomations();
+    } catch (e) {
+      lastError.set(message(e));
+    }
+  }
+
   async function importAction(): Promise<void> {
     try {
       const result = await importBundle();
@@ -139,7 +148,7 @@
         <Icon name="arrow-left" size={18} />
       </button>
       <h1 class="text-lg font-semibold tracking-tight">Snippet library</h1>
-      <button type="button" class="{pill} ml-auto" title="Import a snippet or automation from a file" onclick={importAction}>
+      <button type="button" class="{pill} ml-auto" title="Import snippets or automations from a file" onclick={importAction}>
         <Icon name="upload" size={13} />
         Import…
       </button>
@@ -156,9 +165,19 @@
       >
         Manage snippets
       </button>
-      <button type="button" class={pill} title="Import a snippet or automation from a file" onclick={importAction}>
+      <button type="button" class={pill} title="Import snippets or automations from a file" onclick={importAction}>
         <Icon name="upload" size={13} />
         Import…
+      </button>
+      <button
+        type="button"
+        class={pill}
+        title="Export every automation and every snippet to one file"
+        disabled={$automations.length === 0 && $snippets.length === 0}
+        onclick={exportAllAction}
+      >
+        <Icon name="download" size={13} />
+        Export all…
       </button>
       <button type="button" class={pill} onclick={() => activeEntity.selectAutomation(null)}>
         <Icon name="plus" size={13} />

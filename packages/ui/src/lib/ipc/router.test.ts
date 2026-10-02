@@ -235,7 +235,7 @@ describe('ipc event router', () => {
     let run = get(automationRun);
     expect(run?.phase.kind).toBe('running');
     if (run?.phase.kind === 'running') {
-      expect(run.phase.nodes.get('n1')).toEqual({ status: 'running', label: 'build' });
+      expect(run.phase.nodes.get('n1')).toEqual({ status: 'running', label: 'build', startedAt: expect.any(Number) });
     }
 
     applyAutomationNodeResult({ automationName: 'deploy', nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 });
@@ -255,7 +255,9 @@ describe('ipc event router', () => {
     });
     expect(get(automationRun)).toEqual({
       automationName: 'deploy',
-      phase: { kind: 'completed', results: [{ nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 }] }
+      phase: { kind: 'completed', results: [{ nodeId: 'n1', label: 'build', status: 'success', output: 'ok', durationMs: 12 }] },
+      startedAt: expect.any(Number),
+      finishedAt: expect.any(Number)
     });
     dismissAutomationRun();
   });

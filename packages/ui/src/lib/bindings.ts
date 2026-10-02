@@ -180,6 +180,9 @@ export const commands = {
   async exportAutomation(name: string): Promise<Result<string | null, CommandError>> {
     return call('export_automation', name);
   },
+  async exportAllAutomations(): Promise<Result<string | null, CommandError>> {
+    return call('export_all_automations');
+  },
   async importBundle(): Promise<Result<ImportResultDto | null, CommandError>> {
     return call('import_bundle');
   },
@@ -472,7 +475,7 @@ export type HostsLoaded = HostDto[];
 /** What `import_bundle` resolves with — `null` when the file picker was canceled,
  *  otherwise which kind of thing was added and under what name (an Automation's may differ
  *  from the file's own, if it collided with an existing one). */
-export type ImportResultDto = { kind: 'snippet' | 'automation'; name: string };
+export type ImportResultDto = { kind: 'snippet' | 'automation' | 'library'; name: string };
 /** One entry of an SSH-host or RDP-profile file, as the import dialog lists it. */
 export type ConnectionImportEntryDto = {
   /** What the decision for this entry is keyed by. */

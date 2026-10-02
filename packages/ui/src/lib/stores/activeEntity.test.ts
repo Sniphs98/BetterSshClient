@@ -48,3 +48,32 @@ describe('activeEntity — exactly one active', () => {
     expect(get(activeEntity)).toEqual({ kind: 'automation', automationName: 'release' });
   });
 });
+
+describe('activeEntity — leave guard', () => {
+  beforeEach(() => activeEntity.selectDashboard());
+
+  it('holds a switch the guard intercepts, and lets it through when the guard says so', () => {
+    activeEntity.selectAutomation('deploy');
+    let held: (() => void) | undefined;
+    const remove = activeEntity.setLeaveGuard((leave) => {
+      held = leave;
+      return true;
+    });
+    activeEntity.selectSettings();
+    expect(get(activeEntity)).toEqual({ kind: 'automation', automationName: 'deploy' });
+    held?.();
+    expect(get(activeEntity)).toEqual({ kind: 'settings' });
+    remove();
+  });
+
+  it('lets every switch through once removed, or when the guard declines', () => {
+    const remove = activeEntity.setLeaveGuard(() => false);
+    activeEntity.selectSettings();
+    expect(get(activeEntity)).toEqual({ kind: 'settings' });
+    remove();
+    const removeHolding = activeEntity.setLeaveGuard(() => true);
+    removeHolding();
+    activeEntity.selectAutomations();
+    expect(get(activeEntity)).toEqual({ kind: 'automations' });
+  });
+});

@@ -19,9 +19,9 @@ export const automations = writable<AutomationDto[]>([]);
  *  intended. */
 export const automationsTab = writable<'snippets' | 'automations'>('automations');
 
-/** One node's live state within a running automation — 'running' until its `NodeResultDto`
- *  arrives. */
-export type NodeRunState = { status: 'running'; label: string } | { status: 'done'; result: NodeResultDto };
+/** One node's live state within a running automation — 'running' (since `startedAt`, a
+ *  `Date.now()`, for the panel's clock) until its `NodeResultDto` arrives. */
+export type NodeRunState = { status: 'running'; label: string; startedAt: number } | { status: 'done'; result: NodeResultDto };
 
 export type AutomationRunPhase =
   | { kind: 'running'; nodes: Map<string, NodeRunState> }
@@ -34,6 +34,22 @@ export interface AutomationRun {
   /** Lines of news from long-running nodes (a GitHub run's progress, its link), by
    *  node id — kept once the run ends, so the links stay. */
   progress?: Record<string, string[]>;
+  /** `Date.now()` when the run was started here, and when it ended — the panel's total
+   *  time. Unset for a run this window didn't start (nothing to measure from). */
+  startedAt?: number;
+  finishedAt?: number;
+}
+
+/** A run or step's time for the panel: `0.4s`, `12s`, `3m 05s`, `1h 02m`. */
+export function formatDuration(ms: number): string {
+  const ms0 = Math.max(0, ms);
+  if (ms0 < 10_000) return `${(Math.floor(ms0 / 100) / 10).toFixed(1)}s`;
+  const secs = Math.floor(ms0 / 1000);
+  if (secs < 60) return `${secs}s`;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ${pad(secs % 60)}s`;
+  return `${Math.floor(mins / 60)}h ${pad(mins % 60)}m`;
 }
 
 // The active (or just-finished) run, or null when no progress panel is shown — one at
@@ -42,8 +58,8 @@ export const automationRun = writable<AutomationRun | null>(null);
 
 /** Open the panel for `automationName` with no nodes yet — called the moment `run_automation`
  *  fires, before the first `automation-started` arrives. */
-export function beginAutomationRun(automationName: string): void {
-  automationRun.set({ automationName, phase: { kind: 'running', nodes: new Map() } });
+export function beginAutomationRun(automationName: string, now: number = Date.now()): void {
+  automationRun.set({ automationName, phase: { kind: 'running', nodes: new Map() }, startedAt: now });
 }
 
 /** Starts `automationName` with `paramValues`, opening the run-progress panel immediately —
@@ -72,10 +88,16 @@ export function dismissAutomationRun(): void {
 /** Fold an `automation-node-started` into the active run. A stray event for a
  *  different (or no longer running) automation is ignored. Pure, so the router and tests
  *  share one definition. */
-export function reduceNodeStarted(run: AutomationRun | null, automationName: string, nodeId: string, label: string): AutomationRun | null {
+export function reduceNodeStarted(
+  run: AutomationRun | null,
+  automationName: string,
+  nodeId: string,
+  label: string,
+  now: number = Date.now()
+): AutomationRun | null {
   if (!run || run.automationName !== automationName || run.phase.kind !== 'running') return run;
   const nodes = new Map(run.phase.nodes);
-  nodes.set(nodeId, { status: 'running', label });
+  nodes.set(nodeId, { status: 'running', label, startedAt: now });
   return { ...run, phase: { kind: 'running', nodes } };
 }
 
@@ -102,10 +124,16 @@ export function reduceNodeProgress(run: AutomationRun | null, automationName: st
 export function reduceAutomationCompleted(
   automationName: string,
   results: NodeResultDto[],
-  previous: AutomationRun | null = null
+  previous: AutomationRun | null = null,
+  now: number = Date.now()
 ): AutomationRun {
-  const progress = previous?.automationName === automationName ? previous.progress : undefined;
-  return { automationName, phase: { kind: 'completed', results }, ...(progress ? { progress } : {}) };
+  const same = previous?.automationName === automationName ? previous : undefined;
+  return {
+    automationName,
+    phase: { kind: 'completed', results },
+    ...(same?.progress ? { progress: same.progress } : {}),
+    ...(same?.startedAt !== undefined ? { startedAt: same.startedAt, finishedAt: now } : {})
+  };
 }
 
 export function reduceAutomationFailed(automationName: string, error: string): AutomationRun {

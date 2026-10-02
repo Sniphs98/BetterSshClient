@@ -17,16 +17,38 @@ export type ActiveEntity =
    *  name is already the unique key `upsertAutomation` keys on). */
   | { kind: 'automation'; automationName: string | null };
 
+/** Asked before Content switches away from what's active; returns `true` to hold the
+ *  switch (an editor with unsaved changes asking first), calling `leave` later to let
+ *  it through. */
+export type LeaveGuard = (leave: () => void) => boolean;
+
 function createActiveEntity() {
   const { subscribe, set } = writable<ActiveEntity>({ kind: 'dashboard' });
+  let guard: LeaveGuard | null = null;
+
+  // Every way to another entity — the sidebar, the palette, a back button, a session
+  // opening — comes through here, so one guard covers them all.
+  function go(next: ActiveEntity): void {
+    if (guard?.(() => set(next))) return;
+    set(next);
+  }
+
   return {
     subscribe,
-    selectDashboard: () => set({ kind: 'dashboard' }),
-    selectAutomations: () => set({ kind: 'automations' }),
-    selectRemoteDesktop: () => set({ kind: 'remoteDesktop' }),
-    selectSettings: () => set({ kind: 'settings' }),
-    activateSession: (id: number) => set({ kind: 'session', id }),
-    selectAutomation: (automationName: string | null) => set({ kind: 'automation', automationName })
+    selectDashboard: () => go({ kind: 'dashboard' }),
+    selectAutomations: () => go({ kind: 'automations' }),
+    selectRemoteDesktop: () => go({ kind: 'remoteDesktop' }),
+    selectSettings: () => go({ kind: 'settings' }),
+    activateSession: (id: number) => go({ kind: 'session', id }),
+    selectAutomation: (automationName: string | null) => go({ kind: 'automation', automationName }),
+    /** Installs `g` until the returned function removes it — one at a time, the
+     *  editor that's showing. */
+    setLeaveGuard: (g: LeaveGuard): (() => void) => {
+      guard = g;
+      return () => {
+        if (guard === g) guard = null;
+      };
+    }
   };
 }
 

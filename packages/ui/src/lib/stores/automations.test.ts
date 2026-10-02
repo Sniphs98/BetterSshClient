@@ -4,6 +4,7 @@ import type { NodeResultDto } from '$lib/bindings';
 import {
   beginAutomationRun,
   dismissAutomationRun,
+  formatDuration,
   automationRun,
   reduceAutomationCompleted,
   reduceAutomationFailed,
@@ -20,8 +21,8 @@ describe('automation-run lifecycle', () => {
   beforeEach(() => dismissAutomationRun());
 
   it('beginAutomationRun opens a running panel with no nodes yet', () => {
-    beginAutomationRun('deploy');
-    expect(get(automationRun)).toEqual({ automationName: 'deploy', phase: { kind: 'running', nodes: new Map() } });
+    beginAutomationRun('deploy', 1000);
+    expect(get(automationRun)).toEqual({ automationName: 'deploy', phase: { kind: 'running', nodes: new Map() }, startedAt: 1000 });
   });
 
   it('dismiss clears the panel', () => {
@@ -35,10 +36,10 @@ describe('reduceNodeStarted', () => {
   const running: AutomationRun = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map() } };
 
   it('adds the node as running', () => {
-    const next = reduceNodeStarted(running, 'deploy', 'n1', 'build');
+    const next = reduceNodeStarted(running, 'deploy', 'n1', 'build', 2000);
     expect(next?.phase.kind).toBe('running');
     if (next?.phase.kind === 'running') {
-      expect(next.phase.nodes.get('n1')).toEqual({ status: 'running', label: 'build' });
+      expect(next.phase.nodes.get('n1')).toEqual({ status: 'running', label: 'build', startedAt: 2000 });
     }
   });
 
@@ -58,7 +59,7 @@ describe('reduceNodeStarted', () => {
 
 describe('reduceNodeResult', () => {
   it('marks a running node done with its result', () => {
-    const running: AutomationRun = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map([['n1', { status: 'running', label: 'build' }]]) } };
+    const running: AutomationRun = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map([['n1', { status: 'running', label: 'build', startedAt: 0 }]]) } };
     const next = reduceNodeResult(running, 'deploy', result('n1'));
     if (next?.phase.kind === 'running') {
       expect(next.phase.nodes.get('n1')).toEqual({ status: 'done', result: result('n1') });
@@ -100,10 +101,32 @@ describe('terminal reducers', () => {
     expect(reduceAutomationCompleted('deploy', results)).toEqual({ automationName: 'deploy', phase: { kind: 'completed', results } });
   });
 
+  it('reduceAutomationCompleted ends the clock of the run this window started', () => {
+    const running: AutomationRun = { automationName: 'deploy', phase: { kind: 'running', nodes: new Map() }, startedAt: 1000 };
+    expect(reduceAutomationCompleted('deploy', [], running, 61_000)).toEqual({
+      automationName: 'deploy',
+      phase: { kind: 'completed', results: [] },
+      startedAt: 1000,
+      finishedAt: 61_000
+    });
+  });
+
   it('reduceAutomationFailed carries the error', () => {
     expect(reduceAutomationFailed('deploy', 'automation no longer exists')).toEqual({
       automationName: 'deploy',
       phase: { kind: 'failed', error: 'automation no longer exists' }
     });
+  });
+});
+
+describe('formatDuration', () => {
+  it('reads like a stopwatch at every scale', () => {
+    expect(formatDuration(0)).toBe('0.0s');
+    expect(formatDuration(420)).toBe('0.4s');
+    expect(formatDuration(9_990)).toBe('9.9s');
+    expect(formatDuration(12_400)).toBe('12s');
+    expect(formatDuration(185_000)).toBe('3m 05s');
+    expect(formatDuration(3_720_000)).toBe('1h 02m');
+    expect(formatDuration(-5)).toBe('0.0s');
   });
 });

@@ -89,8 +89,9 @@ async function boot(page: Page): Promise<void> {
           }
           case 'export_snippet':
           case 'export_automation':
+          case 'export_all_automations':
             exportCalls.push({ channel, args });
-            return Promise.resolve(`/fake/path/${String(args[0])}.json`);
+            return Promise.resolve(`/fake/path/${String(args[0] ?? 'all')}.json`);
           case 'import_bundle': {
             // Simulates the user picking a file that bundles one new Snippet —
             // the real merge/parse logic is covered by bundle.test.ts on the electron
@@ -452,6 +453,60 @@ test('an upload step: added from the "+" menu, saved as a node without a snippet
   await expect(reopened.getByLabel('To on the host')).toHaveValue('/tmp/');
 });
 
+test('leaving an automation with unsaved changes asks first: keep editing, discard, or save', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+
+  // Nothing changed yet: leaving just leaves.
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('ship-image');
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Upload a file to the host/ }).click();
+  await page.getByRole('button', { name: 'Add parameter' }).click();
+  await page.getByLabel('Parameter 1 name').fill('host');
+  await page.getByRole('combobox', { name: 'Parameter 1 kind' }).selectOption('host');
+  const upload = page.locator('.svelte-flow__node', { hasText: 'Upload a file to the host' });
+  await upload.getByLabel('From this computer').fill('image.tar.gz');
+
+  // Any way out asks — here the back arrow: "Keep editing" stays, changes intact.
+  const prompt = page.getByRole('dialog', { name: 'Unsaved changes' });
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await expect(prompt).toBeVisible();
+  await prompt.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(prompt).toHaveCount(0);
+  await expect(page.getByLabel('Automation name')).toHaveValue('ship-image');
+
+  // Cancel asks too; "Discard" leaves without saving anything.
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await prompt.getByRole('button', { name: 'Discard' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations.length)
+  ).toBe(0);
+
+  // "Save" saves, then goes where the user was headed — here the sidebar's Automations.
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('ship-image');
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Upload a file to the host/ }).click();
+  await page.getByRole('button', { name: 'Add parameter' }).click();
+  await page.getByLabel('Parameter 1 name').fill('host');
+  await page.getByRole('combobox', { name: 'Parameter 1 kind' }).selectOption('host');
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await prompt.getByRole('button', { name: 'Save' }).click();
+  await expect(prompt).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __automationState: { automations: Array<{ name: string }> } }).__automationState.automations.map((f) => f.name)
+    )
+  ).toEqual(['ship-image']);
+});
+
 test('a node can run in WSL, in a chosen distribution, without needing a host', async ({ page }) => {
   await boot(page);
   await page.getByRole('button', { name: 'Automations', exact: true }).click();
@@ -659,6 +714,16 @@ test('export and import — sharing a snippet or automation as a file', async ({
   );
   expect(calls).toHaveLength(2);
   expect(calls[1]).toEqual({ channel: 'export_automation', args: ['release'] });
+
+  // Or everything at once: every automation and the whole snippet library.
+  await page.getByRole('button', { name: 'Export all…' }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __exportCalls: unknown[] }).__exportCalls.length))
+    .toBe(3);
+  const allCall = await page.evaluate(
+    () => (window as unknown as { __exportCalls: Array<{ channel: string; args: unknown[] }> }).__exportCalls[2]
+  );
+  expect(allCall).toEqual({ channel: 'export_all_automations', args: [] });
 
   // Importing adds whatever the (stubbed) file picker returned straight to the
   // library — no second click needed to place it, unlike picking from a list.
