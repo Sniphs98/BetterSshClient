@@ -92,6 +92,40 @@ describe('saveAutomations / loadAutomations round trip', () => {
     expect(await loadAutomations(path)).toEqual(original);
   });
 
+  it('round-trips an if node, its ways out, and a fixed variable', async () => {
+    const original = [
+      automation({
+        params: [{ name: 'registry', kind: 'fixed', default: 'registry.example.com' }],
+        nodes: [
+          {
+            id: 'if',
+            snippetId: '',
+            condition: { kind: 'compare', left: '{{params.registry}}', op: 'contains', right: 'example' },
+            label: 'check',
+            continueOnError: false,
+            target: 'local'
+          },
+          {
+            id: 'cmd',
+            snippetId: '',
+            condition: { kind: 'command', command: 'test -f x', timeoutSecs: 20 },
+            label: 'exists',
+            continueOnError: false,
+            target: 'wsl',
+            wslDistro: 'Ubuntu'
+          },
+          { id: 'w', snippetId: 'a1', label: 'save', continueOnError: false, target: 'local' }
+        ],
+        edges: [
+          { from: 'if', to: 'cmd', branch: 'yes' },
+          { from: 'cmd', to: 'w', branch: 'no' }
+        ]
+      })
+    ];
+    await saveAutomations(original, path);
+    expect(await loadAutomations(path)).toEqual(original);
+  });
+
   it('round-trips a WSL node with its distribution', async () => {
     const original = [
       automation({

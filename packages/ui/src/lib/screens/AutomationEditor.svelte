@@ -34,6 +34,7 @@
   import AutomationStartNode from './AutomationStartNode.svelte';
   import AutomationUploadNode from './AutomationUploadNode.svelte';
   import AutomationGitHubNode from './AutomationGitHubNode.svelte';
+  import AutomationIfNode from './AutomationIfNode.svelte';
   import SnippetEditor from './SnippetEditor.svelte';
   import { emptyForm, formFromSnippet } from './snippetForm';
   import {
@@ -46,6 +47,7 @@
     type StepNode,
     type UploadNode,
     type GitHubNode,
+    type IfNode,
     type AutomationNodeActionsContext,
     type StartNode
   } from './automationCanvasTypes';
@@ -67,7 +69,13 @@
   // svelte-ignore state_referenced_locally
   const notFound = automationName !== null && existing === undefined;
 
-  const nodeTypes = { snippet: AutomationCanvasNode, upload: AutomationUploadNode, github: AutomationGitHubNode, start: AutomationStartNode };
+  const nodeTypes = {
+    snippet: AutomationCanvasNode,
+    upload: AutomationUploadNode,
+    github: AutomationGitHubNode,
+    if: AutomationIfNode,
+    start: AutomationStartNode
+  };
 
   /** A simple left-to-right, wrapping grid — used only for a node that has no saved
    *  `position` yet (freshly added, or an automation saved before positions existed). */
@@ -79,9 +87,15 @@
     return n.type === 'snippet';
   }
 
-  /** Every node that is saved as an `AutomationNode` — snippets and upload steps. */
+  /** Every node that is saved as an `AutomationNode` — everything but Start. */
   function isStepNode(n: AnyCanvasNode): n is StepNode {
-    return n.type === 'snippet' || n.type === 'upload' || n.type === 'github';
+    return n.type === 'snippet' || n.type === 'upload' || n.type === 'github' || n.type === 'if';
+  }
+
+  /** An edge out of an If node leaves by its `yes` or its `no` handle — labelled so. */
+  function branchEdge(from: string, to: string, branch: string | null | undefined): AutomationCanvasEdge {
+    if (branch !== 'yes' && branch !== 'no') return { id: `${from}->${to}`, source: from, target: to };
+    return { id: `${from}:${branch}->${to}`, source: from, target: to, sourceHandle: branch, label: branch };
   }
 
   const startNode: StartNode = {
@@ -98,6 +112,20 @@
   let canvasNodes = $state<AnyCanvasNode[]>([
     startNode,
     ...initial.nodes.map((n, i): StepNode => {
+      if (n.condition) {
+        return {
+          id: n.id,
+          type: 'if' as const,
+          position: n.position ?? layoutPosition(i),
+          data: {
+            label: n.label,
+            continueOnError: n.continueOnError,
+            condition: structuredClone(n.condition),
+            target: n.target,
+            wslDistro: n.wslDistro ?? ''
+          }
+        };
+      }
       if (n.github) {
         return {
           id: n.id,
@@ -151,7 +179,7 @@
   }
 
   let canvasEdges = $state<AutomationCanvasEdge[]>([
-    ...initial.edges.map((e) => ({ id: `${e.from}->${e.to}`, source: e.from, target: e.to })),
+    ...initial.edges.map((e) => branchEdge(e.from, e.to, e.branch)),
     // Dropping a link to a node id that no longer exists (the Snippet/node was
     // deleted since this was last saved) rather than letting svelte-flow choke on an
     // edge with a dangling target.
@@ -166,6 +194,8 @@
   interface NodePlacement {
     position: { x: number; y: number } | null;
     wireFrom: string | null;
+    /** The handle the drag left `wireFrom` by — an If's `yes` or `no`. */
+    wireHandle?: string | null;
   }
 
   // The "+ New snippet…" row inside the picker — opens the same add-snippet form
@@ -241,7 +271,7 @@
         }
       }
     ];
-    wire(placement.wireFrom, id);
+    wire(placement.wireFrom, id, placement.wireHandle);
   }
 
   /** Places a new upload step, the same way `addSnippetNode` places a snippet. */
@@ -254,7 +284,7 @@
       data: { label: uniqueLabel('upload'), continueOnError: false, from: '', to: '/tmp/', source: 'local', wslDistro: '' }
     };
     canvasNodes = [...canvasNodes, node];
-    wire(placement.wireFrom, id);
+    wire(placement.wireFrom, id, placement.wireHandle);
   }
 
   /** Places a new GitHub step — start a workflow, or download a release file. */
@@ -270,16 +300,32 @@
           : { label: uniqueLabel('download'), continueOnError: false, step: { action, repo: '', tag: '{{nodes.release.output}}', pattern: '*.tar.gz' } }
     };
     canvasNodes = [...canvasNodes, node];
-    wire(placement.wireFrom, id);
+    wire(placement.wireFrom, id, placement.wireHandle);
   }
 
-  /** The edge a placement asks for, from `wireFrom` to the new node `id`. */
-  function wire(wireFrom: string | null, id: string): void {
+  /** Places a new If, the same way `addSnippetNode` places a snippet. */
+  function addIfNode(placement: NodePlacement): void {
+    const id = crypto.randomUUID();
+    const node: IfNode = {
+      id,
+      type: 'if',
+      position: placement.position ?? layoutPosition(canvasNodes.filter(isStepNode).length),
+      data: {
+        label: uniqueLabel('if'),
+        continueOnError: false,
+        condition: { kind: 'compare', left: '', op: 'equals', right: '' },
+        target: 'local',
+        wslDistro: ''
+      }
+    };
+    canvasNodes = [...canvasNodes, node];
+    wire(placement.wireFrom, id, placement.wireHandle);
+  }
+
+  /** The edge a placement asks for, from `wireFrom` (by `handle`, out of an If) to the new node `id`. */
+  function wire(wireFrom: string | null, id: string, handle?: string | null): void {
     if (!wireFrom) return;
-    canvasEdges = [
-      ...canvasEdges,
-      wireFrom === START_NODE_ID ? startLinkEdge(id) : { id: `${wireFrom}->${id}`, source: wireFrom, target: id }
-    ];
+    canvasEdges = [...canvasEdges, wireFrom === START_NODE_ID ? startLinkEdge(id) : branchEdge(wireFrom, id, handle)];
   }
 
   async function submitNewSnippet(snippet: SnippetDto): Promise<void> {
@@ -310,7 +356,7 @@
     removeParam: (paramName: string) => {
       params = params.filter((p) => p.name !== paramName);
     },
-    updateParam: (paramName: string, patch: { name?: string; kind?: AutomationParamKindDto }) => {
+    updateParam: (paramName: string, patch: { name?: string; kind?: AutomationParamKindDto; value?: string }) => {
       const idx = params.findIndex((p) => p.name === paramName);
       if (idx === -1) return;
       const current = params[idx];
@@ -320,7 +366,7 @@
       if (nextName !== current.name && params.some((p, i) => i !== idx && p.name === nextName)) return;
       if (nextKind === 'host' && params.some((p, i) => i !== idx && p.kind === 'host')) return;
       const next = [...params];
-      next[idx] = { ...current, name: nextName, kind: nextKind };
+      next[idx] = { ...current, name: nextName, kind: nextKind, ...(patch.value !== undefined ? { default: patch.value } : {}) };
       params = next;
     }
   });
@@ -342,7 +388,7 @@
           const { snippetName: _shown, ...data } = n.data as Record<string, unknown>;
           return { id: n.id, type: n.type, x: Math.round(n.position.x), y: Math.round(n.position.y), data };
         }),
-      edges: canvasEdges.map((e) => `${e.source}->${e.target}`).sort()
+      edges: canvasEdges.map((e) => `${e.source}:${e.sourceHandle ?? ''}->${e.target}`).sort()
     });
   }
 
@@ -402,6 +448,10 @@
       addUploadNode(placement);
       return;
     }
+    if (result === 'if') {
+      addIfNode(placement);
+      return;
+    }
     if (result === 'githubRun' || result === 'githubDownload') {
       addGitHubNode(placement, result === 'githubRun' ? 'runWorkflow' : 'downloadAsset');
       return;
@@ -422,10 +472,22 @@
    *  guard an earlier version had would've just silently dropped anyway). Every other
    *  connection needs no handling here at all; the store already added it correctly. */
   function onconnect(connection: Connection): void {
-    if (!connection.source || !connection.target || connection.source !== START_NODE_ID) return;
-    canvasEdges = canvasEdges.map((e) =>
-      e.source === connection.source && e.target === connection.target ? startLinkEdge(e.target) : e
-    );
+    if (!connection.source || !connection.target) return;
+    if (connection.source === START_NODE_ID) {
+      canvasEdges = canvasEdges.map((e) =>
+        e.source === connection.source && e.target === connection.target ? startLinkEdge(e.target) : e
+      );
+      return;
+    }
+    // Out of an If: label the edge with the way it leaves by.
+    if (connection.sourceHandle === 'yes' || connection.sourceHandle === 'no') {
+      const handle = connection.sourceHandle;
+      canvasEdges = canvasEdges.map((e) =>
+        e.source === connection.source && e.target === connection.target && e.sourceHandle === handle
+          ? branchEdge(e.source, e.target, handle)
+          : e
+      );
+    }
   }
 
   /** Dragging a connection out from a node's handle and releasing over empty canvas
@@ -444,8 +506,10 @@
     if (connectionState.isValid || !connectionState.fromNode) return;
     const source = canvasNodes.find((n) => n.id === connectionState.fromNode!.id);
     void openSnippetPicker({
-      position: source ? { x: source.position.x + 260, y: source.position.y } : null,
-      wireFrom: connectionState.fromNode.id
+      // Clear of the source, whatever its width — and of an If's yes/no labels.
+      position: source ? { x: source.position.x + (source.measured?.width ?? 220) + 60, y: source.position.y } : null,
+      wireFrom: connectionState.fromNode.id,
+      wireHandle: connectionState.fromHandle?.id ?? null
     });
   };
 
@@ -470,7 +534,12 @@
       return;
     }
     // An upload always goes to the host.
-    const usesRemote = stepNodes.some((n) => n.type === 'upload' || (n.type === 'snippet' && n.data.target === 'remote'));
+    const usesRemote = stepNodes.some(
+      (n) =>
+        n.type === 'upload' ||
+        (n.type === 'snippet' && n.data.target === 'remote') ||
+        (n.type === 'if' && n.data.condition.kind === 'command' && n.data.target === 'remote')
+    );
     if (usesRemote && !hasHostParam) {
       error = 'This automation runs something on a host — add a host parameter on the Start node';
       return;
@@ -495,7 +564,15 @@
       params: params.map((p) => ({ ...p })),
       nodes: stepNodes.map((n) => ({
         id: n.id,
-        ...(n.type === 'github'
+        ...(n.type === 'if'
+          ? {
+              snippetId: '',
+              condition: JSON.parse(JSON.stringify(n.data.condition)),
+              // A compare is answered here; a command runs where the node says.
+              target: n.data.condition.kind === 'command' ? n.data.target : ('local' as const),
+              wslDistro: n.data.condition.kind === 'command' && n.data.target === 'wsl' && n.data.wslDistro ? n.data.wslDistro : undefined
+            }
+          : n.type === 'github'
           ? { snippetId: '', github: JSON.parse(JSON.stringify(n.data.step)), target: 'local' as const }
           : n.type === 'upload'
           ? {
@@ -516,7 +593,11 @@
         continueOnError: n.data.continueOnError,
         position: { x: n.position.x, y: n.position.y }
       })),
-      edges: realEdges.map((e) => ({ from: e.source, to: e.target })),
+      edges: realEdges.map((e) => {
+        const fromIf = canvasNodes.find((n) => n.id === e.source)?.type === 'if';
+        const branch = e.sourceHandle === 'yes' || e.sourceHandle === 'no' ? e.sourceHandle : undefined;
+        return fromIf && branch ? { from: e.source, to: e.target, branch } : { from: e.source, to: e.target };
+      }),
       startLinks: startLinks.length > 0 ? startLinks : undefined
     };
     error = null;

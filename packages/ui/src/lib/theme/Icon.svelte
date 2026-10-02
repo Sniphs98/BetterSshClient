@@ -74,6 +74,11 @@
     <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
     <polyline points="8 8 12 4 16 8" />
     <line x1="12" y1="4" x2="12" y2="16" />
+  {:else if name === 'branch'}
+    <circle cx="6" cy="6" r="2" />
+    <circle cx="18" cy="6" r="2" />
+    <circle cx="6" cy="18" r="2" />
+    <path d="M6 8v8M18 8a6 6 0 0 1-6 6H8" />
   {:else if name === 'clock'}
     <circle cx="12" cy="12" r="9" />
     <path d="M12 7v5l3 2" />

@@ -749,6 +749,74 @@ test('dragging a connection out to empty canvas space offers the snippet picker 
   await expect(page.locator('.svelte-flow__edge-path')).not.toHaveAttribute('style', /stroke-dasharray/);
 });
 
+test('an if node: added from the "+" menu, its "no" way wired by dragging, saved with its condition and its ways out', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  await page.getByRole('button', { name: 'New snippet' }).first().click();
+  const editor = page.getByRole('dialog', { name: 'New snippet' });
+  await editor.getByLabel('Name').fill('Deploy');
+  await editor.getByLabel('Command').fill('echo deploy');
+  await editor.getByRole('button', { name: 'Add snippet' }).click();
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('only-prod');
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /If…/ }).click();
+  const ifNode = page.locator('.svelte-flow__node', { hasText: 'If — then one way or the other' });
+  await expect(ifNode.getByLabel('Label')).toHaveValue('if');
+  await ifNode.getByLabel('Value to check').fill('{{params.env}}');
+  await ifNode.getByRole('combobox', { name: 'Comparison' }).selectOption('notEquals');
+  await ifNode.getByLabel('Compare with').fill('prod');
+
+  // A variable fixed in the automation: set here, never asked for.
+  await page.getByRole('button', { name: 'Add parameter' }).click();
+  await page.getByLabel('Parameter 1 name').fill('env');
+  await page.getByRole('combobox', { name: 'Parameter 1 kind' }).selectOption('fixed');
+  await page.getByLabel('Parameter 1 value').fill('prod');
+
+  await page.getByRole('button', { name: 'Fit View' }).click();
+  const noHandle = ifNode.locator('.svelte-flow__handle.source[data-handleid="no"]');
+  const handleBox = await noHandle.boundingBox();
+  const paneBox = await page.locator('.svelte-flow__pane').boundingBox();
+  if (!handleBox || !paneBox) throw new Error('handle or pane not found');
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(paneBox.x + paneBox.width - 40, paneBox.y + paneBox.height - 40, { steps: 10 });
+  await page.mouse.up();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Deploy/ }).click();
+  await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
+  await expect(page.locator('.svelte-flow__edge-label')).toHaveText('no');
+
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  const saved = await page.evaluate(
+    () =>
+      (window as unknown as { __automationState: { automations: Array<{ params: unknown[]; nodes: Array<Record<string, unknown>>; edges: unknown[] }> } })
+        .__automationState.automations[0]
+  );
+  expect(saved.params).toEqual([{ name: 'env', kind: 'fixed', default: 'prod' }]);
+  expect(saved.nodes[0]).toMatchObject({
+    snippetId: '',
+    label: 'if',
+    target: 'local',
+    condition: { kind: 'compare', left: '{{params.env}}', op: 'notEquals', right: 'prod' }
+  });
+  expect(saved.edges).toEqual([{ from: saved.nodes[0].id, to: saved.nodes[1].id, branch: 'no' }]);
+
+  // Reopened, the way out is still the "no" one.
+  await page.getByText('only-prod', { exact: true }).click();
+  await expect(page.locator('.svelte-flow__edge-label')).toHaveText('no');
+  await expect(page.getByLabel('Parameter 1 value')).toHaveValue('prod');
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+
+  // With only a fixed variable, Run asks for nothing — it just runs.
+  await page.getByRole('button', { name: 'Run only-prod' }).click();
+  await expect(page.getByRole('dialog', { name: 'Run automation' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Automation run' })).toBeVisible();
+});
+
 test('export and import — sharing a snippet or automation as a file', async ({ page }) => {
   await boot(page);
 

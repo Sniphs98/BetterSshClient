@@ -247,3 +247,20 @@ describe('library bundles (every automation and snippet)', () => {
     expect(merged.result).toEqual({ kind: 'library', name: '3 automations, 2 snippets' });
   });
 });
+
+describe('if nodes and fixed variables in bundles', () => {
+  it('bundle no snippet for an if node, and come back through JSON with their ways out', () => {
+    const a = snippet({ id: 'a1', name: 'Deploy' });
+    const f = automation({
+      params: [{ name: 'env', kind: 'fixed', default: 'prod' }],
+      nodes: [
+        node({ id: 'if', snippetId: '', condition: { kind: 'compare', left: '{{params.env}}', op: 'equals', right: 'prod' } }),
+        node({ id: 'd', snippetId: 'a1' })
+      ],
+      edges: [{ from: 'if', to: 'd', branch: 'yes' }]
+    });
+    const bundle = buildAutomationBundle(f, new Map([['a1', a]]));
+    expect(bundle.snippets).toEqual([a]);
+    expect(parseBundle(JSON.parse(JSON.stringify(bundle)))).toEqual(bundle);
+  });
+});

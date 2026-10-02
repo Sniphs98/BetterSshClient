@@ -401,7 +401,14 @@ export type AutomationDto = {
   startLinks?: string[] | null;
 };
 /** `to` depends on `from` — `from` must complete before `to` can start. */
-export type AutomationEdgeDto = { from: string; to: string };
+export type AutomationEdgeDto = { from: string; to: string; /** Out of an If node: which way. */ branch?: IfBranchDto | null };
+/** Which of an If node's two ways out an edge is. */
+export type IfBranchDto = 'yes' | 'no';
+export type IfOperatorDto = 'equals' | 'notEquals' | 'contains' | 'notContains' | 'isEmpty' | 'notEmpty';
+/** An If node's question: compare texts, or whether a command succeeds (where the node runs). */
+export type IfConditionDto =
+  | { kind: 'compare'; left: string; op: IfOperatorDto; right: string }
+  | { kind: 'command'; command: string; timeoutSecs: number };
 /** One placement of a reusable Snippet into an Automation — or a built-in upload step. */
 export type AutomationNodeDto = {
   id: string;
@@ -414,6 +421,8 @@ export type AutomationNodeDto = {
   wslDistro?: string | null;
   /** Set for a GitHub step: a workflow to run, or a release file to download. */
   github?: GitHubStepDto | null;
+  /** Set for an If node: what it asks; its output is `yes` or `no`. */
+  condition?: IfConditionDto | null;
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;
@@ -421,10 +430,11 @@ export type AutomationNodeDto = {
 };
 /** A value collected from the "run this automation" prompt rather than baked into any node
  *  — `'host'` supplies the target for every remote node in the automation, `'text'` is a
- *  free-form value substituted via `{{params.<name>}}`. An automation may declare at most one
- *  `'host'` param. */
+ *  free-form value substituted via `{{params.<name>}}`, `'fixed'` a variable set in the
+ *  automation itself (`default` is its value) and never asked for. An automation may
+ *  declare at most one `'host'` param. */
 export type AutomationParamDto = { name: string; kind: AutomationParamKindDto; label?: string | null; default?: string | null };
-export type AutomationParamKindDto = 'text' | 'host';
+export type AutomationParamKindDto = 'text' | 'host' | 'fixed';
 /** A host as the frontend sees it — password and private-key material omitted. */
 export type HostDto = {
   name: string;

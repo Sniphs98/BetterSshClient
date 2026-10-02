@@ -76,8 +76,9 @@
     Start
   </div>
   <p class="text-[11px] leading-snug text-muted">
-    Collected before this automation runs. A host parameter targets every remote snippet
-    below; reference either kind in a command as {'{{params.<name>}}'}.
+    Text and host parameters are asked for when the automation runs; a host one targets
+    every remote snippet below. A fixed one is set here and never asked for. Use any of
+    them in a command as {'{{params.<name>}}'}.
   </p>
 
   <div class="space-y-1">
@@ -100,6 +101,7 @@
         >
           <option value="text">text</option>
           <option value="host" disabled={hostTakenElsewhere(i)}>host</option>
+          <option value="fixed">fixed</option>
         </Select>
         <button
           type="button"
@@ -111,6 +113,16 @@
           <Icon name="close" size={12} />
         </button>
       </div>
+      {#if param.kind === 'fixed'}
+        <input
+          value={param.default ?? ''}
+          oninput={(e) => ctx.updateParam(param.name, { value: e.currentTarget.value })}
+          class="{rowField} ml-3 w-[calc(100%-0.75rem)] border-l-2 border-default font-mono"
+          placeholder="value"
+          aria-label="Parameter {i + 1} value"
+          spellcheck="false"
+        />
+      {/if}
     {/each}
 
     <button

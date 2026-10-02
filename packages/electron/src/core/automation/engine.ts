@@ -1,4 +1,4 @@
-import type { Snippet, Automation, AutomationNode, GitHubStep, NodeResult } from './types.js';
+import type { Snippet, Automation, AutomationNode, GitHubStep, IfCondition, IfOperator, NodeResult } from './types.js';
 
 /**
  * The Automation execution engine: an `Automation` is a DAG of `AutomationNode`s (each an
@@ -72,8 +72,42 @@ function hostParamOf(automation: Automation): { name: string } | undefined {
  *  an upload's two paths. Undefined for a node whose snippet is gone. */
 function templatedText(node: AutomationNode, snippetsById: Map<string, Snippet>): string | undefined {
   if (node.upload !== undefined) return `${node.upload.from}\n${node.upload.to}`;
+  if (node.condition !== undefined) return conditionTexts(node.condition).join('\n');
   if (node.github !== undefined) return githubTexts(node.github).join('\n');
   return snippetsById.get(node.snippetId)?.command;
+}
+
+/** Every text field of an If condition — what templates are substituted into. */
+function conditionTexts(condition: IfCondition): string[] {
+  return condition.kind === 'compare' ? [condition.left, condition.right] : [condition.command];
+}
+
+/** Whether `left` `op` `right` holds; both sides trimmed (an output ends in a line break). */
+export function compareTexts(left: string, op: IfOperator, right: string): boolean {
+  const a = left.trim();
+  const b = right.trim();
+  switch (op) {
+    case 'equals':
+      return a === b;
+    case 'notEquals':
+      return a !== b;
+    case 'contains':
+      return a.includes(b);
+    case 'notContains':
+      return !a.includes(b);
+    case 'isEmpty':
+      return a === '';
+    case 'notEmpty':
+      return a !== '';
+  }
+}
+
+/** The values every node sees as `{{params.<name>}}`: what was asked for at run time,
+ *  plus each `'fixed'` variable's own value (which nothing at run time overrides). */
+export function effectiveParamValues(automation: Automation, paramValues: Record<string, string>): Record<string, string> {
+  const values = { ...paramValues };
+  for (const p of automation.params) if (p.kind === 'fixed') values[p.name] = p.default ?? '';
+  return values;
 }
 
 /** Every text field of a GitHub step — what templates are substituted into. */
@@ -137,6 +171,17 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
       if (!node.upload.from.trim()) problems.push(`upload "${node.label}" needs a file to upload`);
       if (!node.upload.to.trim()) problems.push(`upload "${node.label}" needs a destination on the host`);
       if (node.target !== 'remote') problems.push(`upload "${node.label}" must target the host`);
+    } else if (node.condition !== undefined) {
+      const c = node.condition;
+      if (c.kind === 'compare') {
+        if (!c.left.trim()) problems.push(`if "${node.label}" needs something to check`);
+        // "equals nothing" is a fine question; "contains nothing" always holds.
+        if ((c.op === 'contains' || c.op === 'notContains') && !c.right.trim()) {
+          problems.push(`if "${node.label}" needs something to look for`);
+        }
+      } else if (!c.command.trim()) {
+        problems.push(`if "${node.label}" needs a command to run`);
+      }
     } else if (snippetsById.get(node.snippetId) === undefined) {
       problems.push(`node "${node.label}" references an unknown snippet`);
     }
@@ -169,6 +214,13 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
   for (const edge of automation.edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
       problems.push('an edge references a node that is not in this automation');
+      continue;
+    }
+    const from = nodeById.get(edge.from)!;
+    if (from.condition !== undefined && edge.branch === undefined) {
+      problems.push(`a connection out of if "${from.label}" must leave by its "yes" or its "no"`);
+    } else if (from.condition === undefined && edge.branch !== undefined) {
+      problems.push(`only an if node's connections have a "yes" or "no" (from "${from.label}")`);
     }
   }
 
@@ -209,7 +261,9 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
  *  non-blank value for every parameter the automation declares? Returns each missing
  *  param's `label ?? name`; empty means ready to run. */
 export function missingParamValues(automation: Automation, paramValues: Record<string, string>): string[] {
-  return automation.params.filter((p) => !paramValues[p.name]?.trim()).map((p) => p.label || p.name);
+  return automation.params
+    .filter((p) => p.kind !== 'fixed' && !paramValues[p.name]?.trim())
+    .map((p) => p.label || p.name);
 }
 
 /** Replaces every `{{nodes.<label>.output}}` and `{{params.<name>}}` in `command`.
@@ -287,7 +341,7 @@ export type AutomationProgressEvent =
 export async function runAutomation(
   automation: Automation,
   snippetsById: Map<string, Snippet>,
-  paramValues: Record<string, string>,
+  askedParamValues: Record<string, string>,
   deps: RunAutomationDeps,
   onProgress?: (event: AutomationProgressEvent) => void,
   /** Cancels the run: the running node stops and fails as `canceled`, every node after it
@@ -295,8 +349,23 @@ export async function runAutomation(
   signal?: AbortSignal
 ): Promise<NodeResult[]> {
   const order = topoOrder(automation);
+  const paramValues = effectiveParamValues(automation, askedParamValues);
   const nodeById = new Map(automation.nodes.map((n) => [n.id, n]));
   const predecessorsOf = predecessorMap(automation);
+  const edgesInto = new Map<string, Automation['edges']>(automation.nodes.map((n) => [n.id, []]));
+  for (const edge of automation.edges) edgesInto.get(edge.to)?.push(edge);
+  /** Nodes skipped because they weren't on the way an If went — unlike a node skipped
+   *  for a failure, these don't hold up what comes after them through another way. */
+  const offBranch = new Set<string>();
+
+  /** An edge that doesn't count: out of an If, the way it didn't go — or out of a node
+   *  that was itself off the way taken. */
+  function offBranchEdge(edge: Automation['edges'][number]): boolean {
+    if (offBranch.has(edge.from)) return true;
+    const from = nodeById.get(edge.from);
+    const result = resultsById.get(edge.from);
+    return from?.condition !== undefined && result?.status === 'success' && edge.branch !== undefined && result.output !== edge.branch;
+  }
   const hostParam = hostParamOf(automation);
   const resultsById = new Map<string, NodeResult>();
   // Kept as promises, so one still connecting when the run is canceled is closed too.
@@ -324,6 +393,31 @@ export async function runAutomation(
     });
   }
 
+  /** An If node's answer as its output: `yes` or `no`. A command that doesn't succeed —
+   *  a non-zero exit, a timeout — is a `no`; only a cancel fails the node. */
+  async function evaluateCondition(
+    node: AutomationNode,
+    condition: IfCondition,
+    predecessors: Map<string, NodeResult>,
+    hostName: string | undefined
+  ): Promise<{ output: string; ok: boolean; error?: string }> {
+    if (condition.kind === 'compare') {
+      const left = substituteTemplate(condition.left, predecessors, paramValues);
+      const right = substituteTemplate(condition.right, predecessors, paramValues);
+      return { output: compareTexts(left, condition.op, right) ? 'yes' : 'no', ok: true };
+    }
+    const command = substituteTemplate(condition.command, predecessors, paramValues);
+    const timeoutMs = condition.timeoutSecs * 1000;
+    const result =
+      node.target === 'local'
+        ? await deps.runLocal(command, timeoutMs, signal)
+        : node.target === 'wsl'
+          ? await deps.runWsl(node.wslDistro || undefined, command, timeoutMs, signal)
+          : await (await connectionFor(hostName!)).runShell(command, timeoutMs, signal);
+    if (signal?.aborted) return { output: '', ok: false, error: CANCELED };
+    return { output: result.ok ? 'yes' : 'no', ok: true };
+  }
+
   function settle(nodeId: string, result: NodeResult): void {
     resultsById.set(nodeId, result);
     onProgress?.({ kind: 'nodeResult', result });
@@ -339,7 +433,7 @@ export async function runAutomation(
         continue;
       }
 
-      if (snippet === undefined && node.upload === undefined && node.github === undefined) {
+      if (snippet === undefined && node.upload === undefined && node.github === undefined && node.condition === undefined) {
         settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'snippet no longer exists', durationMs: 0 });
         continue;
       }
@@ -350,8 +444,19 @@ export async function runAutomation(
       }
 
       const predecessorIds = predecessorsOf.get(nodeId) ?? [];
-      const predecessorResults = predecessorIds.map((id) => resultsById.get(id)!);
-      const blocked = predecessorResults.some((r) => r.status !== 'success' && !nodeById.get(r.nodeId)!.continueOnError);
+      // Off the way an If went — every way in leads from there: skipped, and so is
+      // what only this leads to. Where ways join, the one taken is what counts.
+      const incoming = edgesInto.get(nodeId) ?? [];
+      const live = incoming.filter((e) => !offBranchEdge(e));
+      if (incoming.length > 0 && live.length === 0) {
+        offBranch.add(nodeId);
+        settle(nodeId, { nodeId, label: node.label, status: 'skipped', output: '', durationMs: 0 });
+        continue;
+      }
+      const blocked = live.some((e) => {
+        const r = resultsById.get(e.from)!;
+        return r.status !== 'success' && !nodeById.get(e.from)!.continueOnError;
+      });
       if (blocked) {
         settle(nodeId, { nodeId, label: node.label, status: 'skipped', output: '', durationMs: 0 });
         continue;
@@ -363,7 +468,9 @@ export async function runAutomation(
 
       let exec: { output: string; ok: boolean; error?: string };
       try {
-        if (node.github !== undefined) {
+        if (node.condition !== undefined) {
+          exec = await untilCanceled(evaluateCondition(node, node.condition, predecessorsByLabel, nodeHostName));
+        } else if (node.github !== undefined) {
           const step = substituteGitHubStep(node.github, predecessorsByLabel, paramValues);
           const output = await untilCanceled(deps.runGitHub(step, (message) => onProgress?.({ kind: 'nodeProgress', nodeId, message }), signal));
           exec = { output, ok: true };

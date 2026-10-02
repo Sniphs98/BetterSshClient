@@ -5,7 +5,7 @@
 
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
-import type { Snippet, NodeTarget, GitHubStep, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
+import type { Snippet, NodeTarget, GitHubStep, IfBranch, IfCondition, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
 import type { ImportAction, ImportEntryPreview } from './core/config/sshHostBundle.js';
 import { rdpSettingsFrom, type RdpSettings, type RemoteDesktopConnection, type RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
@@ -152,6 +152,8 @@ export interface AutomationNodeDto {
   upload?: { from: string; to: string; source?: 'wsl'; wslDistro?: string };
   /** Set for a GitHub node: a workflow to run, or a release file to download. */
   github?: GitHubStep;
+  /** Set for an If node: what it asks. */
+  condition?: IfCondition;
   /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
   wslDistro?: string;
   label: string;
@@ -163,6 +165,8 @@ export interface AutomationNodeDto {
 export interface AutomationEdgeDto {
   from: string;
   to: string;
+  /** Out of an If node: which way. */
+  branch?: IfBranch;
 }
 
 export type AutomationParamKindDto = AutomationParamKind;

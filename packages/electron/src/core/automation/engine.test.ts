@@ -6,6 +6,7 @@ import {
   substituteTemplate,
   topoOrder,
   uploadDestination,
+  compareTexts,
   validateAutomation,
   type RunAutomationDeps
 } from './engine.js';
@@ -866,5 +867,178 @@ describe('canceling a run', () => {
     finishConnect({ runShell: () => new Promise(() => {}), upload: async () => {}, disconnect: () => (disconnected += 1) });
     await new Promise((r) => setTimeout(r, 0));
     expect(disconnected).toBe(1);
+  });
+});
+
+describe('if nodes', () => {
+  const build = snippet({ id: 'build', name: 'Build', command: 'make' });
+  const prod = snippet({ id: 'prod', name: 'Prod', command: 'deploy prod' });
+  const staging = snippet({ id: 'staging', name: 'Staging', command: 'deploy staging' });
+  const notify = snippet({ id: 'notify', name: 'Notify', command: 'notify {{nodes.env.output}}' });
+  const library = new Map([build, prod, staging, notify].map((s) => [s.id, s]));
+  const params: AutomationParam[] = [{ name: 'env', kind: 'text' }];
+  // build → env? —yes→ prod → after-prod ┐
+  //              —no→ staging ────────────┴→ notify (also straight from the If)
+  const flow = automation(
+    [
+      node({ id: 'b', snippetId: 'build', label: 'build' }),
+      node({ id: 'if', snippetId: '', label: 'env', condition: { kind: 'compare', left: '{{params.env}}', op: 'equals', right: 'prod' } }),
+      node({ id: 'p', snippetId: 'prod', label: 'prod' }),
+      node({ id: 'p2', snippetId: 'prod', label: 'after-prod' }),
+      node({ id: 's', snippetId: 'staging', label: 'staging' }),
+      node({ id: 'n', snippetId: 'notify', label: 'notify' })
+    ],
+    [],
+    params
+  );
+  flow.edges = [
+    { from: 'b', to: 'if' },
+    { from: 'if', to: 'p', branch: 'yes' },
+    { from: 'p', to: 'p2' },
+    { from: 'if', to: 's', branch: 'no' },
+    { from: 'p2', to: 'n' },
+    { from: 's', to: 'n' },
+    { from: 'if', to: 'n', branch: 'yes' },
+    { from: 'if', to: 'n', branch: 'no' }
+  ];
+
+  function deps(ran: string[]): RunAutomationDeps {
+    return {
+      runLocal: async (command) => {
+        ran.push(command);
+        return { output: `ran ${command}`, ok: !command.startsWith('test -f missing') };
+      },
+      runWsl: async () => ({ output: '', ok: true }),
+      runGitHub: async () => '',
+      wslUploadSource: async (_d, p) => p,
+      connectHost: async () => {
+        throw new Error('not reached');
+      }
+    };
+  }
+
+  it('validates: a condition needs its parts, and its connections a way out', () => {
+    expect(validateAutomation(flow, library)).toEqual([]);
+    const bad = automation(
+      [
+        node({ id: 'if', snippetId: '', label: 'check', condition: { kind: 'compare', left: ' ', op: 'contains', right: '' } }),
+        node({ id: 'c', snippetId: '', label: 'cmd', condition: { kind: 'command', command: '', timeoutSecs: 30 } }),
+        node({ id: 'x', snippetId: 'build', label: 'x' })
+      ],
+      [],
+      []
+    );
+    bad.edges = [
+      { from: 'if', to: 'x' },
+      { from: 'x', to: 'c', branch: 'yes' }
+    ];
+    expect(validateAutomation(bad, library)).toEqual([
+      'if "check" needs something to check',
+      'if "check" needs something to look for',
+      'if "cmd" needs a command to run',
+      'a connection out of if "check" must leave by its "yes" or its "no"',
+      'only an if node\'s connections have a "yes" or "no" (from "x")'
+    ]);
+  });
+
+  it('runs only the way the answer goes — skipping the other, and what only it leads to — and joins again', async () => {
+    const ran: string[] = [];
+    const results = await runAutomation(flow, library, { env: 'prod' }, deps(ran));
+    expect(ran).toEqual(['make', 'deploy prod', 'deploy prod', 'notify yes']);
+    expect(Object.fromEntries(results.map((r) => [r.label, r.status]))).toEqual({
+      build: 'success',
+      env: 'success',
+      prod: 'success',
+      'after-prod': 'success',
+      staging: 'skipped',
+      notify: 'success'
+    });
+    expect(results.find((r) => r.label === 'env')!.output).toBe('yes');
+
+    const ranNo: string[] = [];
+    const resultsNo = await runAutomation(flow, library, { env: 'staging' }, deps(ranNo));
+    expect(ranNo).toEqual(['make', 'deploy staging', 'notify no']);
+    expect(resultsNo.filter((r) => r.status === 'skipped').map((r) => r.label)).toEqual(['prod', 'after-prod']);
+  });
+
+  it('a failure on the way taken still holds up what follows', async () => {
+    const failing = automation(
+      [
+        node({ id: 'if', snippetId: '', label: 'check', condition: { kind: 'compare', left: 'a', op: 'notEmpty', right: '' } }),
+        node({ id: 'x', snippetId: 'build', label: 'x' }),
+        node({ id: 'y', snippetId: 'notify', label: 'y' })
+      ],
+      [],
+      []
+    );
+    failing.edges = [
+      { from: 'if', to: 'x', branch: 'yes' },
+      { from: 'x', to: 'y' }
+    ];
+    const results = await runAutomation(failing, new Map([build, notify].map((s) => [s.id, s])), {}, {
+      ...deps([]),
+      runLocal: async () => ({ output: '', ok: false, error: 'boom' })
+    });
+    expect(results.map((r) => r.status)).toEqual(['success', 'failed', 'skipped']);
+  });
+
+  it('asks a command where the node runs: success is yes, anything else no', async () => {
+    const byCommand = automation(
+      [
+        node({ id: 'if', snippetId: '', label: 'exists', condition: { kind: 'command', command: 'test -f {{params.file}}', timeoutSecs: 10 } }),
+        node({ id: 'y', snippetId: 'build', label: 'build' })
+      ],
+      [],
+      [{ name: 'file', kind: 'text' }]
+    );
+    byCommand.edges = [{ from: 'if', to: 'y', branch: 'no' }];
+    const ran: string[] = [];
+    let results = await runAutomation(byCommand, library, { file: 'image.tar' }, deps(ran));
+    expect(results.map((r) => [r.output, r.status])).toEqual([
+      ['yes', 'success'],
+      ['', 'skipped']
+    ]);
+    results = await runAutomation(byCommand, library, { file: 'missing' }, deps(ran));
+    expect(results.map((r) => r.status)).toEqual(['success', 'success']);
+    expect(ran).toEqual(['test -f image.tar', 'test -f missing', 'make']);
+  });
+});
+
+describe('compareTexts', () => {
+  it('compares trimmed text', () => {
+    expect(compareTexts('prod\n', 'equals', ' prod')).toBe(true);
+    expect(compareTexts('prod', 'notEquals', 'staging')).toBe(true);
+    expect(compareTexts('Error: not found', 'contains', 'not found')).toBe(true);
+    expect(compareTexts('ok', 'notContains', 'error')).toBe(true);
+    expect(compareTexts(' \n', 'isEmpty', '')).toBe(true);
+    expect(compareTexts('x', 'notEmpty', '')).toBe(true);
+  });
+});
+
+describe('fixed variables', () => {
+  const echo = snippet({ id: 'e', name: 'Echo', command: 'push {{params.registry}}/{{params.image}}' });
+  const flow = automation([node({ id: 'n', snippetId: 'e', label: 'push' })], [], [
+    { name: 'registry', kind: 'fixed', default: 'registry.example.com' },
+    { name: 'image', kind: 'text' }
+  ]);
+
+  it('are never asked for, and every node sees their value', async () => {
+    expect(missingParamValues(flow, { image: 'web' })).toEqual([]);
+    expect(missingParamValues(flow, {})).toEqual(['image']);
+    expect(validateAutomation(flow, new Map([['e', echo]]))).toEqual([]);
+    const ran: string[] = [];
+    await runAutomation(flow, new Map([['e', echo]]), { image: 'web', registry: 'not this' }, {
+      runLocal: async (command) => {
+        ran.push(command);
+        return { output: '', ok: true };
+      },
+      runWsl: async () => ({ output: '', ok: true }),
+      runGitHub: async () => '',
+      wslUploadSource: async (_d, p) => p,
+      connectHost: async () => {
+        throw new Error('not reached');
+      }
+    });
+    expect(ran).toEqual(['push registry.example.com/web']);
   });
 });

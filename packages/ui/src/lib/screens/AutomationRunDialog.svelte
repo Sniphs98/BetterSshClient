@@ -28,8 +28,12 @@
   // this dialog per open (a fresh `{#if}`/component instance), so the props never
   // change under a live one.
   // svelte-ignore state_referenced_locally
+  // A fixed variable is set in the automation itself — nothing to ask for.
+  // svelte-ignore state_referenced_locally
+  const asked = automation.params.filter((p) => p.kind !== 'fixed');
+  // svelte-ignore state_referenced_locally
   let values = $state<Record<string, string>>(
-    Object.fromEntries(automation.params.map((p) => [p.name, initialValues[p.name] ?? p.default ?? '']))
+    Object.fromEntries(asked.map((p) => [p.name, initialValues[p.name] ?? p.default ?? '']))
   );
 
   async function pickHost(paramName: string): Promise<void> {
@@ -43,7 +47,7 @@
     <h2 class="text-sm font-semibold">Run "{automation.name}"</h2>
     <p class="text-sm text-muted">This automation needs a few values before it runs.</p>
     <div class="space-y-3">
-      {#each automation.params as param (param.name)}
+      {#each asked as param (param.name)}
         {#if param.kind === 'host'}
           <!-- Not a <label>: wrapping a <button> in one lets the label text win the
                accessible-name computation over the button's own "Choose a host…" text
@@ -77,7 +81,7 @@
       <Button variant="ghost" onclick={onCancel}>Cancel</Button>
       <Button
         variant="primary"
-        disabled={automation.params.some((p) => !values[p.name]?.trim())}
+        disabled={asked.some((p) => !values[p.name]?.trim())}
         onclick={() => onRun({ ...values })}
       >
         Run
