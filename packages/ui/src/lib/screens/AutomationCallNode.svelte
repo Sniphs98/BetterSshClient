@@ -29,6 +29,18 @@
     });
   }
 
+  /** Into the called automation — by double-clicking the node, or its "Open" button. */
+  function open(): void {
+    if (called) actions.openAutomation(called.name);
+  }
+
+  // A double-click in one of the node's fields selects text there, as usual; elsewhere
+  // on the node it opens the automation.
+  function onDblClick(e: MouseEvent): void {
+    if ((e.target as HTMLElement).closest('input, select, textarea, button')) return;
+    open();
+  }
+
   function setValue(name: string, value: string): void {
     updateNodeData(id, { call: { ...call, params: { ...call.params, [name]: value } } });
   }
@@ -38,7 +50,12 @@
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
 </script>
 
-<div class="w-60 space-y-2 rounded-lg border bg-surface p-3 text-left shadow-sm {selected ? 'border-accent' : 'border-default'}">
+<!-- svelte-ignore a11y_no_static_element_interactions -- the double-click is a shortcut; the "Open" button does the same. -->
+<div
+  class="w-60 space-y-2 rounded-lg border bg-surface p-3 text-left shadow-sm {selected ? 'border-accent' : 'border-default'}"
+  ondblclick={onDblClick}
+  title={called ? `Double-click to open "${called.name}"` : undefined}
+>
   <Handle type="target" position={Position.Left} />
 
   <div class="flex items-center gap-1.5">
@@ -65,8 +82,10 @@
     Run another automation
   </div>
 
-  <label class="block space-y-0.5 text-[11px] text-muted">
+  <div class="space-y-0.5 text-[11px] text-muted">
     <span>Automation</span>
+    <div class="flex items-center gap-1">
+    <div class="min-w-0 flex-1">
     <Select value={call.automation} onchange={(e: Event) => choose((e.currentTarget as HTMLSelectElement).value)} class="nodrag {input} font-sans" aria-label="Automation to run">
       <option value="" disabled>Choose…</option>
       {#if call.automation && !choices.includes(call.automation)}
@@ -76,7 +95,19 @@
         <option value={name}>{name}</option>
       {/each}
     </Select>
-  </label>
+    </div>
+    <button
+      type="button"
+      class="nodrag nopan grid h-7 w-7 shrink-0 place-items-center rounded text-muted transition hover:bg-surface-inset hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:opacity-40"
+      title={called ? `Open "${called.name}"` : 'Choose an automation first'}
+      aria-label={called ? `Open ${called.name}` : 'Open the automation'}
+      disabled={!called}
+      onclick={open}
+    >
+      <Icon name="edit" size={13} />
+    </button>
+    </div>
+  </div>
 
   {#if call.automation && !called}
     <p class="text-[10px] text-status-crit">No automation called "{call.automation}" any more.</p>

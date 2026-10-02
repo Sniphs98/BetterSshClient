@@ -967,3 +967,39 @@ test('the snippet editor: placeholders suggested after {{, inserted by a click, 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('Deploy', { exact: true })).toBeVisible();
 });
+
+test('from a node that runs another automation, its button or a double-click opens that automation', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const automations = (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations;
+    automations.push(
+      { name: 'release', params: [], nodes: [], edges: [] },
+      {
+        name: 'ship',
+        params: [],
+        nodes: [{ id: 'c', snippetId: '', label: 'run', continueOnError: false, target: 'local', call: { automation: 'release', params: {} }, position: { x: 0, y: 0 } }],
+        edges: []
+      }
+    );
+  });
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByTitle('Open ship').click();
+  const nameField = page.getByLabel('Automation name');
+  await expect(nameField).toHaveValue('ship');
+  const callNode = page.locator('.svelte-flow__node', { hasText: 'Run another automation' });
+
+  // A double-click on the node (not in one of its fields) goes into "release".
+  await callNode.getByText('Run another automation').dblclick();
+  await expect(nameField).toHaveValue('release');
+
+  // The button does too — and with unsaved changes it asks first.
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByTitle('Open ship').click();
+  await expect(nameField).toHaveValue('ship');
+  await callNode.getByLabel('Label').fill('run-release');
+  await callNode.getByRole('button', { name: 'Open release' }).click();
+  const prompt = page.getByRole('dialog', { name: 'Unsaved changes' });
+  await expect(prompt).toBeVisible();
+  await prompt.getByRole('button', { name: 'Discard' }).click();
+  await expect(nameField).toHaveValue('release');
+});

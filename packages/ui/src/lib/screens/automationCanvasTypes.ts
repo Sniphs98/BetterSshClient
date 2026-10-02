@@ -129,6 +129,8 @@ export interface AutomationNodeActionsContext {
   wslDistros: () => string[];
   /** The automation being edited, as named right now — a "run automation" node can't run it. */
   automationName: () => string;
+  /** Opens automation `name` in the editor instead (asking first if this one has unsaved changes). */
+  openAutomation: (name: string) => void;
 }
 
 export const AUTOMATION_NODE_ACTIONS_CONTEXT = 'automation-node-actions';

@@ -239,7 +239,8 @@
       editingSnippetId = snippetId;
     },
     wslDistros: () => distros,
-    automationName: () => name
+    automationName: () => name,
+    openAutomation: (target: string) => activeEntity.selectAutomation(target)
   });
 
   async function submitSnippetEdit(snippet: SnippetDto): Promise<void> {
