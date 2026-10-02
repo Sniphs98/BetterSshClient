@@ -37,6 +37,11 @@
   let fields = $state<SnippetFormFields>({ ...initial });
   let error = $state<string | null>(null);
   let saving = $state(false);
+
+  // Changed since the dialog opened: closing it by accident then asks first (Modal).
+  // svelte-ignore state_referenced_locally
+  const opened = JSON.stringify(initial);
+  const dirty = $derived(JSON.stringify(fields) !== opened);
   let nameEl = $state<HTMLInputElement>();
 
   onMount(() => nameEl?.focus());
@@ -135,7 +140,7 @@
   const cardIcon = 'grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-inset text-muted';
 </script>
 
-<Modal label={mode === 'add' ? 'New snippet' : 'Edit snippet'} size="wide" onClose={onCancel}>
+<Modal label={mode === 'add' ? 'New snippet' : 'Edit snippet'} size="wide" onClose={onCancel} dirty={dirty && !saving} onSave={save}>
   <form
     onsubmit={(e) => {
       e.preventDefault();

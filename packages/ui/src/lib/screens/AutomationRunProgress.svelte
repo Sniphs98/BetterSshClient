@@ -82,7 +82,7 @@
   {@const phase = run.phase}
   <Modal label="Automation run" onClose={dismissAutomationRun}>
     <div class="space-y-3 px-5 py-4">
-      <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-2.5 pr-8">
         <Icon name="automations" size={16} />
         <h2 class="min-w-0 truncate text-sm font-semibold">{run.automationName}</h2>
         {#if totalTime(run)}

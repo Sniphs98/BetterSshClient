@@ -37,6 +37,11 @@
   let fields = $state<HostFormFields>({ ...initial });
   let error = $state<string | null>(null);
   let saving = $state(false);
+
+  // Changed since the dialog opened: closing it by accident then asks first (Modal).
+  // svelte-ignore state_referenced_locally
+  const opened = JSON.stringify(initial);
+  const dirty = $derived(JSON.stringify(fields) !== opened);
   let nameEl = $state<HTMLInputElement>();
   let hostnameEl = $state<HTMLInputElement>();
 
@@ -82,7 +87,7 @@
     'focus-visible:ring-2 focus-visible:ring-focus placeholder:text-faint';
 </script>
 
-<Modal label={mode === 'add' ? 'Add host' : 'Edit host'} size="large" onClose={onCancel}>
+<Modal label={mode === 'add' ? 'Add host' : 'Edit host'} size="large" onClose={onCancel} dirty={dirty && !saving} onSave={save}>
   <form
     onsubmit={(e) => {
       e.preventDefault();
