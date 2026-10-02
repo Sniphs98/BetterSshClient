@@ -28,11 +28,15 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
       : undefined;
   let upload: AutomationNode['upload'];
   if (raw.upload !== undefined) {
-    const u = raw.upload as { from?: unknown; to?: unknown } | null;
+    const u = raw.upload as { from?: unknown; to?: unknown; source?: unknown; wslDistro?: unknown } | null;
     if (typeof u !== 'object' || u === null || typeof u.from !== 'string' || typeof u.to !== 'string') {
       throw new Error(`automation "${automationName}" node "${raw.id}" has an invalid "upload"`);
     }
     upload = { from: u.from, to: u.to };
+    if (u.source === 'wsl') {
+      upload.source = 'wsl';
+      if (typeof u.wslDistro === 'string' && u.wslDistro !== '') upload.wslDistro = u.wslDistro;
+    }
   }
   const github = raw.github === undefined ? undefined : parseGitHubStep(raw.github, `automation "${automationName}" node "${raw.id}" github`);
   return {
@@ -59,7 +63,14 @@ function automationNodeToToml(node: AutomationNode): Record<string, unknown> {
     continueOnError: node.continueOnError,
     target: node.target
   };
-  if (node.upload !== undefined) out.upload = { from: node.upload.from, to: node.upload.to };
+  if (node.upload !== undefined) {
+    const upload: Record<string, unknown> = { from: node.upload.from, to: node.upload.to };
+    if (node.upload.source === 'wsl') {
+      upload.source = 'wsl';
+      if (node.upload.wslDistro) upload.wslDistro = node.upload.wslDistro;
+    }
+    out.upload = upload;
+  }
   if (node.github !== undefined) out.github = { ...node.github };
   if (node.target === 'wsl' && node.wslDistro) out.wslDistro = node.wslDistro;
   if (node.position !== undefined) out.position = { x: node.position.x, y: node.position.y };

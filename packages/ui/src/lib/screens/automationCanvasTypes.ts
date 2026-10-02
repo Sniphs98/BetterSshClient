@@ -24,8 +24,13 @@ export type SnippetNode = Node<SnippetNodeData, 'snippet'>;
 export interface UploadNodeData extends Record<string, unknown> {
   label: string;
   continueOnError: boolean;
-  /** A file on this machine; relative paths are from the home folder. */
+  /** A file on this machine; relative paths are from the home folder. With `source:
+   *  'wsl'`, a path inside WSL instead (`/tmp/image.tar.gz`). */
   from: string;
+  /** Where `from` lives: Windows' own file system, or a WSL distribution. */
+  source: 'local' | 'wsl';
+  /** For `source: 'wsl'`: the distribution; '' means WSL's default one. */
+  wslDistro: string;
   /** On the host: a file path, or a folder ending in `/` to keep the name. */
   to: string;
 }

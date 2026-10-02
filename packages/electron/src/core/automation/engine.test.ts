@@ -242,6 +242,7 @@ describe('runAutomation', () => {
     return {
       runLocal: async (command) => ({ output: `ran: ${command}`, ok: true }),
       runWsl: async (_distro, command) => ({ output: `wsl: ${command}`, ok: true }),
+      wslUploadSource: async (_distro, path) => path,
       runGitHub: async () => 'v0.0.0',
       connectHost: async () => ({ runShell: async () => ({ output: '', ok: true }), upload: async () => {}, disconnect: () => {} }),
       ...overrides
@@ -569,6 +570,69 @@ describe('upload nodes', () => {
     });
     expect(results.map((r) => r.status)).toEqual(['success', 'failed', 'skipped']);
     expect(results[1].error).toMatch(/no such file on this computer/);
+  });
+});
+
+describe('upload nodes reading from WSL', () => {
+  const save = snippet({ id: 'save', name: 'Save', command: 'docker save frontend | gzip > /tmp/frontend.tar.gz' });
+  const flow = automation(
+    [
+      node({ id: 'n1', snippetId: 'save', label: 'save', target: 'wsl', wslDistro: 'Ubuntu' }),
+      node({
+        id: 'n2',
+        snippetId: '',
+        label: 'upload',
+        target: 'remote',
+        upload: { from: '/tmp/frontend.tar.gz', to: '/opt/images/', source: 'wsl', wslDistro: 'Ubuntu' }
+      })
+    ],
+    [['n1', 'n2']],
+    hostParam
+  );
+
+  it('uploads the file WSL wrote, read where WSL keeps it — not a same-named one in Windows', async () => {
+    const lookups: Array<[string | undefined, string]> = [];
+    const uploads: Array<[string, string]> = [];
+    const results = await runAutomation(flow, new Map([['save', save]]), { host: 'web-1' }, {
+      runLocal: async () => ({ output: '', ok: true }),
+      runWsl: async () => ({ output: '', ok: true }),
+      runGitHub: async () => '',
+      wslUploadSource: async (distro, path) => {
+        lookups.push([distro, path]);
+        return `\\\\wsl.localhost\\${distro}${path.replace(/\//g, '\\')}`;
+      },
+      connectHost: async () => ({
+        runShell: async () => ({ output: '', ok: true }),
+        upload: async (from, to) => {
+          uploads.push([from, to]);
+        },
+        disconnect: () => {}
+      })
+    });
+    expect(lookups).toEqual([['Ubuntu', '/tmp/frontend.tar.gz']]);
+    expect(uploads).toEqual([['\\\\wsl.localhost\\Ubuntu\\tmp\\frontend.tar.gz', '/opt/images/frontend.tar.gz']]);
+    expect(results.map((r) => r.status)).toEqual(['success', 'success']);
+    expect(results[1].output).toBe('/opt/images/frontend.tar.gz');
+  });
+
+  it("fails the node when WSL doesn't have the file", async () => {
+    const results = await runAutomation(flow, new Map([['save', save]]), { host: 'web-1' }, {
+      runLocal: async () => ({ output: '', ok: true }),
+      runWsl: async () => ({ output: '', ok: true }),
+      runGitHub: async () => '',
+      wslUploadSource: async () => {
+        throw new Error('no such file in WSL: /tmp/frontend.tar.gz');
+      },
+      connectHost: async () => ({
+        runShell: async () => ({ output: '', ok: true }),
+        upload: async () => {
+          throw new Error('not reached');
+        },
+        disconnect: () => {}
+      })
+    });
+    expect(results.map((r) => r.status)).toEqual(['success', 'failed']);
+    expect(results[1].error).toBe('no such file in WSL: /tmp/frontend.tar.gz');
   });
 });
 

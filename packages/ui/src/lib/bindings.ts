@@ -401,8 +401,9 @@ export type AutomationNodeDto = {
   id: string;
   /** `''` for an upload step. */
   snippetId: string;
-  /** Set for an upload step: a file on this machine copied to the automation's host. */
-  upload?: { from: string; to: string } | null;
+  /** Set for an upload step: a file on this machine — or, with `source: 'wsl'`, inside
+   *  WSL — copied to the automation's host. */
+  upload?: { from: string; to: string; source?: 'wsl' | null; wslDistro?: string | null } | null;
   /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
   wslDistro?: string | null;
   /** Set for a GitHub step: a workflow to run, or a release file to download. */

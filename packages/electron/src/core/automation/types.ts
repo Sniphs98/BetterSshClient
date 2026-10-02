@@ -45,8 +45,15 @@ export type NodeTarget = 'local' | 'wsl' | 'remote';
  *  1Password, jump hosts, known host keys). Both paths may use `{{params.<name>}}`
  *  and `{{nodes.<label>.output}}`. */
 export interface UploadStep {
-  /** A file on this machine; relative to the home folder, like local nodes' commands. */
+  /** A file on this machine; relative to the home folder, like local nodes' commands —
+   *  or, with `source: 'wsl'`, a path inside WSL (`/tmp/image.tar.gz`, `~/build/app.tgz`;
+   *  relative ones start where WSL nodes run, the Windows home folder). */
   from: string;
+  /** Where `from` lives: this machine's own file system (unset), or a WSL distribution —
+   *  for a file a `'wsl'` node just wrote to, say, `/tmp`, which Windows can't see there. */
+  source?: 'wsl';
+  /** For `source: 'wsl'`: which distribution; unset means WSL's default one. */
+  wslDistro?: string;
   /** Where on the host: a file path, or a folder ending in `/` to keep the file's name. */
   to: string;
 }

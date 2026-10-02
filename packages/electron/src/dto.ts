@@ -147,8 +147,9 @@ export interface AutomationNodeDto {
   id: string;
   /** `''` for an upload node. */
   snippetId: string;
-  /** Set for an upload node: a local file to copy to the automation's host. */
-  upload?: { from: string; to: string };
+  /** Set for an upload node: a local file — or, with `source: 'wsl'`, a file inside WSL —
+   *  to copy to the automation's host. */
+  upload?: { from: string; to: string; source?: 'wsl'; wslDistro?: string };
   /** Set for a GitHub node: a workflow to run, or a release file to download. */
   github?: GitHubStep;
   /** For a `'wsl'` node: the WSL distribution; unset means the default one. */

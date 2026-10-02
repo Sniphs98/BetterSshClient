@@ -110,7 +110,14 @@
           id: n.id,
           type: 'upload' as const,
           position: n.position ?? layoutPosition(i),
-          data: { label: n.label, continueOnError: n.continueOnError, from: n.upload.from, to: n.upload.to }
+          data: {
+            label: n.label,
+            continueOnError: n.continueOnError,
+            from: n.upload.from,
+            to: n.upload.to,
+            source: n.upload.source === 'wsl' ? ('wsl' as const) : ('local' as const),
+            wslDistro: n.upload.wslDistro ?? ''
+          }
         };
       }
       const snippet = $snippets.find((a) => a.id === n.snippetId);
@@ -243,7 +250,7 @@
       id,
       type: 'upload',
       position: placement.position ?? layoutPosition(canvasNodes.filter(isStepNode).length),
-      data: { label: uniqueLabel('upload'), continueOnError: false, from: '', to: '/tmp/' }
+      data: { label: uniqueLabel('upload'), continueOnError: false, from: '', to: '/tmp/', source: 'local', wslDistro: '' }
     };
     canvasNodes = [...canvasNodes, node];
     wire(placement.wireFrom, id);
@@ -443,7 +450,15 @@
         ...(n.type === 'github'
           ? { snippetId: '', github: JSON.parse(JSON.stringify(n.data.step)), target: 'local' as const }
           : n.type === 'upload'
-          ? { snippetId: '', upload: { from: n.data.from.trim(), to: n.data.to.trim() }, target: 'remote' as const }
+          ? {
+              snippetId: '',
+              upload: {
+                from: n.data.from.trim(),
+                to: n.data.to.trim(),
+                ...(n.data.source === 'wsl' ? { source: 'wsl' as const, wslDistro: n.data.wslDistro || undefined } : {})
+              },
+              target: 'remote' as const
+            }
           : {
               snippetId: n.data.snippetId,
               target: n.data.target,

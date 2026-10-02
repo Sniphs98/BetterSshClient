@@ -71,6 +71,27 @@ describe('saveAutomations / loadAutomations round trip', () => {
     expect(await loadAutomations(path)).toEqual(original);
   });
 
+  it('round-trips an upload from WSL with its distribution', async () => {
+    const original = [
+      automation({
+        params: [{ name: 'host', kind: 'host' }],
+        nodes: [
+          {
+            id: 'u',
+            snippetId: '',
+            upload: { from: '/tmp/frontend.tar.gz', to: '/tmp/', source: 'wsl', wslDistro: 'Ubuntu' },
+            label: 'upload',
+            continueOnError: false,
+            target: 'remote'
+          }
+        ],
+        edges: []
+      })
+    ];
+    await saveAutomations(original, path);
+    expect(await loadAutomations(path)).toEqual(original);
+  });
+
   it('round-trips a WSL node with its distribution', async () => {
     const original = [
       automation({

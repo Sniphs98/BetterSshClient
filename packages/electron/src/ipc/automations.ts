@@ -5,7 +5,7 @@ import { loadSnippets, saveSnippets } from '../core/config/snippets.js';
 import { loadAutomations, saveAutomations } from '../core/config/automations.js';
 import { runLocalCommand } from '../core/automation/localExec.js';
 import { uploadOverSession } from '../core/automation/upload.js';
-import { listWslDistros, runWslCommand } from '../core/automation/wslExec.js';
+import { listWslDistros, runWslCommand, wslUploadSource } from '../core/automation/wslExec.js';
 import { GitHubClient } from '../core/github/client.js';
 import { downloadAsset, runWorkflow } from '../core/github/steps.js';
 import { resolveGitHubToken } from '../core/config/github.js';
@@ -254,6 +254,7 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
     const deps: RunAutomationDeps = {
       runLocal: runLocalCommand,
       runWsl: runWslCommand,
+      wslUploadSource,
       runGitHub: async (step, report) => {
         const client = new GitHubClient(await resolveGitHubToken());
         return step.action === 'runWorkflow' ? runWorkflow(client, step, report) : downloadAsset(client, step, report);
