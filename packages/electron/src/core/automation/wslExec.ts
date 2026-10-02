@@ -95,3 +95,41 @@ export async function runWslCommand(
     );
   });
 }
+
+/** `text` as one single-quoted bash word, whatever it contains. */
+function bashQuote(text: string): string {
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+/** The bash script that turns an upload node's WSL path into the path Windows reads the
+ *  same file at: `~` is the Linux home, a relative path starts where WSL nodes run (the
+ *  Windows home folder), and `wslpath -w` gives `\\wsl.localhost\<distro>\tmp\…` for a
+ *  file in WSL's own file system or `C:\…` for one under /mnt/c. */
+export function wslUploadPathScript(path: string): string {
+  return [
+    `p=${bashQuote(path.trim())}`,
+    'case "$p" in "~") p="$HOME" ;; "~/"*) p="$HOME/${p#"~/"}" ;; esac',
+    'if [ ! -e "$p" ]; then echo "no such file in WSL: $p" >&2; exit 1; fi',
+    'if [ ! -f "$p" ]; then echo "not a file in WSL: $p" >&2; exit 1; fi',
+    'wslpath -w "$(realpath -- "$p")"'
+  ].join('\n');
+}
+
+/**
+ * Where Windows finds the file an upload node names inside WSL — so the upload sends
+ * exactly the file a `'wsl'` node wrote (`docker save -o /tmp/frontend.tar.gz`), never a
+ * same-named one that happens to be lying around in the Windows home folder.
+ */
+export async function wslUploadSource(
+  distro: string | undefined,
+  path: string,
+  run: typeof runWslCommand = runWslCommand
+): Promise<string> {
+  const result = await run(distro, wslUploadPathScript(path), 30_000);
+  const lines = result.output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!result.ok) throw new Error(lines.at(-1) ?? result.error ?? 'WSL failed');
+  // The last line: a login profile may print something first.
+  const windowsPath = lines.at(-1);
+  if (windowsPath === undefined) throw new Error(`WSL gave no Windows path for ${path}`);
+  return windowsPath;
+}

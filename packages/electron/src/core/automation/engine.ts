@@ -252,6 +252,8 @@ export interface RunAutomationDeps {
   runGitHub: (step: GitHubStep, report: (message: string) => void) => Promise<string>;
   /** A `'wsl'` node: `command` in WSL distribution `distro` (its default one when unset). */
   runWsl: (distro: string | undefined, command: string, timeoutMs: number) => Promise<{ output: string; ok: boolean; error?: string }>;
+  /** An upload from WSL: the path Windows reads WSL file `path` at; rejects if it isn't there. */
+  wslUploadSource: (distro: string | undefined, path: string) => Promise<string>;
 }
 
 export type AutomationProgressEvent =
@@ -338,8 +340,10 @@ export async function runAutomation(
           // transfer fails on the SSH connection's own keepalive.
           const from = substituteTemplate(node.upload.from, predecessorsByLabel, paramValues).trim();
           const to = uploadDestination(from, substituteTemplate(node.upload.to, predecessorsByLabel, paramValues));
+          // A file in WSL is read where WSL keeps it, not looked up by name on Windows.
+          const local = node.upload.source === 'wsl' ? await deps.wslUploadSource(node.upload.wslDistro || undefined, from) : from;
           const connection = await connectionFor(nodeHostName!);
-          await connection.upload(from, to);
+          await connection.upload(local, to);
           // The output is where it landed, so the next node can use it as is:
           // `docker load < {{nodes.upload.output}}`.
           exec = { output: to, ok: true };
