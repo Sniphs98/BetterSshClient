@@ -20,6 +20,7 @@
   // as the graph's own permanent "Start" node (AutomationStartNode.svelte) rather than a
   // toolbar above the canvas — see automationCanvasTypes.ts's note on `START_NODE_ID`.
   import { onMount, setContext } from 'svelte';
+  import Modal from '$lib/components/Modal.svelte';
   import { SvelteFlow, Background, BackgroundVariant, Controls, type Connection, type OnConnectEnd } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import type { SnippetDto, AutomationDto, AutomationParamDto, AutomationParamKindDto } from '$lib/bindings';
@@ -328,6 +329,53 @@
     activeEntity.selectAutomations();
   }
 
+  /** What saving would store, as a string to compare — name, parameters, every node
+   *  (where it is and how it's set up) and every connection. The snippet name a node
+   *  shows is a copy of the library's, not something this automation saves. */
+  function snapshot(): string {
+    return JSON.stringify({
+      name: name.trim(),
+      params,
+      nodes: canvasNodes
+        .filter(isStepNode)
+        .map((n) => {
+          const { snippetName: _shown, ...data } = n.data as Record<string, unknown>;
+          return { id: n.id, type: n.type, x: Math.round(n.position.x), y: Math.round(n.position.y), data };
+        }),
+      edges: canvasEdges.map((e) => `${e.source}->${e.target}`).sort()
+    });
+  }
+
+  // Unsaved changes: leaving the editor any way — back, Cancel, the sidebar, the
+  // palette, a session opening — first asks whether to save or discard them.
+  const saved = snapshot();
+  const dirty = $derived(!notFound && snapshot() !== saved);
+  /** The held navigation while the "unsaved changes" question is open. */
+  let pendingLeave = $state<(() => void) | null>(null);
+  /** Set once the editor is really leaving (saved or discarded), so it isn't asked again. */
+  let leaving = false;
+  onMount(() =>
+    activeEntity.setLeaveGuard((leave) => {
+      if (leaving || !dirty) return false;
+      pendingLeave = leave;
+      return true;
+    })
+  );
+
+  /** "Save" in the question: saves and goes on — or, when the automation can't be
+   *  saved as it is (no name, …), stays with the reason showing. */
+  async function saveFromPrompt(): Promise<void> {
+    await save();
+    if (error) pendingLeave = null;
+  }
+
+  function discardAndLeave(): void {
+    const leave = pendingLeave;
+    pendingLeave = null;
+    leaving = true;
+    leave?.();
+  }
+
   function uniqueLabel(base: string): string {
     const slug = base.trim() || 'node';
     const taken = new Set(canvasNodes.filter(isStepNode).map((n) => n.data.label));
@@ -476,9 +524,15 @@
     try {
       await saveAutomation(automation);
       automations.set(await listAutomations());
-      back();
+      // Off to wherever the "unsaved changes" question was holding up, or back.
+      const leave = pendingLeave ?? back;
+      pendingLeave = null;
+      leaving = true;
+      leave();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
+      // Stay, so the reason is there to read.
+      pendingLeave = null;
     } finally {
       saving = false;
     }
@@ -553,6 +607,22 @@
     </div>
   {/if}
 </section>
+
+{#if pendingLeave}
+  <Modal label="Unsaved changes" onClose={() => (pendingLeave = null)}>
+    <div class="space-y-3 px-5 py-4">
+      <h2 class="text-sm font-semibold">Unsaved changes</h2>
+      <p class="text-sm text-muted">
+        {name.trim() ? `“${name.trim()}”` : 'This automation'} has changes that aren't saved yet. Save them before leaving?
+      </p>
+      <div class="flex justify-end gap-2 pt-1">
+        <Button variant="ghost" onclick={() => (pendingLeave = null)}>Keep editing</Button>
+        <Button variant="ghost" onclick={discardAndLeave}>Discard</Button>
+        <Button variant="primary" onclick={saveFromPrompt} disabled={saving}>Save</Button>
+      </div>
+    </div>
+  </Modal>
+{/if}
 
 {#if editingSnippet}
   <SnippetEditor
