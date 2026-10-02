@@ -93,6 +93,13 @@ describe('formToInput', () => {
     expect(r.ok && r.input.domain).toBe('CORP');
   });
 
+  it('saves a folder trimmed, and a blank one as none', () => {
+    const inFolder = formToInput(fields({ name: 'n', hostname: 'h', folder: ' Office ' }));
+    expect(inFolder.ok && inFolder.input.folder).toBe('Office');
+    const loose = formToInput(fields({ name: 'n', hostname: 'h', folder: '  ' }));
+    expect(loose.ok && loose.input.folder).toBeUndefined();
+  });
+
   it('carries the id through unchanged', () => {
     const r = formToInput(fields({ id: 'fixed-id', name: 'n', hostname: 'h' }));
     expect(r.ok && r.input.id).toBe('fixed-id');
@@ -106,8 +113,9 @@ describe('formFromConnection', () => {
   });
 
   it('round-trips the other fields', () => {
-    const c = connection({ username: 'admin', domain: 'CORP' });
+    const c = connection({ username: 'admin', domain: 'CORP', folder: 'Office' });
     const f = formFromConnection(c);
+    expect(f.folder).toBe('Office');
     expect(f.name).toBe(c.name);
     expect(f.hostname).toBe(c.hostname);
     expect(f.port).toBe('3389');

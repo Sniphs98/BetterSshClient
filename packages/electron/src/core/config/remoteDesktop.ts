@@ -83,6 +83,8 @@ export interface RemoteDesktopConnection extends RdpSettings {
   /** A 1Password reference the port is read from at connect time; `port` then keeps
    *  the default. (Hostname, username and domain carry theirs in the field itself.) */
   portRef?: string;
+  /** The Remote Desktop screen's folder the tile sits in; unset means none. */
+  folder?: string;
 }
 
 interface RemoteDesktopFile {
@@ -117,6 +119,7 @@ function connectionFromToml(raw: Record<string, unknown>): RemoteDesktopConnecti
     viaHost: typeof raw.viaHost === 'string' ? raw.viaHost : undefined,
     passwordRef: typeof raw.passwordRef === 'string' ? raw.passwordRef : undefined,
     portRef: typeof raw.portRef === 'string' ? raw.portRef : undefined,
+    folder: typeof raw.folder === 'string' && raw.folder.trim() !== '' ? raw.folder.trim() : undefined,
     ...rdpSettingsFrom(raw)
   });
 }
@@ -137,6 +140,7 @@ function connectionToToml(connection: RemoteDesktopConnection): Record<string, u
   if (encrypted.viaHost !== undefined) out.viaHost = encrypted.viaHost;
   if (encrypted.passwordRef !== undefined) out.passwordRef = encrypted.passwordRef;
   if (encrypted.portRef !== undefined) out.portRef = encrypted.portRef;
+  if (encrypted.folder !== undefined) out.folder = encrypted.folder;
   for (const key of RDP_SETTING_KEYS) {
     if (encrypted[key] !== undefined) out[key] = encrypted[key];
   }
