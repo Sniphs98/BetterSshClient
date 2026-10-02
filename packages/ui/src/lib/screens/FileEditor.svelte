@@ -94,9 +94,9 @@
   }
 </script>
 
-<Modal label="Edit {path}" size="large" onClose={onClose}>
+<Modal label="Edit {path}" size="large" {onClose} dirty={dirty && !saving} onSave={save}>
   <div class="flex min-h-0 flex-1 flex-col">
-    <header class="flex items-center justify-between gap-3 border-b border-default px-5 py-3">
+    <header class="flex items-center justify-between gap-3 border-b border-default py-3 pl-5 pr-12">
       <h2 class="min-w-0 truncate font-mono text-xs text-muted" title={path}>{path}</h2>
       <span class="shrink-0 text-xs text-faint">{language}</span>
     </header>
