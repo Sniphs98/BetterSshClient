@@ -328,3 +328,54 @@ test('an offline card shows its panel under the bars, with what the host last re
   const disk = page.getByText('Disk', { exact: true }).first();
   expect((await panel.boundingBox())!.y).toBeGreaterThan((await disk.boundingBox())!.y);
 });
+
+test('closing a dialog with unsaved changes asks first: keep editing, discard or save', async ({ page }) => {
+  await boot(page);
+  const editor = page.getByRole('dialog', { name: 'Add host' });
+  const prompt = page.getByRole('alertdialog', { name: 'Unsaved changes' });
+  const clickBeside = () => page.mouse.click(8, 300);
+
+  // Nothing typed yet: a click beside it just closes it.
+  await page.getByRole('button', { name: 'Add host' }).click();
+  await clickBeside();
+  await expect(editor).toHaveCount(0);
+
+  // With changes, the click beside it asks; "Keep editing" keeps them.
+  await page.getByRole('button', { name: 'Add host' }).click();
+  await editor.getByLabel('Name', { exact: true }).fill('db-2');
+  await clickBeside();
+  await expect(prompt).toBeVisible();
+  await prompt.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(prompt).toHaveCount(0);
+  await expect(editor.getByLabel('Name', { exact: true })).toHaveValue('db-2');
+  await editor.screenshot({ path: 'test-results/unsaved-before.png' });
+
+  // Esc asks too; "Discard" closes without saving.
+  await page.keyboard.press('Escape');
+  await expect(prompt).toBeVisible();
+  await page.screenshot({ path: 'test-results/unsaved-prompt.png', animations: 'disabled' });
+  await prompt.getByRole('button', { name: 'Discard' }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.getByText('db-2', { exact: true })).toHaveCount(0);
+
+  // The × asks as well, and "Save" saves.
+  await page.getByRole('button', { name: 'Add host' }).click();
+  await editor.getByLabel('Name', { exact: true }).fill('db-2');
+  await editor.getByLabel('Hostname / IP').fill('db-2.example.com');
+  await editor.getByRole('button', { name: 'Close' }).click();
+  await prompt.getByRole('button', { name: 'Save' }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.getByText('db-2', { exact: true })).toBeVisible();
+});
+
+test('a save that fails from the question keeps the dialog open with the reason', async ({ page }) => {
+  await boot(page);
+  const editor = page.getByRole('dialog', { name: 'Add host' });
+  await page.getByRole('button', { name: 'Add host' }).click();
+  await editor.getByLabel('Name', { exact: true }).fill('no-hostname');
+  await page.keyboard.press('Escape');
+  await page.getByRole('alertdialog', { name: 'Unsaved changes' }).getByRole('button', { name: 'Save' }).click();
+  await expect(editor).toBeVisible();
+  await expect(editor.getByText('Hostname / IP cannot be empty')).toBeVisible();
+  await expect(editor.getByLabel('Name', { exact: true })).toHaveValue('no-hostname');
+});

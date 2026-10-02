@@ -1,4 +1,12 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+/** Types a snippet's command into its Monaco editor (`fill` can't), replacing what's there. */
+async function fillCommand(dialog: Locator, text: string): Promise<void> {
+  const box = dialog.getByRole('textbox', { name: 'Command' });
+  await box.focus();
+  await box.press('ControlOrMeta+A');
+  await dialog.page().keyboard.insertText(text);
+}
 
 // Automations (graph-based): a reusable Snippet library + Automations that wire them
 // together with dependency edges. e2e runs against the static SPA with the Electron
@@ -244,7 +252,7 @@ test('build snippets, wire an automation, run it, and see success/failed/skipped
     await page.getByRole('button', { name: 'New snippet' }).first().click();
     const editor = page.getByRole('dialog', { name: 'New snippet' });
     await editor.getByLabel('Name').fill(name);
-    await editor.getByLabel('Command').fill(command);
+    await fillCommand(editor, command);
     await editor.getByRole('button', { name: 'Add snippet' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   }
@@ -338,7 +346,7 @@ test('connecting the Start node to a snippet node is a cosmetic link — dashed,
   await page.getByRole('button', { name: 'New snippet' }).first().click();
   const editor = page.getByRole('dialog', { name: 'New snippet' });
   await editor.getByLabel('Name').fill('Build');
-  await editor.getByLabel('Command').fill('echo build-ok');
+  await fillCommand(editor, 'echo build-ok');
   await editor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -389,7 +397,7 @@ test('a node set to run on a host carries no host itself — the automation asks
   // are the placing node's concern.
   await expect(snippetEditor.getByText('Host', { exact: true })).toHaveCount(0);
   await expect(snippetEditor.getByLabel('Runs')).toHaveCount(0);
-  await snippetEditor.getByLabel('Command').fill('echo deployed');
+  await fillCommand(snippetEditor, 'echo deployed');
   await snippetEditor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -490,7 +498,7 @@ test('a running automation can be stopped — from its card or the run panel', a
     await page.getByRole('button', { name: 'New snippet' }).first().click();
     const editor = page.getByRole('dialog', { name: 'New snippet' });
     await editor.getByLabel('Name').fill(name);
-    await editor.getByLabel('Command').fill(command);
+    await fillCommand(editor, command);
     await editor.getByRole('button', { name: 'Add snippet' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   }
@@ -587,7 +595,7 @@ test('a node can run in WSL, in a chosen distribution, without needing a host', 
   await page.getByRole('button', { name: 'New snippet' }).first().click();
   const snippetEditor = page.getByRole('dialog', { name: 'New snippet' });
   await snippetEditor.getByLabel('Name').fill('Save image');
-  await snippetEditor.getByLabel('Command').fill('docker save -o image.tar nginx');
+  await fillCommand(snippetEditor, 'docker save -o image.tar nginx');
   await snippetEditor.getByRole('button', { name: 'Add snippet' }).click();
 
   await page.getByRole('button', { name: 'Back to Automations' }).click();
@@ -682,7 +690,7 @@ test('the "+" menu can create a brand new snippet inline and drops it straight o
   const snippetEditor = page.getByRole('dialog', { name: 'New snippet' });
   await expect(snippetEditor).toBeVisible();
   await snippetEditor.getByLabel('Name').fill('Provision');
-  await snippetEditor.getByLabel('Command').fill('echo provisioned');
+  await fillCommand(snippetEditor, 'echo provisioned');
   await snippetEditor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -706,7 +714,7 @@ test('dragging a connection out to empty canvas space offers the snippet picker 
   await page.getByRole('button', { name: 'New snippet' }).first().click();
   const editor = page.getByRole('dialog', { name: 'New snippet' });
   await editor.getByLabel('Name').fill('Build');
-  await editor.getByLabel('Command').fill('echo build-ok');
+  await fillCommand(editor, 'echo build-ok');
   await editor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -756,7 +764,7 @@ test('an if node: added from the "+" menu, its "no" way wired by dragging, saved
   await page.getByRole('button', { name: 'New snippet' }).first().click();
   const editor = page.getByRole('dialog', { name: 'New snippet' });
   await editor.getByLabel('Name').fill('Deploy');
-  await editor.getByLabel('Command').fill('echo deploy');
+  await fillCommand(editor, 'echo deploy');
   await editor.getByRole('button', { name: 'Add snippet' }).click();
   await page.getByRole('button', { name: 'Back to Automations' }).click();
 
@@ -825,7 +833,7 @@ test('export and import — sharing a snippet or automation as a file', async ({
   await page.getByRole('button', { name: 'New snippet' }).first().click();
   const editor = page.getByRole('dialog', { name: 'New snippet' });
   await editor.getByLabel('Name').fill('Build');
-  await editor.getByLabel('Command').fill('echo build-ok');
+  await fillCommand(editor, 'echo build-ok');
   await editor.getByRole('button', { name: 'Add snippet' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -924,4 +932,38 @@ test('a node that runs another automation: picked from the "+" menu, its values 
     target: 'local',
     call: { automation: 'release', params: { server: '{{params.host}}', tag: 'v1.2' } }
   });
+});
+
+test('the snippet editor: placeholders suggested after {{, inserted by a click, highlighted; Ctrl+S saves', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  await page.getByRole('button', { name: 'New snippet' }).first().click();
+  const editor = page.getByRole('dialog', { name: 'New snippet' });
+  await editor.getByLabel('Name').fill('Deploy');
+
+  // Typing {{ offers the placeholders; picking one fills it in.
+  await fillCommand(editor, 'docker build -t ');
+  await page.keyboard.type('{{');
+  const suggest = page.locator('.suggest-widget');
+  await expect(suggest).toBeVisible();
+  await expect(suggest.locator('.monaco-list-row')).toHaveCount(3);
+  await suggest.locator('.monaco-list-row', { hasText: '{{params.name}}' }).click();
+  await page.keyboard.insertText('tag');
+  await page.keyboard.press('End');
+
+  // …and the list beside the editor inserts at the cursor.
+  await page.keyboard.insertText(' ');
+  await editor.getByRole('button', { name: /^\{\{nodes\.label\.output\}\}/ }).click();
+
+  const lines = editor.locator('.view-lines');
+  await expect(lines).toHaveText('docker build -t {{params.tag}} {{nodes.label.output}}');
+  // Highlighted: exactly the placeholders (Monaco splits each into a span per token).
+  const highlighted = await editor.locator('.snippet-placeholder').allTextContents();
+  expect(highlighted.join('')).toBe('{{params.tag}}{{nodes.label.output}}');
+  await editor.screenshot({ path: 'test-results/snippet-editor.png', animations: 'disabled' });
+
+  await editor.getByRole('textbox', { name: 'Command' }).press('ControlOrMeta+S');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Deploy', { exact: true })).toBeVisible();
 });
