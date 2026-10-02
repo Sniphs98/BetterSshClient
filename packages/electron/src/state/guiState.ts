@@ -33,7 +33,8 @@ export class GuiState {
    *  slot, which exists specifically to protect a `hosts.toml` write race). Two
    *  different automations have no reason to serialize; only the same automation twice at once is
    *  nonsensical (confusing interleaved progress events on one automation's run). */
-  private readonly runningAutomations = new Set<string>();
+  /** Each running automation, with what cancels it. */
+  private readonly runningAutomations = new Map<string, AbortController>();
   private updateCheckClaimed = false;
   readonly pty: PtyManager;
   /** Local terminal tabs (PowerShell, cmd, WSL, …) — same ids and events as `pty`. */
@@ -92,12 +93,19 @@ export class GuiState {
   }
 
   /** Claims the run slot for `automationName`, or throws if that same automation is already
-   *  running. */
-  tryBeginAutomationRun(automationName: string): void {
+   *  running. The returned signal is what `cancelAutomationRun` aborts. */
+  tryBeginAutomationRun(automationName: string): AbortSignal {
     if (this.runningAutomations.has(automationName)) {
       throw new Error(`automation '${automationName}' is already running`);
     }
-    this.runningAutomations.add(automationName);
+    const controller = new AbortController();
+    this.runningAutomations.set(automationName, controller);
+    return controller.signal;
+  }
+
+  /** Cancels `automationName`'s run, if it's running. */
+  cancelAutomationRun(automationName: string): void {
+    this.runningAutomations.get(automationName)?.abort();
   }
 
   /** Releases the run slot for `automationName`. Safe to call unconditionally. */

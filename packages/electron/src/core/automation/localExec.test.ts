@@ -65,3 +65,15 @@ describe('localUploadPath', () => {
     expect(localUploadPath(absolute, home)).toBe(absolute);
   });
 });
+
+describe('runLocalCommand canceled', () => {
+  it('kills the command when the run is canceled, and says so', async () => {
+    const controller = new AbortController();
+    const started = Date.now();
+    setTimeout(() => controller.abort(), 100);
+    // Two commands, so the shell stays and `sleep` is its child: both must go.
+    const result = await runLocalCommand(process.platform === 'win32' ? 'ping -n 30 127.0.0.1 && echo done' : 'sleep 30 && echo done', 60_000, controller.signal);
+    expect(result).toMatchObject({ ok: false, error: 'canceled' });
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+});

@@ -26,6 +26,10 @@ async function boot(page: Page): Promise<void> {
     // channel/id or name reached the (stubbed) IPC boundary.
     const exportCalls: Array<{ channel: string; args: unknown[] }> = [];
     win.__exportCalls = exportCalls;
+    // cancel_automation calls, and what ends the step currently "running" (see run_automation).
+    const cancelCalls: string[] = [];
+    win.__cancelCalls = cancelCalls;
+    let pendingCancel: (() => void) | undefined;
 
     function fire(channel: string, payload: unknown): void {
       for (const cb of listeners[channel] ?? []) cb(payload);
@@ -100,6 +104,12 @@ async function boot(page: Page): Promise<void> {
             state.snippets.push({ id, name: 'Imported', command: 'echo imported', timeoutSecs: 300 });
             return Promise.resolve({ kind: 'snippet', name: 'Imported' });
           }
+          case 'cancel_automation': {
+            cancelCalls.push(args[0] as string);
+            pendingCancel?.();
+            pendingCancel = undefined;
+            return Promise.resolve(null);
+          }
           case 'run_automation': {
             const automationName = args[0] as string;
             const paramValues = (args[1] as Record<string, string>) ?? {};
@@ -148,6 +158,22 @@ async function boot(page: Page): Promise<void> {
                 }
                 const snippet = snippetsById.get(node.snippetId);
                 const command = (snippet?.command as string) ?? '';
+                if (command.includes('sleep')) {
+                  // Runs until stopped: Stop fails it as canceled and skips the rest.
+                  const rest = automation.nodes.slice(automation.nodes.indexOf(node) + 1);
+                  pendingCancel = () => {
+                    const canceled = { nodeId: node.id, label: node.label, status: 'failed', output: '', error: 'canceled', durationMs: 1 };
+                    results.push(canceled);
+                    fire('automation-node-result', { automationName, ...canceled });
+                    for (const later of rest) {
+                      const skipped = { nodeId: later.id, label: later.label, status: 'skipped', output: '', error: 'canceled', durationMs: 0 };
+                      results.push(skipped);
+                      fire('automation-node-result', { automationName, ...skipped });
+                    }
+                    fire('automation-completed', { automationName, results });
+                  };
+                  return;
+                }
                 const ok = !command.includes('exit 1');
                 const isRemote = node.target === 'remote';
                 const result = {
@@ -451,6 +477,53 @@ test('an upload step: added from the "+" menu, saved as a node without a snippet
   const reopened = page.locator('.svelte-flow__node', { hasText: 'Upload a file to the host' });
   await expect(reopened.getByLabel('From this computer')).toHaveValue('image.tar.gz');
   await expect(reopened.getByLabel('To on the host')).toHaveValue('/tmp/');
+});
+
+test('a running automation can be stopped — from its card or the run panel', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage snippets' }).click();
+  for (const [name, command] of [
+    ['Build', 'sleep 600'],
+    ['Notify', 'echo notified']
+  ]) {
+    await page.getByRole('button', { name: 'New snippet' }).first().click();
+    const editor = page.getByRole('dialog', { name: 'New snippet' });
+    await editor.getByLabel('Name').fill(name);
+    await editor.getByLabel('Command').fill(command);
+    await editor.getByRole('button', { name: 'Add snippet' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  }
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('long-build');
+  for (const name of ['Build', 'Notify']) {
+    await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+    await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: new RegExp(name) }).click();
+  }
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+
+  // Running: the panel offers Stop, and so does the card once the panel is closed.
+  await page.getByRole('button', { name: 'Run long-build' }).click();
+  const panel = page.getByRole('dialog', { name: 'Automation run' });
+  await expect(panel.getByText('running…')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await page.getByRole('button', { name: 'Stop long-build' }).click();
+  expect(await page.evaluate(() => (window as unknown as { __cancelCalls: string[] }).__cancelCalls)).toEqual(['long-build']);
+  // The run ends, and its results come up as any finished run's do.
+  await expect(panel.getByText('canceled', { exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByRole('button', { name: 'Run long-build' })).toBeVisible();
+
+  // Again, stopped from the panel this time: the running step reads "canceled", the next one is skipped.
+  await page.getByRole('button', { name: 'Run long-build' }).click();
+  await expect(panel.getByText('running…')).toBeVisible();
+  await panel.getByRole('button', { name: 'Stop' }).click();
+  await expect(panel.getByText('canceled', { exact: true })).toBeVisible();
+  await expect(panel.getByText('skipped', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Done' })).toBeVisible();
 });
 
 test('leaving an automation with unsaved changes asks first: keep editing, discard, or save', async ({ page }) => {

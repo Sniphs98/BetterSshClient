@@ -768,3 +768,103 @@ describe('GitHub nodes', () => {
     ]);
   });
 });
+
+describe('canceling a run', () => {
+  const slow = snippet({ id: 'slow', name: 'Slow', command: 'sleep 600' });
+  const after = snippet({ id: 'after', name: 'After', command: 'echo after' });
+  const flow = automation(
+    [node({ id: 'a', snippetId: 'slow', label: 'build' }), node({ id: 'b', snippetId: 'after', label: 'ship' })],
+    [['a', 'b']]
+  );
+  const library = new Map([
+    ['slow', slow],
+    ['after', after]
+  ]);
+
+  it('stops the running step, fails it as canceled, skips the rest — and still completes', async () => {
+    const controller = new AbortController();
+    const seen: Array<AbortSignal | undefined> = [];
+    const ran: string[] = [];
+    const results = await runAutomation(
+      flow,
+      library,
+      {},
+      {
+        runLocal: (command, _timeout, signal) => {
+          ran.push(command);
+          seen.push(signal);
+          // A runner that never finishes on its own: only the cancel ends it.
+          setTimeout(() => controller.abort(), 5);
+          return new Promise(() => {});
+        },
+        runWsl: async () => ({ output: '', ok: true }),
+        runGitHub: async () => '',
+        wslUploadSource: async (_d, p) => p,
+        connectHost: async () => {
+          throw new Error('not reached');
+        }
+      },
+      undefined,
+      controller.signal
+    );
+    expect(ran).toEqual(['sleep 600']);
+    expect(seen).toEqual([controller.signal]);
+    expect(results.map((r) => [r.label, r.status, r.error])).toEqual([
+      ['build', 'failed', 'canceled'],
+      ['ship', 'skipped', 'canceled']
+    ]);
+  });
+
+  it("marks a step canceled however its runner reported being stopped", async () => {
+    const controller = new AbortController();
+    const results = await runAutomation(
+      flow,
+      library,
+      {},
+      {
+        runLocal: async () => {
+          controller.abort();
+          return { output: 'partial', ok: false, error: 'Command failed: sleep 600' };
+        },
+        runWsl: async () => ({ output: '', ok: true }),
+        runGitHub: async () => '',
+        wslUploadSource: async (_d, p) => p,
+        connectHost: async () => {
+          throw new Error('not reached');
+        }
+      },
+      undefined,
+      controller.signal
+    );
+    expect(results[0]).toMatchObject({ status: 'failed', error: 'canceled' });
+    expect(results[1]).toMatchObject({ status: 'skipped', error: 'canceled' });
+  });
+
+  it('closes a host connection still being opened when the run is canceled', async () => {
+    const controller = new AbortController();
+    let disconnected = 0;
+    let finishConnect: (c: { runShell: () => Promise<never>; upload: () => Promise<void>; disconnect: () => void }) => void = () => {};
+    const remote = automation([node({ id: 'r', snippetId: 'slow', label: 'remote', target: 'remote' })], [], hostParam);
+    const run = runAutomation(
+      remote,
+      library,
+      { host: 'web-1' },
+      {
+        runLocal: async () => ({ output: '', ok: true }),
+        runWsl: async () => ({ output: '', ok: true }),
+        runGitHub: async () => '',
+        wslUploadSource: async (_d, p) => p,
+        connectHost: () => new Promise((resolve) => (finishConnect = resolve))
+      },
+      undefined,
+      controller.signal
+    );
+    await new Promise((r) => setTimeout(r, 5));
+    controller.abort();
+    const results = await run;
+    expect(results[0]).toMatchObject({ status: 'failed', error: 'canceled' });
+    finishConnect({ runShell: () => new Promise(() => {}), upload: async () => {}, disconnect: () => (disconnected += 1) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(disconnected).toBe(1);
+  });
+});

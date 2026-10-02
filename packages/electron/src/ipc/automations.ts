@@ -235,16 +235,46 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
   });
 
   ipcMain.handle('run_automation', (_event, name: string, paramValues: Record<string, string>) => {
+    let signal: AbortSignal;
     try {
-      state.tryBeginAutomationRun(name);
+      signal = state.tryBeginAutomationRun(name);
     } catch (err) {
       throw toCommandError(err);
     }
-    void executeAutomationRun(state, name, paramValues);
+    void executeAutomationRun(state, name, paramValues, signal);
+  });
+
+  // Stops a running automation: the step running now is stopped and fails as
+  // "canceled", the rest are skipped, and the run completes as usual.
+  ipcMain.handle('cancel_automation', (_event, name: string) => {
+    state.cancelAutomationRun(name);
   });
 }
 
-async function executeAutomationRun(state: GuiState, automationName: string, paramValues: Record<string, string>): Promise<void> {
+/** A sleep that ends early — rejecting — when `signal` aborts, so a canceled GitHub step
+ *  stops polling instead of following its run on GitHub to the end. */
+function abortableSleep(signal: AbortSignal): (ms: number) => Promise<void> {
+  return (ms) =>
+    new Promise<void>((resolve, reject) => {
+      if (signal.aborted) return reject(new Error('canceled'));
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        reject(new Error('canceled'));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
+async function executeAutomationRun(
+  state: GuiState,
+  automationName: string,
+  paramValues: Record<string, string>,
+  signal: AbortSignal
+): Promise<void> {
   try {
     let automation: Automation | undefined;
     let snippets: Snippet[];
@@ -278,18 +308,19 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
       runLocal: runLocalCommand,
       runWsl: runWslCommand,
       wslUploadSource,
-      runGitHub: async (step, report) => {
+      runGitHub: async (step, report, stepSignal) => {
         const client = new GitHubClient(await resolveGitHubToken());
-        return step.action === 'runWorkflow' ? runWorkflow(client, step, report) : downloadAsset(client, step, report);
+        const opts = stepSignal ? { sleep: abortableSleep(stepSignal) } : {};
+        return step.action === 'runWorkflow' ? runWorkflow(client, step, report, opts) : downloadAsset(client, step, report, opts);
       },
       connectHost: async (hostName) => {
         const host = state.hostByName(hostName);
         if (host === undefined) throw new Error(`unknown host '${hostName}'`);
         const session = await SshSession.shared(host);
         return {
-          runShell: (cmd, timeoutMs) => session.runShell(cmd, timeoutMs),
+          runShell: (cmd, timeoutMs, runSignal) => session.runShell(cmd, timeoutMs, runSignal),
           // Over the same connection as the commands: one login, one 1Password prompt.
-          upload: (from, to) => uploadOverSession(session, hostName, from, to),
+          upload: (from, to, runSignal) => uploadOverSession(session, hostName, from, to, runSignal),
           disconnect: () => session.disconnect()
         };
       }
@@ -304,7 +335,7 @@ async function executeAutomationRun(state: GuiState, automationName: string, par
         } else {
           state.emit('automation-node-result', { automationName, ...nodeResultToDto(event.result) });
         }
-      });
+      }, signal);
       state.emit('automation-completed', { automationName, results: results.map(nodeResultToDto) });
     } catch (err) {
       state.emit('automation-failed', { automationName, error: (err as Error).message });

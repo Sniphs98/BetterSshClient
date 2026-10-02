@@ -146,7 +146,11 @@ export class SshSession {
    *  command's usual diagnostic (almost always on stderr), and so the shape matches
    *  `runLocalCommand`'s local-node output exactly regardless of node kind. A missing
    *  exit code is treated as success, same leniency as `runCommandChecked`. */
-  async runShell(cmd: string, timeoutMs: number = EXEC_TIMEOUT_MS): Promise<{ output: string; ok: boolean; error?: string }> {
+  async runShell(
+    cmd: string,
+    timeoutMs: number = EXEC_TIMEOUT_MS,
+    signal?: AbortSignal
+  ): Promise<{ output: string; ok: boolean; error?: string }> {
     const channel = await this.openChannel(
       (client) =>
         new Promise<ClientChannel>((resolve, reject) => {
@@ -165,6 +169,19 @@ export class SshSession {
         timedOut = true;
         channel.destroy();
       }, timeoutMs);
+      // Canceled: ask the remote command to stop (servers that honour signal requests
+      // pass it on), then close the channel either way.
+      const onAbort = (): void => {
+        try {
+          channel.signal('TERM');
+        } catch {
+          // not supported on this channel — closing it is all there is
+        }
+        channel.close();
+      };
+      if (signal?.aborted) onAbort();
+      else signal?.addEventListener('abort', onAbort, { once: true });
+      const stopListening = (): void => signal?.removeEventListener('abort', onAbort);
 
       const collect = (data: Buffer): void => void chunks.push(data);
       channel.on('data', collect);
@@ -174,7 +191,12 @@ export class SshSession {
       });
       channel.on('close', () => {
         clearTimeout(timer);
+        stopListening();
         const output = Buffer.concat(chunks).toString('utf-8');
+        if (signal?.aborted) {
+          resolve({ output, ok: false, error: 'canceled' });
+          return;
+        }
         if (timedOut) {
           resolve({ output, ok: false, error: `command timed out after ${Math.round(timeoutMs / 1000)}s` });
           return;
@@ -184,6 +206,7 @@ export class SshSession {
       });
       channel.on('error', (err: Error) => {
         clearTimeout(timer);
+        stopListening();
         resolve({ output: Buffer.concat(chunks).toString('utf-8'), ok: false, error: err.message });
       });
     });

@@ -6,7 +6,15 @@
   // (AppShell) so it survives navigating away from the Snippets screen mid-run.
   import { Button, Icon, StatusDot, type Status } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
-  import { automationRun, dismissAutomationRun, formatDuration, type AutomationRun, type NodeRunState } from '$lib/stores/automations';
+  import {
+    automationRun,
+    dismissAutomationRun,
+    formatDuration,
+    stopAutomationRun,
+    CANCELED,
+    type AutomationRun,
+    type NodeRunState
+  } from '$lib/stores/automations';
   import type { NodeResultDto } from '$lib/bindings';
   import { openExternal } from '$lib/ipc/openExternal';
 
@@ -58,6 +66,11 @@
     return state.status === 'running' ? formatDuration(now - state.startedAt) : stepTime(state.result);
   }
 
+  /** What a finished step's row says: its status — or "canceled" for one Stop ended. */
+  function statusText(result: NodeResultDto): string {
+    return result.status === 'failed' && result.error === CANCELED ? 'canceled' : result.status;
+  }
+
   const row =
     'space-y-1.5 rounded-lg bg-surface-inset px-3 py-2 text-sm';
   const outputBlock =
@@ -93,7 +106,7 @@
                     <span class="shrink-0 font-mono text-xs tabular-nums text-muted" title="Time of this step">{nodeTime(state)}</span>
                   {/if}
                   <span class="shrink-0 text-xs text-faint">
-                    {state.status === 'running' ? 'running…' : state.result.status}
+                    {state.status === 'running' ? 'running…' : statusText(state.result)}
                   </span>
                 </div>
 {#if run.progress?.[nodeId]?.length}
@@ -112,13 +125,18 @@
                 {#if state.status === 'done' && state.result.output}
                   <pre class={outputBlock}>{state.result.output}</pre>
                 {/if}
-                {#if state.status === 'done' && state.result.error}
+                {#if state.status === 'done' && state.result.error && state.result.error !== CANCELED}
                   <p class="text-xs text-status-crit">{state.result.error}</p>
                 {/if}
               </li>
             {/each}
           </ul>
         {/if}
+        <div class="flex justify-end pt-1">
+          <Button variant="ghost" onclick={() => void stopAutomationRun(run.automationName)} disabled={run.stopping}>
+            {run.stopping ? 'Stopping…' : 'Stop'}
+          </Button>
+        </div>
       {:else if phase.kind === 'completed'}
         <ul class="max-h-[50vh] space-y-1.5 overflow-y-auto">
           {#each phase.results as result (result.nodeId)}
@@ -129,7 +147,7 @@
                 {#if stepTime(result)}
                   <span class="shrink-0 font-mono text-xs tabular-nums text-muted" title="Time of this step">{stepTime(result)}</span>
                 {/if}
-                <span class="shrink-0 text-xs text-faint">{result.status}</span>
+                <span class="shrink-0 text-xs text-faint">{statusText(result)}</span>
               </div>
 {#if run.progress?.[result.nodeId]?.length}
                 <ul class="space-y-0.5 text-[11px] text-muted">
@@ -147,7 +165,7 @@
               {#if result.output}
                 <pre class={outputBlock}>{result.output}</pre>
               {/if}
-              {#if result.error}
+              {#if result.error && result.error !== CANCELED}
                 <p class="text-xs text-status-crit">{result.error}</p>
               {/if}
             </li>

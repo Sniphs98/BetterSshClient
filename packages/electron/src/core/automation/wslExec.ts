@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
+import { killOnAbort } from './localExec.js';
 
 /**
  * Runs a Snippet "wsl" node: the command in a WSL distribution on this Windows machine
@@ -54,12 +55,14 @@ export function wslArgs(distro: string | undefined): string[] {
 export async function runWslCommand(
   distro: string | undefined,
   command: string,
-  timeoutMs: number
+  timeoutMs: number,
+  signal?: AbortSignal
 ): Promise<{ output: string; ok: boolean; error?: string }> {
   if (process.platform !== 'win32') return { output: '', ok: false, error: 'WSL is only available on Windows' };
   const wslenv = [process.env.WSLENV, `${COMMAND_VAR}/u`].filter(Boolean).join(':');
   return new Promise((resolve) => {
-    execFile(
+    let release = (): void => {};
+    const child = execFile(
       'wsl.exe',
       wslArgs(distro),
       {
@@ -72,7 +75,12 @@ export async function runWslCommand(
         maxBuffer: 10 * 1024 * 1024
       },
       (err, stdout, stderr) => {
+        release();
         const output = decodeWslOutput(stdout) + decodeWslOutput(stderr);
+        if (signal?.aborted) {
+          resolve({ output, ok: false, error: 'canceled' });
+          return;
+        }
         if (!err) {
           resolve({ output, ok: true });
           return;
@@ -93,6 +101,7 @@ export async function runWslCommand(
         resolve({ output, ok: false, error: reason });
       }
     );
+    release = killOnAbort(child, signal);
   });
 }
 

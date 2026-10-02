@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import type { NodeResultDto } from '$lib/bindings';
 import {
+  activeRuns,
+  endActiveRun,
   beginAutomationRun,
   dismissAutomationRun,
   formatDuration,
@@ -128,5 +130,15 @@ describe('formatDuration', () => {
     expect(formatDuration(185_000)).toBe('3m 05s');
     expect(formatDuration(3_720_000)).toBe('1h 02m');
     expect(formatDuration(-5)).toBe('0.0s');
+  });
+});
+
+describe('activeRuns', () => {
+  it('knows an automation is running even with the panel closed, until its run ends', () => {
+    beginAutomationRun('deploy');
+    dismissAutomationRun();
+    expect(get(activeRuns)).toEqual({ deploy: { stopping: false } });
+    endActiveRun('deploy');
+    expect(get(activeRuns)).toEqual({});
   });
 });

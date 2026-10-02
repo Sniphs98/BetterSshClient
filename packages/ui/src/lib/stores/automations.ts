@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import type { SnippetDto, AutomationDto, NodeResultDto } from '$lib/bindings';
-import { runAutomation } from '$lib/ipc/commands';
+import { cancelAutomation, runAutomation } from '$lib/ipc/commands';
 import { lastError } from './notifications';
 
 // The reusable Snippet library and the Automations that wire them into a graph, mirroring
@@ -38,6 +38,36 @@ export interface AutomationRun {
    *  time. Unset for a run this window didn't start (nothing to measure from). */
   startedAt?: number;
   finishedAt?: number;
+  /** Stop was pressed; the run is winding down. */
+  stopping?: boolean;
+}
+
+/** The automations running right now, by name — kept apart from `automationRun`, which
+ *  closing the panel clears, so an automation's card still knows it's running (and
+ *  offers Stop) with the panel closed. `stopping`: Stop was pressed. */
+export const activeRuns = writable<Record<string, { stopping: boolean }>>({});
+
+/** A run ended (completed or failed): its card goes back to Run. */
+export function endActiveRun(automationName: string): void {
+  activeRuns.update((runs) => {
+    const { [automationName]: _ended, ...rest } = runs;
+    return rest;
+  });
+}
+
+/** The error a step stopped by Stop carries (the engine's `CANCELED`). */
+export const CANCELED = 'canceled';
+
+/** Stops `automationName`'s run (issue: a running automation couldn't be stopped). The
+ *  panel says "Stopping…" until the run's results arrive. */
+export async function stopAutomationRun(automationName: string): Promise<void> {
+  activeRuns.update((runs) => (automationName in runs ? { ...runs, [automationName]: { stopping: true } } : runs));
+  automationRun.update((run) => (run?.automationName === automationName && run.phase.kind === 'running' ? { ...run, stopping: true } : run));
+  try {
+    await cancelAutomation(automationName);
+  } catch (e) {
+    lastError.set(e instanceof Error ? e.message : String(e));
+  }
 }
 
 /** A run or step's time for the panel: `0.4s`, `12s`, `3m 05s`, `1h 02m`. */
@@ -59,6 +89,7 @@ export const automationRun = writable<AutomationRun | null>(null);
 /** Open the panel for `automationName` with no nodes yet — called the moment `run_automation`
  *  fires, before the first `automation-started` arrives. */
 export function beginAutomationRun(automationName: string, now: number = Date.now()): void {
+  activeRuns.update((runs) => ({ ...runs, [automationName]: { stopping: false } }));
   automationRun.set({ automationName, phase: { kind: 'running', nodes: new Map() }, startedAt: now });
 }
 
@@ -74,6 +105,7 @@ export async function runAutomationNow(automationName: string, paramValues: Reco
   try {
     await runAutomation(automationName, { ...paramValues });
   } catch (e) {
+    endActiveRun(automationName);
     lastError.set(e instanceof Error ? e.message : String(e));
   }
 }

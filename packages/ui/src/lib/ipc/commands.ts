@@ -339,6 +339,13 @@ export async function runAutomation(name: string, paramValues: Record<string, st
   if (res.status === 'error') throw new Error(res.error.message);
 }
 
+/** Stops `name`'s running run: the step running now is stopped and fails as
+ *  "canceled", the rest are skipped, and `automation-completed` follows as usual. */
+export async function cancelAutomation(name: string): Promise<void> {
+  const res = await commands.cancelAutomation(name);
+  if (res.status === 'error') throw new Error(res.error.message);
+}
+
 /** Prompts a native save dialog and writes the snippet to a portable JSON file, for
  *  sharing it with someone else or another machine. Resolves the chosen path, or `null`
  *  if the dialog was canceled. */
