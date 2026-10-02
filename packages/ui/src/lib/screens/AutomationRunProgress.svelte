@@ -6,7 +6,7 @@
   // (AppShell) so it survives navigating away from the Snippets screen mid-run.
   import { Button, Icon, StatusDot, type Status } from '$lib/theme';
   import Modal from '$lib/components/Modal.svelte';
-  import { automationRun, dismissAutomationRun } from '$lib/stores/automations';
+  import { automationRun, dismissAutomationRun, formatDuration, type AutomationRun, type NodeRunState } from '$lib/stores/automations';
   import type { NodeResultDto } from '$lib/bindings';
   import { openExternal } from '$lib/ipc/openExternal';
 
@@ -30,6 +30,34 @@
     }
   }
 
+  // A clock for the times while a run is going — the whole run's, and the running
+  // step's — ticking only then.
+  let now = $state(Date.now());
+  $effect(() => {
+    if ($automationRun?.phase.kind !== 'running') return;
+    now = Date.now();
+    const timer = setInterval(() => (now = Date.now()), 250);
+    return () => clearInterval(timer);
+  });
+
+  /** The whole run's time: live while it runs, fixed once it's done. */
+  function totalTime(run: AutomationRun): string | undefined {
+    if (run.startedAt === undefined) return undefined;
+    if (run.phase.kind === 'running') return formatDuration(now - run.startedAt);
+    if (run.finishedAt !== undefined) return formatDuration(run.finishedAt - run.startedAt);
+    return undefined;
+  }
+
+  /** A finished step's own time; none for one that was skipped (it never ran). */
+  function stepTime(result: NodeResultDto): string | undefined {
+    return result.status === 'skipped' ? undefined : formatDuration(result.durationMs);
+  }
+
+  /** A step's time while the run goes: ticking while it runs, its own once done. */
+  function nodeTime(state: NodeRunState): string | undefined {
+    return state.status === 'running' ? formatDuration(now - state.startedAt) : stepTime(state.result);
+  }
+
   const row =
     'space-y-1.5 rounded-lg bg-surface-inset px-3 py-2 text-sm';
   const outputBlock =
@@ -44,6 +72,11 @@
       <div class="flex items-center gap-2.5">
         <Icon name="automations" size={16} />
         <h2 class="min-w-0 truncate text-sm font-semibold">{run.automationName}</h2>
+        {#if totalTime(run)}
+          <span class="ml-auto flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums text-muted" title="Total time">
+            <Icon name="clock" size={12} />{totalTime(run)}
+          </span>
+        {/if}
       </div>
 
       {#if phase.kind === 'running'}
@@ -56,6 +89,9 @@
                 <div class="flex items-center gap-2">
                   <StatusDot status={dotStatus(state.status === 'running' ? 'running' : state.result.status)} size={9} />
                   <span class="min-w-0 flex-1 truncate">{state.status === 'running' ? state.label : state.result.label}</span>
+                  {#if nodeTime(state)}
+                    <span class="shrink-0 font-mono text-xs tabular-nums text-muted" title="Time of this step">{nodeTime(state)}</span>
+                  {/if}
                   <span class="shrink-0 text-xs text-faint">
                     {state.status === 'running' ? 'running…' : state.result.status}
                   </span>
@@ -90,6 +126,9 @@
               <div class="flex items-center gap-2">
                 <StatusDot status={dotStatus(result.status)} size={9} />
                 <span class="min-w-0 flex-1 truncate">{result.label}</span>
+                {#if stepTime(result)}
+                  <span class="shrink-0 font-mono text-xs tabular-nums text-muted" title="Time of this step">{stepTime(result)}</span>
+                {/if}
                 <span class="shrink-0 text-xs text-faint">{result.status}</span>
               </div>
 {#if run.progress?.[result.nodeId]?.length}
