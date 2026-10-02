@@ -413,3 +413,59 @@ test('profiles export to a file, and an import settles a taken name first', asyn
   await again.getByRole('radio', { name: 'Overwrite' }).first().click();
   await expect(again.getByText('replaces the one here; its saved password is kept').first()).toBeVisible();
 });
+
+test('connections sit in folders: from the editor, a new folder, and by dragging', async ({ page }) => {
+  await boot(page, {
+    connections: [
+      { id: 'c1', name: 'office-pc', protocol: 'rdp', hostname: '10.0.0.5', port: 3389, hasPassword: false, folder: 'Office' },
+      { id: 'c2', name: 'ts01', protocol: 'rdp', hostname: 'ts01', port: 3389, hasPassword: false }
+    ]
+  });
+  await page.getByRole('button', { name: 'Switch to Remote Desktop' }).click();
+  const section = (title: string) => page.getByRole('button', { name: new RegExp(`^${title} \\d+$`) });
+
+  // A section per folder, then the rest under "Other connections".
+  await expect(section('Office')).toBeVisible();
+  await expect(section('Other connections')).toBeVisible();
+
+  // Collapsing a section hides its tiles.
+  await section('Office').click();
+  await expect(page.getByText('office-pc', { exact: true })).toHaveCount(0);
+  await section('Office').click();
+  await expect(page.getByText('office-pc', { exact: true })).toBeVisible();
+
+  // "New folder" makes an empty section to drop tiles into.
+  await page.getByRole('button', { name: 'New folder' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New folder' });
+  await dialog.getByLabel('Name').fill('office');
+  await dialog.getByRole('button', { name: 'Create folder' }).click();
+  await expect(dialog.getByText('There is a folder called "office" already')).toBeVisible();
+  await dialog.getByLabel('Name').fill('Lab');
+  await dialog.getByRole('button', { name: 'Create folder' }).click();
+  await expect(page.getByText('Drag connections here to put them in Lab.')).toBeVisible();
+
+  // Dragging ts01 onto it saves the connection there.
+  await page.getByText('ts01', { exact: true }).dragTo(page.getByText('Drag connections here to put them in Lab.'));
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { __rdpConnections: { connections: Array<{ id: string; folder?: string }> } }).__rdpConnections.connections.find(
+            (c) => c.id === 'c2'
+          )?.folder
+      )
+    )
+    .toBe('Lab');
+  await expect(section('Other connections')).toHaveCount(0);
+
+  // The editor's Folder field moves a connection too.
+  await page.getByRole('button', { name: 'Edit office-pc' }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit RDP connection' });
+  await expect(editor.getByLabel('Folder')).toHaveValue('Office');
+  await editor.getByLabel('Folder').fill('');
+  await editor.getByRole('button', { name: 'Save' }).click();
+  await expect(section('Other connections')).toBeVisible();
+  // Office stays as an empty folder that can be removed.
+  await page.getByRole('button', { name: 'Remove folder Office' }).click();
+  await expect(section('Office')).toHaveCount(0);
+});

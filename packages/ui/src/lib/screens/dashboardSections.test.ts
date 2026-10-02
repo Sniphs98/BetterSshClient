@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { folderNameProblem, folderNames, groupCards } from './dashboardSections';
+import { folderNameProblem, folderNames, groupByFolder, groupCards } from './dashboardSections';
 
 const card = (name: string, folder?: string) => ({ host: { name, folder } });
 
@@ -39,6 +39,19 @@ describe('kept folders', () => {
 
   it('turn "Hosts" into "Other hosts" even while they are empty', () => {
     expect(groupCards([card('a')], ['New']).map((s) => s.title)).toEqual(['New', 'Other hosts']);
+  });
+});
+
+describe('groupByFolder', () => {
+  it('groups anything with a folder, naming the loose section after its kind', () => {
+    const c = (id: string, folder?: string) => ({ id, folder });
+    const sections = groupByFolder([c('a', 'Office'), c('b')], (x) => x, ['Empty'], 'Connections');
+    expect(sections.map((s) => [s.key, s.title, s.cards.map((x) => x.id)])).toEqual([
+      ['folder:Empty', 'Empty', []],
+      ['folder:Office', 'Office', ['a']],
+      ['hosts', 'Other connections', ['b']]
+    ]);
+    expect(groupByFolder([c('b')], (x) => x, [], 'Connections').map((s) => s.title)).toEqual(['Connections']);
   });
 });
 

@@ -290,6 +290,8 @@ export interface RemoteDesktopConnectionDto extends RdpSettings {
   passwordRef?: string;
   /** The port's 1Password reference, likewise. */
   portRef?: string;
+  /** The Remote Desktop screen's folder; unset means none. */
+  folder?: string;
 }
 
 /** Inbound form payload for `save_remote_desktop_connection`. `password` arrives here
@@ -311,6 +313,8 @@ export interface RemoteDesktopConnectionInputDto extends RdpSettings {
   passwordRef?: string;
   /** The port's 1Password reference, likewise. */
   portRef?: string;
+  /** The Remote Desktop screen's folder; blank or unset means none. */
+  folder?: string;
 }
 
 /** Credentials typed in the embedded viewer for a profile that doesn't store them;
@@ -366,6 +370,7 @@ export function remoteDesktopConnectionToDto(connection: RemoteDesktopConnection
     viaHost: connection.viaHost,
     passwordRef: connection.passwordRef,
     portRef: connection.portRef,
+    folder: connection.folder,
     ...rdpSettingsFrom(connection as unknown as Record<string, unknown>)
   };
 }
@@ -387,6 +392,7 @@ export function remoteDesktopConnectionFromInputDto(input: RemoteDesktopConnecti
     viaHost: input.viaHost,
     passwordRef: input.passwordRef || undefined,
     portRef: input.portRef || undefined,
+    folder: input.folder?.trim() || undefined,
     ...rdpSettingsFrom(input as unknown as Record<string, unknown>)
   };
 }

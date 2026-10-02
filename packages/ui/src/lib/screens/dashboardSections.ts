@@ -36,16 +36,29 @@ export function groupCards<C extends { host: { folder?: string | null } }>(
   cards: C[],
   keptFolders: string[] = []
 ): CardSection<C>[] {
-  const folders = folderNames([...cards.map((c) => c.host), ...keptFolders.map((folder) => ({ folder }))]);
+  return groupByFolder(cards, (c) => c.host, keptFolders, 'Hosts');
+}
+
+/** The same grouping for anything with a folder — the Remote Desktop screen's
+ *  connections too. `itemOf` picks what carries the `folder`; `looseTitle` names the
+ *  section of the ones in none ("Other …" beneath folders). */
+export function groupByFolder<C>(
+  items: C[],
+  itemOf: (item: C) => { folder?: string | null },
+  keptFolders: string[],
+  looseTitle: string
+): CardSection<C>[] {
+  const folders = folderNames([...items.map(itemOf), ...keptFolders.map((folder) => ({ folder }))]);
   const sections: CardSection<C>[] = folders.map((name) => ({
     key: `folder:${name}`,
     title: name,
     folder: name,
-    cards: cards.filter((c) => folderOf(c.host) === name)
+    cards: items.filter((c) => folderOf(itemOf(c)) === name)
   }));
-  const loose = cards.filter((c) => folderOf(c.host) === '');
+  const loose = items.filter((c) => folderOf(itemOf(c)) === '');
   if (loose.length > 0) {
-    sections.push({ key: NO_FOLDER_KEY, title: folders.length > 0 ? 'Other hosts' : 'Hosts', folder: '', cards: loose });
+    const title = folders.length > 0 ? `Other ${looseTitle[0].toLowerCase()}${looseTitle.slice(1)}` : looseTitle;
+    sections.push({ key: NO_FOLDER_KEY, title, folder: '', cards: loose });
   }
   return sections;
 }

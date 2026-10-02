@@ -66,6 +66,7 @@ describe('remote-desktop.toml I/O', () => {
       domain: 'CORP',
       viaHost: 'bastion',
       passwordRef: 'op://Servers/pc/password',
+      folder: 'Office',
       display: 'window',
       width: 1600,
       height: 900,
@@ -85,6 +86,7 @@ describe('remote-desktop.toml I/O', () => {
     expect(content).not.toContain('username');
     expect(content).not.toContain('password');
     expect(content).not.toContain('domain');
+    expect(content).not.toContain('folder');
   });
 
   it('persists a password in plaintext when no cipher is installed', async () => {

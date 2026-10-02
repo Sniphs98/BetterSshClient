@@ -45,6 +45,8 @@ export interface BundledRdpProfile extends RdpSettings {
   viaHost?: string;
   passwordRef?: string;
   portRef?: string;
+  /** The folder it sat in on the exporting machine. */
+  folder?: string;
   /** The exporting machine had a password stored for this profile. */
   passwordOmitted?: boolean;
 }
@@ -65,6 +67,7 @@ function bundledProfileFrom(c: RemoteDesktopConnection, viaHost: string | undefi
     viaHost,
     passwordRef: c.passwordRef,
     portRef: c.portRef,
+    folder: c.folder,
     passwordOmitted: c.password !== undefined ? true : undefined
   };
   for (const [key, value] of Object.entries(optional)) {
@@ -113,6 +116,7 @@ function parseBundledProfile(raw: unknown, ctx: string): BundledRdpProfile {
     viaHost: optionalStr(o.viaHost, `${ctx}.viaHost`)?.trim() || undefined,
     passwordRef: optionalRef(o.passwordRef, `${ctx}.passwordRef`),
     portRef: optionalRef(o.portRef, `${ctx}.portRef`),
+    folder: optionalStr(o.folder, `${ctx}.folder`)?.trim() || undefined,
     passwordOmitted: o.passwordOmitted === true ? true : undefined
   };
   for (const [key, value] of Object.entries(optional)) {

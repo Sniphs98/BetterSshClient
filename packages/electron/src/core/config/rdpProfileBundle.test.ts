@@ -46,7 +46,8 @@ describe('buildRdpProfilesBundle', () => {
       clipboard: true,
       drives: false,
       audio: 'remote',
-      dynamicResolution: true
+      dynamicResolution: true,
+      folder: 'Kunde A'
     });
     const [out] = roundTrip([c]).profiles;
     const { id: _id, ...expected } = c;

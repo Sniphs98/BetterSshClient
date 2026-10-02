@@ -29,6 +29,8 @@ export interface RemoteDesktopFormFields {
   passwordRef: string;
   /** 1Password reference the port is read from at connect time. */
   portRef: string;
+  /** The Remote Desktop screen's folder the tile sits in; blank means none. */
+  folder: string;
   /** Per field: read from 1Password when connecting. Address, user and domain then
    *  hold the reference themselves; the port's goes in `portRef` (the port is a number
    *  on disk) and the password's in `passwordRef` (the stored password is never sent
@@ -76,6 +78,7 @@ export function emptyForm(): RemoteDesktopFormFields {
     viaHost: '',
     passwordRef: '',
     portRef: '',
+    folder: '',
     hostnameFrom1P: false,
     portFrom1P: false,
     usernameFrom1P: false,
@@ -102,6 +105,7 @@ export function formFromConnection(c: RemoteDesktopConnectionDto): RemoteDesktop
     viaHost: c.viaHost ?? '',
     passwordRef: c.passwordRef ?? '',
     portRef: c.portRef ?? '',
+    folder: c.folder ?? '',
     hostnameFrom1P: isOnePasswordReference(c.hostname),
     portFrom1P: Boolean(c.portRef),
     usernameFrom1P: isOnePasswordReference(c.username ?? ''),
@@ -182,6 +186,7 @@ export function formToInput(f: RemoteDesktopFormFields): RemoteDesktopFormResult
       viaHost: viaHost || undefined,
       passwordRef: passwordRef || undefined,
       portRef: portRef || undefined,
+      folder: f.folder.trim() || undefined,
       display: f.display || undefined,
       width,
       height,

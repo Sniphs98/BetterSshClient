@@ -12,6 +12,9 @@
   import OnePasswordCliHint from '$lib/components/OnePasswordCliHint.svelte';
   import OnePasswordToggle from '$lib/components/OnePasswordToggle.svelte';
   import { hosts } from '$lib/stores/hosts';
+  import { remoteDesktopConnections } from '$lib/stores/remoteDesktop';
+  import { rdpKeptFolders } from '$lib/stores/dashboardLayout';
+  import { folderNames } from './dashboardSections';
   import { describeSettings, formToInput, type RemoteDesktopFormFields } from './remoteDesktopForm';
 
   let {
@@ -64,6 +67,11 @@
     return fields.viaHost && !names.includes(fields.viaHost) ? [fields.viaHost, ...names] : names;
   });
 
+  // The folders already in use, offered as suggestions; typing a new name makes a new one.
+  const folders = $derived(
+    folderNames([...$remoteDesktopConnections, ...$rdpKeptFolders.map((folder) => ({ folder }))])
+  );
+
   // Shown under the section's title: what's set, in one line.
   const settingsSummary = $derived(describeSettings(fields).join(' · '));
 
@@ -106,10 +114,27 @@
         </span>
       </div>
     <div class="space-y-3.5 border-t border-default px-4 pb-4 pt-4">
-      <label class={label}>
-        <span>Name</span>
-        <input bind:this={nameEl} bind:value={fields.name} class={field} placeholder="office-pc" />
-      </label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class={label}>
+          <span>Name</span>
+          <input bind:this={nameEl} bind:value={fields.name} class={field} placeholder="office-pc" />
+        </label>
+        <label class={label}>
+          <span>Folder</span>
+          <input
+            bind:value={fields.folder}
+            list="rdp-folders"
+            class={field}
+            placeholder="Optional"
+            autocomplete="off"
+          />
+          <datalist id="rdp-folders">
+            {#each folders as name (name)}
+              <option value={name}></option>
+            {/each}
+          </datalist>
+        </label>
+      </div>
 
       <div class="grid grid-cols-[1fr,7rem] gap-3">
         <div class={label}>

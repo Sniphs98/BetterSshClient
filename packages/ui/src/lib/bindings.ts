@@ -613,6 +613,8 @@ export type RemoteDesktopConnectionDto = RdpSettingsDto & {
   passwordRef?: string | null;
   /** A 1Password reference the port is read from at connect time. */
   portRef?: string | null;
+  /** The Remote Desktop screen's folder; unset means none. */
+  folder?: string | null;
 };
 /** Inbound form payload for `save_remote_desktop_connection`. Omitting `password`
  *  means "keep the stored value" on an edit. */
@@ -632,6 +634,8 @@ export type RemoteDesktopConnectionInputDto = RdpSettingsDto & {
   passwordRef?: string | null;
   /** A 1Password reference the port is read from at connect time. */
   portRef?: string | null;
+  /** The Remote Desktop screen's folder; unset means none. */
+  folder?: string | null;
 };
 /** Only `'rdp'` is reachable from the UI for now — `'vnc'` exists so a later pass is
  *  additive, not a migration. */
