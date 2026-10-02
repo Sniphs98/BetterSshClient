@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { decodeWslOutput, parseDistroList, wslArgs, wslUploadPathScript, wslUploadSource } from './wslExec.js';
 
 describe('wslExec', () => {
@@ -21,20 +21,28 @@ describe('wslExec', () => {
   });
 });
 
-describe('wslUploadPathScript', () => {
-  // Runs the script in this machine's bash, with a stand-in `wslpath` that marks the
-  // absolute path it was given, as WSL's own would turn it into a Windows one.
-  const dir = mkdtempSync(join(tmpdir(), 'remoty-wslpath-'));
-  const bin = join(dir, 'bin');
-  const home = join(dir, 'home');
-  const cwd = join(dir, 'cwd');
-  mkdirSync(bin);
-  mkdirSync(home);
-  mkdirSync(cwd);
-  writeFileSync(join(bin, 'wslpath'), '#!/bin/sh\necho "WIN:$2"\n');
-  chmodSync(join(bin, 'wslpath'), 0o755);
-  writeFileSync(join(home, "it's.tar.gz"), 'x');
-  writeFileSync(join(cwd, 'frontend.tar.gz'), 'x');
+// The script runs inside WSL, i.e. Linux — so it is run here in this machine's bash, which
+// Windows runners don't have (theirs is WSL's own launcher).
+describe.skipIf(process.platform === 'win32')('wslUploadPathScript', () => {
+  // A stand-in `wslpath` that marks the absolute path it was given, as WSL's own would
+  // turn it into a Windows one.
+  let dir = '';
+  let bin = '';
+  let home = '';
+  let cwd = '';
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'remoty-wslpath-'));
+    bin = join(dir, 'bin');
+    home = join(dir, 'home');
+    cwd = join(dir, 'cwd');
+    mkdirSync(bin);
+    mkdirSync(home);
+    mkdirSync(cwd);
+    writeFileSync(join(bin, 'wslpath'), '#!/bin/sh\necho "WIN:$2"\n');
+    chmodSync(join(bin, 'wslpath'), 0o755);
+    writeFileSync(join(home, "it's.tar.gz"), 'x');
+    writeFileSync(join(cwd, 'frontend.tar.gz'), 'x');
+  });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   function run(path: string): { out: string; ok: boolean } {
