@@ -1,6 +1,7 @@
 name: Feature request
 description: An idea for something Remoty should do.
-labels: [enhancement]
+labels: ["feature request"]
+
 body:
   - type: textarea
     id: problem
@@ -9,6 +10,7 @@ body:
       description: What are you trying to do, and what gets in the way today?
     validations:
       required: true
+
   - type: textarea
     id: idea
     attributes:
@@ -16,6 +18,7 @@ body:
       description: How you imagine it working. Sketches and screenshots welcome.
     validations:
       required: true
+
   - type: textarea
     id: alternatives
     attributes:
