@@ -236,10 +236,14 @@ export function substituteTemplate(
   });
 }
 
+/** Why a node stopped when the run was stopped — its error, and every later node's. */
+export const CANCELED = 'canceled';
+
 export interface RunAutomationConnection {
-  runShell(cmd: string, timeoutMs: number): Promise<{ output: string; ok: boolean; error?: string }>;
+  /** `signal` stops the command (the run was canceled); it resolves then all the same. */
+  runShell(cmd: string, timeoutMs: number, signal?: AbortSignal): Promise<{ output: string; ok: boolean; error?: string }>;
   /** Copies the local file `from` to `to` on the host; rejects with why it failed. */
-  upload(from: string, to: string): Promise<void>;
+  upload(from: string, to: string, signal?: AbortSignal): Promise<void>;
   disconnect(): void;
 }
 
@@ -247,11 +251,18 @@ export interface RunAutomationDeps {
   /** Injected so `engine.ts` imports neither `ssh2` nor `child_process` — fully
    *  fakeable in tests. */
   connectHost: (hostName: string) => Promise<RunAutomationConnection>;
-  runLocal: (command: string, timeoutMs: number) => Promise<{ output: string; ok: boolean; error?: string }>;
+  /** Every runner takes the run's `signal`, which stops what it's doing when the run is
+   *  canceled — a process killed, a remote command interrupted, a wait given up. */
+  runLocal: (command: string, timeoutMs: number, signal?: AbortSignal) => Promise<{ output: string; ok: boolean; error?: string }>;
   /** A GitHub node: runs `step`, telling `report` how it's going; resolves with the node's output. */
-  runGitHub: (step: GitHubStep, report: (message: string) => void) => Promise<string>;
+  runGitHub: (step: GitHubStep, report: (message: string) => void, signal?: AbortSignal) => Promise<string>;
   /** A `'wsl'` node: `command` in WSL distribution `distro` (its default one when unset). */
-  runWsl: (distro: string | undefined, command: string, timeoutMs: number) => Promise<{ output: string; ok: boolean; error?: string }>;
+  runWsl: (
+    distro: string | undefined,
+    command: string,
+    timeoutMs: number,
+    signal?: AbortSignal
+  ) => Promise<{ output: string; ok: boolean; error?: string }>;
   /** An upload from WSL: the path Windows reads WSL file `path` at; rejects if it isn't there. */
   wslUploadSource: (distro: string | undefined, path: string) => Promise<string>;
 }
@@ -278,23 +289,39 @@ export async function runAutomation(
   snippetsById: Map<string, Snippet>,
   paramValues: Record<string, string>,
   deps: RunAutomationDeps,
-  onProgress?: (event: AutomationProgressEvent) => void
+  onProgress?: (event: AutomationProgressEvent) => void,
+  /** Cancels the run: the running node stops and fails as `canceled`, every node after it
+   *  is skipped, and the run still completes with all its results. */
+  signal?: AbortSignal
 ): Promise<NodeResult[]> {
   const order = topoOrder(automation);
   const nodeById = new Map(automation.nodes.map((n) => [n.id, n]));
   const predecessorsOf = predecessorMap(automation);
   const hostParam = hostParamOf(automation);
   const resultsById = new Map<string, NodeResult>();
-  const connections = new Map<string, RunAutomationConnection>();
+  // Kept as promises, so one still connecting when the run is canceled is closed too.
+  const connections = new Map<string, Promise<RunAutomationConnection>>();
 
   /** The host's connection, opened on first use and shared by every node after. */
-  async function connectionFor(hostName: string): Promise<RunAutomationConnection> {
+  function connectionFor(hostName: string): Promise<RunAutomationConnection> {
     let connection = connections.get(hostName);
     if (connection === undefined) {
-      connection = await deps.connectHost(hostName);
+      connection = deps.connectHost(hostName);
       connections.set(hostName, connection);
     }
     return connection;
+  }
+
+  /** `work`, or a `canceled` rejection the moment the run is canceled — so a runner
+   *  that's slow to stop never holds the run up. */
+  function untilCanceled<T>(work: Promise<T>): Promise<T> {
+    if (signal === undefined) return work;
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = (): void => reject(new Error(CANCELED));
+      if (signal.aborted) return onAbort();
+      signal.addEventListener('abort', onAbort, { once: true });
+      work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+    });
   }
 
   function settle(nodeId: string, result: NodeResult): void {
@@ -306,6 +333,11 @@ export async function runAutomation(
     for (const nodeId of order) {
       const node = nodeById.get(nodeId)!;
       const snippet = snippetsById.get(node.snippetId);
+
+      if (signal?.aborted) {
+        settle(nodeId, { nodeId, label: node.label, status: 'skipped', output: '', error: CANCELED, durationMs: 0 });
+        continue;
+      }
 
       if (snippet === undefined && node.upload === undefined && node.github === undefined) {
         settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'snippet no longer exists', durationMs: 0 });
@@ -333,7 +365,7 @@ export async function runAutomation(
       try {
         if (node.github !== undefined) {
           const step = substituteGitHubStep(node.github, predecessorsByLabel, paramValues);
-          const output = await deps.runGitHub(step, (message) => onProgress?.({ kind: 'nodeProgress', nodeId, message }));
+          const output = await untilCanceled(deps.runGitHub(step, (message) => onProgress?.({ kind: 'nodeProgress', nodeId, message }), signal));
           exec = { output, ok: true };
         } else if (node.upload !== undefined) {
           // No timeout: a big image takes as long as the line allows, and a stalled
@@ -341,26 +373,28 @@ export async function runAutomation(
           const from = substituteTemplate(node.upload.from, predecessorsByLabel, paramValues).trim();
           const to = uploadDestination(from, substituteTemplate(node.upload.to, predecessorsByLabel, paramValues));
           // A file in WSL is read where WSL keeps it, not looked up by name on Windows.
-          const local = node.upload.source === 'wsl' ? await deps.wslUploadSource(node.upload.wslDistro || undefined, from) : from;
-          const connection = await connectionFor(nodeHostName!);
-          await connection.upload(local, to);
+          const local = node.upload.source === 'wsl' ? await untilCanceled(deps.wslUploadSource(node.upload.wslDistro || undefined, from)) : from;
+          const connection = await untilCanceled(connectionFor(nodeHostName!));
+          await untilCanceled(connection.upload(local, to, signal));
           // The output is where it landed, so the next node can use it as is:
           // `docker load < {{nodes.upload.output}}`.
           exec = { output: to, ok: true };
         } else if (node.target === 'local') {
           const command = substituteTemplate(snippet!.command, predecessorsByLabel, paramValues);
-          exec = await deps.runLocal(command, snippet!.timeoutSecs * 1000);
+          exec = await untilCanceled(deps.runLocal(command, snippet!.timeoutSecs * 1000, signal));
         } else if (node.target === 'wsl') {
           const command = substituteTemplate(snippet!.command, predecessorsByLabel, paramValues);
-          exec = await deps.runWsl(node.wslDistro || undefined, command, snippet!.timeoutSecs * 1000);
+          exec = await untilCanceled(deps.runWsl(node.wslDistro || undefined, command, snippet!.timeoutSecs * 1000, signal));
         } else {
           const command = substituteTemplate(snippet!.command, predecessorsByLabel, paramValues);
-          const connection = await connectionFor(nodeHostName!);
-          exec = await connection.runShell(command, snippet!.timeoutSecs * 1000);
+          const connection = await untilCanceled(connectionFor(nodeHostName!));
+          exec = await untilCanceled(connection.runShell(command, snippet!.timeoutSecs * 1000, signal));
         }
       } catch (e) {
         exec = { output: '', ok: false, error: (e as Error).message };
       }
+      // However the runner reported its stop, a canceled run's node failed by cancelation.
+      if (signal?.aborted && !exec.ok) exec = { ...exec, error: CANCELED };
 
       settle(nodeId, {
         nodeId,
@@ -372,7 +406,7 @@ export async function runAutomation(
       });
     }
   } finally {
-    for (const connection of connections.values()) connection.disconnect();
+    for (const connection of connections.values()) connection.then((c) => c.disconnect(), () => {});
   }
 
   return order.map((id) => resultsById.get(id)!);

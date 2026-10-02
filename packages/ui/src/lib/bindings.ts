@@ -174,6 +174,9 @@ export const commands = {
   async runAutomation(name: string, paramValues: Record<string, string>): Promise<Result<null, CommandError>> {
     return call('run_automation', name, paramValues);
   },
+  async cancelAutomation(name: string): Promise<Result<null, CommandError>> {
+    return call('cancel_automation', name);
+  },
   async exportSnippet(id: string): Promise<Result<string | null, CommandError>> {
     return call('export_snippet', id);
   },

@@ -19,7 +19,7 @@
     exportAllAutomations,
     importBundle
   } from '$lib/ipc/commands';
-  import { snippets, automations, automationsTab, automationRun, runAutomationNow } from '$lib/stores/automations';
+  import { snippets, automations, automationsTab, activeRuns, runAutomationNow, stopAutomationRun } from '$lib/stores/automations';
   import { lastError } from '$lib/stores/notifications';
   import { activeEntity } from '$lib/stores/activeEntity';
   import { emptyForm, formFromSnippet } from './snippetForm';
@@ -128,8 +128,7 @@
   }
 
   function isRunning(name: string): boolean {
-    const r = $automationRun;
-    return r?.automationName === name && r.phase.kind === 'running';
+    return name in $activeRuns;
   }
 
   const pill =
@@ -272,17 +271,30 @@
               </div>
             </button>
             <div class="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                class={pill}
-                title="Run {automation.name}"
-                aria-label="Run {automation.name}"
-                disabled={isRunning(automation.name)}
-                onclick={() => openRunDialog(automation)}
-              >
-                <Icon name="play" size={12} />
-                {isRunning(automation.name) ? 'Running…' : 'Run'}
-              </button>
+              {#if isRunning(automation.name)}
+                <button
+                  type="button"
+                  class={pill}
+                  title="Stop {automation.name}"
+                  aria-label="Stop {automation.name}"
+                  disabled={$activeRuns[automation.name]?.stopping}
+                  onclick={() => void stopAutomationRun(automation.name)}
+                >
+                  <Icon name="close" size={12} />
+                  {$activeRuns[automation.name]?.stopping ? 'Stopping…' : 'Stop'}
+                </button>
+              {:else}
+                <button
+                  type="button"
+                  class={pill}
+                  title="Run {automation.name}"
+                  aria-label="Run {automation.name}"
+                  onclick={() => openRunDialog(automation)}
+                >
+                  <Icon name="play" size={12} />
+                  Run
+                </button>
+              {/if}
               <button
                 type="button"
                 class={iconBtn}

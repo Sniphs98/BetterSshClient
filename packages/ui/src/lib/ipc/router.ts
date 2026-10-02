@@ -26,6 +26,7 @@ import type {
 } from '$lib/bindings';
 import {
   automationRun,
+  endActiveRun,
   reduceAutomationCompleted,
   reduceAutomationFailed,
   reduceNodeResult,
@@ -216,10 +217,12 @@ export function applyAutomationNodeProgress(payload: AutomationNodeProgress): vo
 }
 
 export function applyAutomationCompleted(payload: AutomationCompleted): void {
+  endActiveRun(payload.automationName);
   automationRun.update((run) => reduceAutomationCompleted(payload.automationName, payload.results, run));
 }
 
 export function applyAutomationFailed(payload: AutomationFailed): void {
+  endActiveRun(payload.automationName);
   automationRun.set(reduceAutomationFailed(payload.automationName, payload.error));
 }
 
