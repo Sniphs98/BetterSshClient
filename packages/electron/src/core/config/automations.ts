@@ -6,6 +6,7 @@ import { parse, stringify } from 'smol-toml';
 import { automationsConfigPath } from './platform.js';
 import type { Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind, NodeTarget } from '../automation/types.js';
 import { parseGitHubStep } from '../automation/githubStep.js';
+import { paramKind, parseIfBranch, parseIfCondition } from '../automation/ifCondition.js';
 
 /** `automations.toml` I/O — Automations wire Snippets (loaded separately, from
  *  `snippets.ts`/`snippets.toml`) together into a graph. Mirrors
@@ -39,11 +40,14 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
     }
   }
   const github = raw.github === undefined ? undefined : parseGitHubStep(raw.github, `automation "${automationName}" node "${raw.id}" github`);
+  const condition =
+    raw.condition === undefined ? undefined : parseIfCondition(raw.condition, `automation "${automationName}" node "${raw.id}" condition`);
   return {
     id: raw.id,
     snippetId: raw.snippetId,
     github,
     upload,
+    condition,
     wslDistro: target === 'wsl' && typeof raw.wslDistro === 'string' && raw.wslDistro !== '' ? raw.wslDistro : undefined,
     label: raw.label,
     continueOnError: raw.continueOnError === true,
@@ -72,6 +76,7 @@ function automationNodeToToml(node: AutomationNode): Record<string, unknown> {
     out.upload = upload;
   }
   if (node.github !== undefined) out.github = { ...node.github };
+  if (node.condition !== undefined) out.condition = { ...node.condition };
   if (node.target === 'wsl' && node.wslDistro) out.wslDistro = node.wslDistro;
   if (node.position !== undefined) out.position = { x: node.position.x, y: node.position.y };
   return out;
@@ -81,12 +86,13 @@ function automationEdgeFromToml(raw: Record<string, unknown>, automationName: st
   if (typeof raw.from !== 'string' || typeof raw.to !== 'string') {
     throw new Error(`automation "${automationName}" has an edge missing "from"/"to"`);
   }
-  return { from: raw.from, to: raw.to };
+  const branch = parseIfBranch(raw.branch, `automation "${automationName}" edge ${raw.from} → ${raw.to} branch`);
+  return branch === undefined ? { from: raw.from, to: raw.to } : { from: raw.from, to: raw.to, branch };
 }
 
 function automationParamFromToml(raw: Record<string, unknown>, automationName: string): AutomationParam {
   if (typeof raw.name !== 'string') throw new Error(`automation "${automationName}" has a parameter missing "name"`);
-  const kind: AutomationParamKind | undefined = raw.kind === 'text' ? 'text' : raw.kind === 'host' ? 'host' : undefined;
+  const kind: AutomationParamKind | undefined = paramKind(raw.kind);
   if (kind === undefined) throw new Error(`automation "${automationName}" parameter "${raw.name}" has an invalid kind`);
   return {
     name: raw.name,
@@ -119,7 +125,7 @@ function automationToToml(automation: Automation): Record<string, unknown> {
     name: automation.name,
     params: automation.params.map(automationParamToToml),
     nodes: automation.nodes.map(automationNodeToToml),
-    edges: automation.edges.map((e) => ({ from: e.from, to: e.to }))
+    edges: automation.edges.map((e) => (e.branch === undefined ? { from: e.from, to: e.to } : { from: e.from, to: e.to, branch: e.branch }))
   };
   // Omitted when empty, like a node's `position` — keeps an automation with no decorative
   // Start-node links out of the TOML entirely rather than writing `startLinks = []`.

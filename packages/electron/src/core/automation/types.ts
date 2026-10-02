@@ -18,7 +18,9 @@ export interface Snippet {
   timeoutSecs: number;
 }
 
-export type AutomationParamKind = 'text' | 'host';
+/** `'text'`/`'host'` are asked for when the automation runs; `'fixed'` is a variable set
+ *  in the automation itself (its `default` is its value) and never asked for. */
+export type AutomationParamKind = 'text' | 'host' | 'fixed';
 
 /** A value the automation asks for right before it runs, rather than baking it into any
  *  node. An automation may declare at most one `kind: 'host'` param — its value is the host
@@ -32,7 +34,8 @@ export interface AutomationParam {
   kind: AutomationParamKind;
   /** Shown in the "run this automation" prompt in place of `name`, if set. */
   label?: string;
-  /** Prefills the "run this automation" prompt for a `'text'` param; unused for `'host'`. */
+  /** Prefills the "run this automation" prompt for a `'text'` param; unused for `'host'`.
+   *  For a `'fixed'` one, its value — used as is on every run. */
   default?: string;
 }
 
@@ -78,6 +81,20 @@ export type GitHubStep =
       pattern: string;
     };
 
+/** How an If node compares: `left`, with `right` where it takes one. Both sides are
+ *  trimmed first (a command's output ends in a line break); text compares exactly. */
+export type IfOperator = 'equals' | 'notEquals' | 'contains' | 'notContains' | 'isEmpty' | 'notEmpty';
+
+/** An If node's question: a comparison of texts (params, earlier nodes' outputs), or
+ *  whether a command succeeds (exit code 0) — run where the node's `target` says. Every
+ *  text field takes `{{params.<name>}}` and `{{nodes.<label>.output}}`. */
+export type IfCondition =
+  | { kind: 'compare'; left: string; op: IfOperator; right: string }
+  | { kind: 'command'; command: string; timeoutSecs: number };
+
+/** Which of an If node's two ways an edge out of it is. */
+export type IfBranch = 'yes' | 'no';
+
 export interface AutomationNode {
   /** Instance id, unique within the automation — a Snippet can appear more than once. */
   id: string;
@@ -87,6 +104,10 @@ export interface AutomationNode {
   upload?: UploadStep;
   /** Set for a GitHub node, which runs no snippet (and runs here, target 'local'). */
   github?: GitHubStep;
+  /** Set for an If node, which runs no snippet: its output is `yes` or `no`, and only the
+   *  nodes on that way out of it run (see `AutomationEdge.branch`). A `'command'`
+   *  condition runs where `target` says; a `'compare'` one targets 'local'. */
+  condition?: IfCondition;
   /** Unique within the automation; the `{{nodes.<label>.output}}` handle. */
   label: string;
   /** An automation-wiring concern, not a property of the reusable Snippet: does this
@@ -106,6 +127,9 @@ export interface AutomationNode {
 export interface AutomationEdge {
   from: string;
   to: string;
+  /** For an edge out of an If node: the way it is. `to` only runs when the If's answer is
+   *  this one — otherwise it's skipped, and so is what depends only on it. */
+  branch?: IfBranch;
 }
 
 export interface Automation {

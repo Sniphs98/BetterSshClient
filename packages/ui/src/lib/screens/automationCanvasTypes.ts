@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/svelte';
-import type { NodeTargetDto, AutomationParamDto, AutomationParamKindDto, GitHubStepDto } from '$lib/bindings';
+import type { NodeTargetDto, AutomationParamDto, AutomationParamKindDto, GitHubStepDto, IfConditionDto } from '$lib/bindings';
 
 // The svelte-flow canvas's node/edge shapes for the Automation graph editor — denormalized
 // from AutomationNodeDto/AutomationEdgeDto (see AutomationEditor.svelte) so the canvas never has to look
@@ -47,8 +47,22 @@ export interface GitHubNodeData extends Record<string, unknown> {
 
 export type GitHubNode = Node<GitHubNodeData, 'github'>;
 
+/** A built-in If (no snippet): asks a question, then only the nodes on its "yes" or its
+ *  "no" way out run. Its two source handles have the ids `yes` and `no`. */
+export interface IfNodeData extends Record<string, unknown> {
+  label: string;
+  continueOnError: boolean;
+  condition: IfConditionDto;
+  /** Where a command condition runs; a compare runs here. */
+  target: NodeTargetDto;
+  /** For `target: 'wsl'`: the distribution; '' means WSL's default one. */
+  wslDistro: string;
+}
+
+export type IfNode = Node<IfNodeData, 'if'>;
+
 /** A node that becomes an `AutomationNode` when saved — everything but Start. */
-export type StepNode = SnippetNode | UploadNode | GitHubNode;
+export type StepNode = SnippetNode | UploadNode | GitHubNode | IfNode;
 export type AutomationCanvasEdge = Edge;
 
 /** The one, permanent "Start" node — the automation's parameters, drawn as a node instead of
@@ -71,7 +85,7 @@ export const START_NODE_ID = '__start__';
 export type StartNodeData = Record<string, never>;
 export type StartNode = Node<StartNodeData, 'start'>;
 
-export type AnyCanvasNode = SnippetNode | UploadNode | GitHubNode | StartNode;
+export type AnyCanvasNode = SnippetNode | UploadNode | GitHubNode | IfNode | StartNode;
 
 /** Passed via `setContext(AUTOMATION_PARAMS_CONTEXT, …)` from AutomationEditor.svelte down to the
  *  Start node so it can read/mutate `params` without that state needing to travel
@@ -87,7 +101,7 @@ export interface AutomationParamsContext {
    *  `'host'` param. Identifies the row being edited by its *current* name, since
    *  that's what's stable within one edit (see AutomationStartNode.svelte's index-keyed
    *  `{#each}`, which is what actually keeps the input focused across keystrokes). */
-  updateParam: (name: string, patch: { name?: string; kind?: AutomationParamKindDto }) => void;
+  updateParam: (name: string, patch: { name?: string; kind?: AutomationParamKindDto; value?: string }) => void;
 }
 
 export const AUTOMATION_PARAMS_CONTEXT = 'automation-params';

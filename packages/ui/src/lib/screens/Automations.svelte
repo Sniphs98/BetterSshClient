@@ -120,7 +120,8 @@
    *  `'text'` one) so the same automation can be run identically against different hosts /
    *  inputs each time. */
   function openRunDialog(automation: AutomationDto): void {
-    if (automation.params.length === 0) {
+    // Fixed variables aren't asked for: with nothing else, it just runs.
+    if (automation.params.every((p) => p.kind === 'fixed')) {
       void runAutomationNow(automation.name, {});
       return;
     }

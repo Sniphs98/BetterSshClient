@@ -115,6 +115,9 @@
       case 'githubDownload':
         palette.chooseSnippet('githubDownload');
         break;
+      case 'ifStep':
+        palette.chooseSnippet('if');
+        break;
     }
   }
 
@@ -246,6 +249,9 @@
                 {:else if item.kind === 'githubDownload'}
                   <Icon name="download" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">Download a GitHub release file…</span>
+                {:else if item.kind === 'ifStep'}
+                  <Icon name="branch" size={16} />
+                  <span class="min-w-0 flex-1 truncate font-medium">If… (run one way or another)</span>
                 {:else if item.kind === 'uploadStep'}
                   <Icon name="upload" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">Upload a file to the host…</span>

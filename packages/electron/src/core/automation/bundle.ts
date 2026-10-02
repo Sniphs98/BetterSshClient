@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Snippet, NodeTarget, Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind } from './types.js';
 import { parseGitHubStep } from './githubStep.js';
+import { paramKind, parseIfBranch, parseIfCondition } from './ifCondition.js';
 import { arr, bool, num, obj, optionalStr, str, uniqueName } from '../config/bundleFields.js';
 
 /**
@@ -50,7 +51,7 @@ export function buildAutomationBundle(automation: Automation, snippetsById: Map<
   const seen = new Set<string>();
   const snippets: Snippet[] = [];
   for (const node of automation.nodes) {
-    if (node.upload !== undefined || node.github !== undefined || seen.has(node.snippetId)) continue;
+    if (node.upload !== undefined || node.github !== undefined || node.condition !== undefined || seen.has(node.snippetId)) continue;
     const snippet = snippetsById.get(node.snippetId);
     if (snippet === undefined) {
       throw new Error(`automation "${automation.name}" references an unknown snippet`);
@@ -102,11 +103,16 @@ function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
     }
   }
   const github = o.github === undefined || o.github === null ? undefined : parseGitHubStep(o.github, `${ctx}.github`);
+  const condition = o.condition === undefined || o.condition === null ? undefined : parseIfCondition(o.condition, `${ctx}.condition`);
   return {
     id: str(o.id, `${ctx}.id`),
-    snippetId: (upload !== undefined || github !== undefined) && o.snippetId === undefined ? '' : str(o.snippetId, `${ctx}.snippetId`),
+    snippetId:
+      (upload !== undefined || github !== undefined || condition !== undefined) && o.snippetId === undefined
+        ? ''
+        : str(o.snippetId, `${ctx}.snippetId`),
     upload,
     github,
+    condition,
     wslDistro: target === 'wsl' ? optionalStr(o.wslDistro, `${ctx}.wslDistro`) || undefined : undefined,
     label: str(o.label, `${ctx}.label`),
     continueOnError: bool(o.continueOnError, `${ctx}.continueOnError`),
@@ -117,13 +123,15 @@ function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
 
 function parseAutomationEdge(raw: unknown, ctx: string): AutomationEdge {
   const o = obj(raw, ctx);
-  return { from: str(o.from, `${ctx}.from`), to: str(o.to, `${ctx}.to`) };
+  const branch = parseIfBranch(o.branch, `${ctx}.branch`);
+  const edge: AutomationEdge = { from: str(o.from, `${ctx}.from`), to: str(o.to, `${ctx}.to`) };
+  return branch === undefined ? edge : { ...edge, branch };
 }
 
 function parseAutomationParam(raw: unknown, ctx: string): AutomationParam {
   const o = obj(raw, ctx);
-  const kind: AutomationParamKind | undefined = o.kind === 'text' ? 'text' : o.kind === 'host' ? 'host' : undefined;
-  if (kind === undefined) throw new Error(`${ctx}.kind: must be "text" or "host"`);
+  const kind: AutomationParamKind | undefined = paramKind(o.kind);
+  if (kind === undefined) throw new Error(`${ctx}.kind: must be "text", "host" or "fixed"`);
   return {
     name: str(o.name, `${ctx}.name`),
     kind,
