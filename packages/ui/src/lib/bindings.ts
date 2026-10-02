@@ -224,9 +224,10 @@ export const commands = {
   },
   async rdpEmbeddedOpen(
     connectionId: string,
-    credentials?: RdpCredentialsDto
+    credentials?: RdpCredentialsDto,
+    progressKey?: string
   ): Promise<Result<RdpEmbeddedOpenDto, CommandError>> {
-    return call('rdp_embedded_open', connectionId, credentials);
+    return call('rdp_embedded_open', connectionId, credentials, progressKey);
   },
   async rdpEmbeddedStatus(token: string): Promise<Result<RdpEmbeddedStatusDto, CommandError>> {
     return call('rdp_embedded_status', token);
@@ -274,6 +275,7 @@ const EVENT_CHANNELS = {
   keySetupProgress: 'key-setup-progress',
   keySetupRollback: 'key-setup-rollback',
   metricsUpdated: 'metrics-updated',
+  rdpConnectProgress: 'rdp-connect-progress',
   servicesDetected: 'services-detected',
   servicesFailed: 'services-failed',
   sftpConnected: 'sftp-connected',
@@ -303,6 +305,7 @@ type EventMap = {
   keySetupProgress: KeySetupProgress;
   keySetupRollback: KeySetupRollback;
   metricsUpdated: MetricsUpdated;
+  rdpConnectProgress: RdpConnectProgress;
   servicesDetected: ServicesDetected;
   servicesFailed: ServicesFailed;
   sftpConnected: SftpConnected;
@@ -371,6 +374,10 @@ export type AutomationNodeResult = NodeResultDto & { automationName: string };
 /** A node started executing. */
 export type AutomationNodeStarted = { automationName: string; nodeId: string; label: string };
 /** A line of news from a long-running node — a GitHub run's progress or its link. */
+/** A step of connecting an embedded RDP session, as the main process reaches it. */
+export type RdpConnectStageDto = 'onePassword' | 'tunnel' | 'reach' | 'secure' | 'signin';
+/** `rdp-connect-progress`: the step a tab's connection has reached (`key` names the tab). */
+export type RdpConnectProgress = { key: string; stage: RdpConnectStageDto };
 export type AutomationNodeProgress = { automationName: string; nodeId: string; message: string };
 export type CommandError = { message: string };
 /** Whether the 1Password CLI is installed, and how to get it. */

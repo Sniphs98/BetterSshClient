@@ -11,7 +11,12 @@
   import { lastError } from '$lib/stores/notifications';
   import { rdpEmbeddedClose, rdpEmbeddedOpen, rdpEmbeddedStatus, rdpForgetCertificate, rdpLaunch } from '$lib/ipc/commands';
   import { Icon } from '$lib/theme';
+  import { events } from '$lib/bindings';
+  import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import { explainRdpError, loadIronRdp, type IronUserInteraction } from './rdpEmbedded';
+  import { fromOnePassword } from './remoteDesktopForm';
+  import { isOnePasswordReference } from './onePasswordRef';
+  import { advance, formatElapsed, rdpConnectSteps, stepStatus, type RdpConnectStage } from './rdpConnectSteps';
   import { formatBytes, RdpTransfers } from './rdpTransfers.svelte';
 
   let { session, active }: { session: Session; active: boolean } = $props();
@@ -40,6 +45,34 @@
 
   const connection = $derived($remoteDesktopConnections.find((c) => c.id === session.rdpConnectionId));
 
+  // What connecting is doing right now, step by step, so a slow connection shows it's
+  // working (the main process reports each step for this attempt's `progressKey`).
+  let stage = $state<RdpConnectStage>('viewer');
+  let stageSince = $state(Date.now());
+  let now = $state(Date.now());
+  let progressKey = '';
+  let attempts = 0;
+  let stopProgress: (() => void) | undefined;
+  let ticker: ReturnType<typeof setInterval> | undefined;
+  const steps = $derived(
+    rdpConnectSteps({
+      onePassword: connection ? fromOnePassword(connection) !== '' : false,
+      viaHost: connection?.viaHost,
+      server:
+        connection && !isOnePasswordReference(connection.hostname)
+          ? `${displayHostname(connection.hostname, $streamerMode)}:${connection.port}`
+          : session.hostName
+    })
+  );
+  const currentStep = $derived(steps.find((s) => s.stage === stage));
+
+  function reach(next: RdpConnectStage): void {
+    const to = advance(steps, stage, next);
+    if (to === stage) return;
+    stage = to;
+    stageSince = Date.now();
+  }
+
   /** The viewport in device pixels, even (RDP wants an even width), within RDP's limits. */
   function viewportSize(): { width: number; height: number } {
     const rect = viewport?.getBoundingClientRect();
@@ -52,6 +85,9 @@
     phase = 'connecting';
     problem = null;
     certificateChanged = false;
+    progressKey = `${session.id}-${++attempts}`;
+    stage = 'viewer';
+    stageSince = Date.now();
     sessions.setStatus(session.id, 'connecting');
     try {
       const { Backend, displayControl, RdpFileTransferProvider } = await loadIronRdp();
@@ -72,7 +108,11 @@
       if (destroyed) return;
 
       // A plain copy: a reactive proxy can't be sent over IPC.
-      const opened = await rdpEmbeddedOpen(session.rdpConnectionId, credentials ? $state.snapshot(credentials) : undefined);
+      const opened = await rdpEmbeddedOpen(
+        session.rdpConnectionId,
+        credentials ? $state.snapshot(credentials) : undefined,
+        progressKey
+      );
       if (destroyed) return;
       if (opened.kind === 'credentials') {
         form = { username: opened.username ?? '', password: '', domain: opened.domain ?? '' };
@@ -112,6 +152,7 @@
         .withExtension(displayControl(true))
         .build();
 
+      reach('reach');
       const info = await ui.connect(config);
       if (destroyed) return;
       phase = 'connected';
@@ -180,6 +221,15 @@
   }
 
   onMount(() => {
+    ticker = setInterval(() => (now = Date.now()), 500);
+    events.rdpConnectProgress
+      .listen((e) => {
+        if (e.payload.key === progressKey) reach(e.payload.stage);
+      })
+      .then((off) => (destroyed ? off() : (stopProgress = off)))
+      .catch(() => {
+        // No Electron bridge (tests): the steps just don't advance on their own.
+      });
     resizeObserver = new ResizeObserver(scheduleResize);
     if (viewport) resizeObserver.observe(viewport);
     void connect();
@@ -187,6 +237,8 @@
 
   onDestroy(() => {
     destroyed = true;
+    clearInterval(ticker);
+    stopProgress?.();
     clearTimeout(resizeTimer);
     resizeObserver?.disconnect();
     try {
@@ -250,7 +302,7 @@
     <span class="font-medium">{session.hostName}</span>
     <span class="text-faint">
       {phase === 'connecting'
-        ? 'Connecting…'
+        ? `Connecting · ${currentStep?.label ?? ''}`
         : phase === 'credentials'
           ? 'Sign in'
           : phase === 'connected'
@@ -396,7 +448,9 @@
       <div class="absolute inset-0 grid place-items-center bg-surface p-6">
         <div class="max-w-md space-y-3 text-center">
           {#if phase === 'connecting'}
-            <p class="text-sm text-muted">Connecting to {session.hostName}…</p>
+            <p class="font-medium">Connecting to {session.hostName}</p>
+            <div class="connect-bar mx-auto h-1 w-56 overflow-hidden rounded-full bg-surface-inset" aria-hidden="true"></div>
+            {@render stepList(false)}
           {:else if phase === 'credentials'}
             <form class="w-80 space-y-3 text-left" onsubmit={signIn}>
               <p class="text-center font-medium">Sign in to {session.hostName}</p>
@@ -420,6 +474,7 @@
             </form>
           {:else}
             <p class="font-medium">{phase === 'ended' ? 'The session has ended' : 'Could not connect'}</p>
+            {#if phase === 'failed'}{@render stepList(true)}{/if}
             {#if problem}<p class="text-sm text-muted">{problem}</p>{/if}
             <div class="flex flex-wrap justify-center gap-2 pt-1">
               {#if certificateChanged}
@@ -438,7 +493,77 @@
   </div>
 </div>
 
+{#snippet stepList(failed: boolean)}
+  <ol class="mx-auto w-72 space-y-2 pt-2 text-left text-sm" aria-label="Connection steps">
+    {#each steps as step, i (step.stage)}
+      {@const status = stepStatus(steps, stage, i, failed)}
+      <li class="flex items-center gap-2.5 {status === 'pending' ? 'text-faint' : status === 'done' ? 'text-muted' : 'text-fg'}" data-status={status}>
+        <span class="grid h-4 w-4 shrink-0 place-items-center">
+          {#if status === 'done'}
+            <span class="step-in text-status-ok"><Icon name="check" size={14} /></span>
+          {:else if status === 'active'}
+            <span class="spinner h-3.5 w-3.5 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"></span>
+          {:else if status === 'failed'}
+            <span class="step-in text-status-crit"><Icon name="close" size={14} /></span>
+          {:else}
+            <span class="h-1.5 w-1.5 rounded-full bg-[var(--border)]"></span>
+          {/if}
+        </span>
+        <span class="min-w-0 flex-1 truncate">{step.label}</span>
+        {#if status === 'active'}
+          <span class="shrink-0 text-xs tabular-nums text-faint">{formatElapsed(now - stageSince)}</span>
+        {/if}
+      </li>
+    {/each}
+  </ol>
+{/snippet}
+
 <style>
+  .spinner {
+    animation: spin 0.8s linear infinite;
+  }
+  .step-in {
+    animation: pop 0.25s ease-out;
+  }
+  /* An indeterminate bar: a highlight sweeping across, so it moves even while one step takes long. */
+  .connect-bar {
+    position: relative;
+  }
+  .connect-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    border-radius: 9999px;
+    background: var(--accent);
+    animation: sweep 1.4s ease-in-out infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes pop {
+    from {
+      transform: scale(0.4);
+      opacity: 0;
+    }
+  }
+  @keyframes sweep {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner,
+    .step-in,
+    .connect-bar::after {
+      animation: none;
+    }
+  }
   .rdp-viewport :global(iron-remote-desktop) {
     display: block;
     width: 100%;

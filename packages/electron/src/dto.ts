@@ -330,6 +330,16 @@ export interface RdpCredentialsDto {
   domain?: string;
 }
 
+/** A step of connecting an embedded RDP session: reading 1Password, opening the SSH
+ *  tunnel, reaching the server, securing the connection (TLS, certificate), signing in. */
+export type RdpConnectStageDto = 'onePassword' | 'tunnel' | 'reach' | 'secure' | 'signin';
+
+/** `rdp-connect-progress`: the step a tab's connection has reached (`key` names the tab). */
+export interface RdpConnectProgressDto {
+  key: string;
+  stage: RdpConnectStageDto;
+}
+
 /** What `rdp_embedded_open` answers: ready to connect, or first ask for credentials
  *  the profile doesn't store (the username/domain it has are there to prefill). */
 export type RdpEmbeddedOpenDto =
