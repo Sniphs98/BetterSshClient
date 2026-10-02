@@ -21,7 +21,18 @@ describe('parseCommit', () => {
 
   it('is not fooled by merge commits or free text', () => {
     assert.equal(parseCommit('Merge pull request #1 from Sniphs98/feat/x'), undefined);
+    assert.equal(parseCommit('Merge pull request #1 from Sniphs98/feat/x\n\nadd icons'), undefined);
+    assert.equal(parseCommit("Merge branch 'main' into x\n\nfeat: not a PR title"), undefined);
     assert.equal(parseCommit('add icons'), undefined);
+  });
+
+  it("reads a merged pull request by its title, which GitHub puts in the merge commit's body", () => {
+    assert.deepEqual(parseCommit('Merge pull request #40 from Sniphs98/claude/x\n\nfeat(automation): upload from WSL'), {
+      type: 'feat',
+      scope: 'automation',
+      breaking: false,
+      summary: 'upload from WSL'
+    });
   });
 });
 
@@ -30,6 +41,13 @@ describe('bumpFor', () => {
     assert.equal(bumpFor(['fix: a', 'perf: b']), 'patch');
     assert.equal(bumpFor(['fix: a', 'feat: b']), 'minor');
     assert.equal(bumpFor(['feat: a', 'refactor!: b']), 'major');
+  });
+
+  it('releases a merged pull request by its title, though its own commits are free text', () => {
+    assert.equal(
+      bumpFor(['Merge pull request #40 from o/x\n\nfeat(automation): upload from WSL', 'Upload node: read the file from WSL']),
+      'minor'
+    );
   });
 
   it('releases nothing for docs, tests, chores and merges', () => {
@@ -92,5 +110,10 @@ describe('releaseNotes', () => {
     assert.match(notes, /### Performance\n\n- faster/);
     assert.doesNotMatch(notes, /readme/);
     assert.match(notes, /compare\/v1\.1\.2\.\.\.v2\.0\.0/);
+  });
+
+  it("lists a merged PR's title once, even when one of its commits says the same", () => {
+    const notes = releaseNotes(['Merge pull request #7 from o/x\n\nfeat(ssh): jump hosts', 'feat(ssh): jump hosts', 'test: more']);
+    assert.equal(notes, '### Features\n\n- **ssh:** jump hosts\n');
   });
 });
