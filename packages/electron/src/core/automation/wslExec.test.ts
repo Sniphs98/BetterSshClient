@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -31,7 +31,8 @@ describe.skipIf(process.platform === 'win32')('wslUploadPathScript', () => {
   let home = '';
   let cwd = '';
   beforeAll(() => {
-    dir = mkdtempSync(join(tmpdir(), 'remoty-wslpath-'));
+    // Resolved, as the script's realpath resolves it: macOS's /var is /private/var.
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'remoty-wslpath-')));
     bin = join(dir, 'bin');
     home = join(dir, 'home');
     cwd = join(dir, 'cwd');
