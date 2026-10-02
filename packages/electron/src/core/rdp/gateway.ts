@@ -26,7 +26,13 @@ export interface GatewayTarget {
   /** Checks the server's certificate before anything is relayed; rejecting stops the
    *  session. */
   verifyCertificate(chain: Buffer[]): Promise<void>;
+  /** Told as the handshake moves on, for the "connecting" screen: reaching the server,
+   *  then securing the connection (X.224 + TLS + certificate), then signing in (the
+   *  client's own part, once the stream is relayed). */
+  onStage?(stage: GatewayStage): void;
 }
+
+export type GatewayStage = 'reach' | 'secure' | 'signin';
 
 /** Reads one TPKT-framed packet (the X.224 connection confirm) off `stream`. */
 function readTpkt(stream: Duplex, timeoutMs = 15_000): Promise<Buffer> {
@@ -116,6 +122,7 @@ async function establish(
   } catch (err) {
     throw Object.assign(new Error(`could not reach ${target.host}:${target.port}: ${(err as Error).message}`), { status: 502 });
   }
+  target.onStage?.('secure');
   try {
     stream.write(x224Request);
     const confirm = await readTpkt(stream);
@@ -196,6 +203,7 @@ export class RdpGateway {
       this.targets.delete(token);
       if (!request.x224ConnectionPdu) throw Object.assign(new Error('no X.224 connection request'), { status: 400 });
 
+      target.onStage?.('reach');
       let established;
       try {
         established = await establish(target, request.x224ConnectionPdu, false);
@@ -217,6 +225,7 @@ export class RdpGateway {
         })
       );
       this.relay(ws, tls);
+      target.onStage?.('signin');
     } catch (err) {
       const e = err as Error & { status?: number };
       if (token) this.failures.set(token, e.message);

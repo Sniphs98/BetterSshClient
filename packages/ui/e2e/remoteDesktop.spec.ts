@@ -60,6 +60,8 @@ async function boot(page: Page, opts: { launch?: Rec; connections?: Rec[] } = {}
             const typed = args[1] as { username: string; password: string } | undefined;
             if (!typed) return Promise.resolve({ kind: 'credentials', username: 'admin' });
             (win.__rdpTyped as unknown[]).push(typed);
+            // Gets as far as trying to reach the server, as the gateway would report.
+            for (const cb of listeners['rdp-connect-progress'] ?? []) cb({ key: args[2], stage: 'reach' });
             return Promise.reject({ message: 'could not reach 10.0.0.5:3389: connect ECONNREFUSED' });
           }
           case 'rdp_embedded_status':
@@ -337,6 +339,13 @@ test('Connect opens the remote desktop in a tab, with the external app as the wa
   // …and then says what went wrong.
   await expect(page.getByText('Could not connect')).toBeVisible();
   await expect(page.getByText('Could not reach 10.0.0.5:3389: connect ECONNREFUSED')).toBeVisible();
+  // The steps show how far it got: the viewer started, reaching the server failed.
+  const steps = page.getByRole('list', { name: 'Connection steps' }).getByRole('listitem');
+  await expect(steps).toHaveText(['Starting the viewer', 'Reaching 10.0.0.5:3389', 'Securing the connection', 'Signing in']);
+  await expect(steps.nth(0)).toHaveAttribute('data-status', 'done');
+  await expect(steps.nth(1)).toHaveAttribute('data-status', 'failed');
+  await expect(steps.nth(2)).toHaveAttribute('data-status', 'pending');
+  await page.screenshot({ path: 'test-results/rdp-connect-failed.png', animations: 'disabled' });
 
   // Its fallback is the external app.
   await page.getByRole('button', { name: 'Open in the Remote Desktop app' }).click();

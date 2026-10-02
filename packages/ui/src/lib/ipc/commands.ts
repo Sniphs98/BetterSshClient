@@ -460,8 +460,12 @@ export async function rdpLaunch(connectionId: string): Promise<RdpLaunchResultDt
 
 /** Registers an embedded RDP session with the local gateway and returns what the
  *  in-app client connects with. */
-export async function rdpEmbeddedOpen(connectionId: string, credentials?: RdpCredentialsDto): Promise<RdpEmbeddedOpenDto> {
-  const res = await commands.rdpEmbeddedOpen(connectionId, credentials);
+export async function rdpEmbeddedOpen(
+  connectionId: string,
+  credentials?: RdpCredentialsDto,
+  progressKey?: string
+): Promise<RdpEmbeddedOpenDto> {
+  const res = await commands.rdpEmbeddedOpen(connectionId, credentials, progressKey);
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
 }

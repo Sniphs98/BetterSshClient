@@ -8,7 +8,14 @@ import { checkCertificate, forgetCertificate } from '../core/rdp/knownCerts.js';
 import { resolveConnection } from '../core/rdp/password.js';
 import { saveReceivedFile } from '../core/rdp/savedFiles.js';
 import { SshSession } from '../core/ssh/session.js';
-import { toCommandError, type RdpCredentialsDto, type RdpEmbeddedOpenDto, type RdpEmbeddedStatusDto } from '../dto.js';
+import {
+  toCommandError,
+  type RdpConnectProgressDto,
+  type RdpConnectStageDto,
+  type RdpCredentialsDto,
+  type RdpEmbeddedOpenDto,
+  type RdpEmbeddedStatusDto
+} from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
 
 /**
@@ -42,12 +49,17 @@ function openTcp(host: string, port: number): Promise<Duplex> {
 export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void {
   ipcMain.handle(
     'rdp_embedded_open',
-    async (_event, connectionId: string, typed?: RdpCredentialsDto): Promise<RdpEmbeddedOpenDto> => {
+    async (_event, connectionId: string, typed?: RdpCredentialsDto, progressKey?: string): Promise<RdpEmbeddedOpenDto> => {
+    // Each step of connecting, for the tab's "connecting" screen (`progressKey` names the tab).
+    const progress = (stage: RdpConnectStageDto): void => {
+      if (progressKey) state.emit('rdp-connect-progress', { key: progressKey, stage } satisfies RdpConnectProgressDto);
+    };
     try {
       const saved = (await loadRemoteDesktopConnections()).find((c) => c.id === connectionId);
       if (!saved) throw new Error(`unknown remote desktop connection '${connectionId}'`);
       if (saved.protocol !== 'rdp') throw new Error(`connection '${saved.name}' is not an RDP connection`);
       // Address, user and password from 1Password where the profile says so.
+      progress('onePassword');
       const connection = await resolveConnection(saved);
       // A profile without a stored password (or user) asks in the tab; what's typed
       // there is used for this connection only, and wins over the profile's.
@@ -63,6 +75,7 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
       if (connection.viaHost) {
         const host = state.hostByName(connection.viaHost);
         if (!host) throw new Error(`SSH host '${connection.viaHost}' to tunnel through no longer exists`);
+        progress('tunnel');
         try {
           ssh = await SshSession.connect(host);
         } catch (err) {
@@ -76,6 +89,7 @@ export function registerRdpEmbeddedIpc(ipcMain: IpcMain, state: GuiState): void 
       const token = gateway.register({
         host: connection.hostname,
         port: connection.port,
+        onStage: progress,
         open: () => (ssh ? ssh.forward(connection.hostname, connection.port) : openTcp(connection.hostname, connection.port)),
         async verifyCertificate(chain) {
           if (chain.length === 0) throw new Error('the RDP server presented no certificate');
