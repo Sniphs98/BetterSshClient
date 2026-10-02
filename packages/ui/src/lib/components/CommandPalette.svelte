@@ -118,6 +118,9 @@
       case 'ifStep':
         palette.chooseSnippet('if');
         break;
+      case 'callStep':
+        palette.chooseSnippet('call');
+        break;
     }
   }
 
@@ -252,6 +255,9 @@
                 {:else if item.kind === 'ifStep'}
                   <Icon name="branch" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">If… (run one way or another)</span>
+                {:else if item.kind === 'callStep'}
+                  <Icon name="automations" size={16} />
+                  <span class="min-w-0 flex-1 truncate font-medium">Run another automation…</span>
                 {:else if item.kind === 'uploadStep'}
                   <Icon name="upload" size={16} />
                   <span class="min-w-0 flex-1 truncate font-medium">Upload a file to the host…</span>

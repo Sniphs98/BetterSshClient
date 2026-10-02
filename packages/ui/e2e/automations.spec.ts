@@ -873,3 +873,55 @@ test('export and import — sharing a snippet or automation as a file', async ({
   await page.getByRole('button', { name: 'Import…' }).click();
   await expect(page.getByText('Imported', { exact: true })).toBeVisible();
 });
+
+test('a node that runs another automation: picked from the "+" menu, its values handed on, saved', async ({ page }) => {
+  await boot(page);
+  // An automation to run: on a host, with a tag to build, and a variable of its own.
+  await page.evaluate(() =>
+    (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations.push({
+      name: 'release',
+      params: [
+        { name: 'server', kind: 'host' },
+        { name: 'tag', kind: 'text' },
+        { name: 'mode', kind: 'fixed', default: 'prod' }
+      ],
+      nodes: [],
+      edges: []
+    })
+  );
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('ship');
+  await page.getByRole('button', { name: 'Add parameter' }).click();
+  await page.getByLabel('Parameter 1 name').fill('host');
+  await page.getByRole('combobox', { name: 'Parameter 1 kind' }).selectOption('host');
+
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Run another automation/ }).click();
+  const callNode = page.locator('.svelte-flow__node', { hasText: 'Run another automation' });
+  await expect(callNode.getByLabel('Label')).toHaveValue('run');
+  // Only other automations to pick from — not this one.
+  await expect(callNode.getByRole('combobox', { name: 'Automation to run' }).locator('option')).toHaveText(['Choose…', 'release']);
+  await callNode.getByRole('combobox', { name: 'Automation to run' }).selectOption('release');
+
+  // Its host is handed on from this automation's; the tag is ours to give; its fixed variable isn't asked.
+  await expect(callNode.getByLabel('Value for server')).toHaveValue('{{params.host}}');
+  await expect(callNode.getByLabel('Value for mode')).toHaveCount(0);
+  await callNode.getByLabel('Value for tag').fill('v1.2');
+  await page.getByRole('button', { name: 'Fit View' }).click();
+  await page.screenshot({ path: 'test-results/call-node.png' });
+
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  const saved = await page.evaluate(
+    () =>
+      (window as unknown as { __automationState: { automations: Array<{ name: string; nodes: Array<Record<string, unknown>> }> } })
+        .__automationState.automations.find((a) => a.name === 'ship')
+  );
+  expect(saved?.nodes[0]).toMatchObject({
+    snippetId: '',
+    label: 'run',
+    target: 'local',
+    call: { automation: 'release', params: { server: '{{params.host}}', tag: 'v1.2' } }
+  });
+});

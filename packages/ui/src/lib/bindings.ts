@@ -417,6 +417,8 @@ export type IfConditionDto =
   | { kind: 'compare'; left: string; op: IfOperatorDto; right: string }
   | { kind: 'command'; command: string; timeoutSecs: number };
 /** One placement of a reusable Snippet into an Automation — or a built-in upload step. */
+/** Runs another automation as a whole; `params` are the values its run asks for, by name. */
+export type AutomationCallDto = { automation: string; params: Record<string, string> };
 export type AutomationNodeDto = {
   id: string;
   /** `''` for an upload step. */
@@ -430,6 +432,8 @@ export type AutomationNodeDto = {
   github?: GitHubStepDto | null;
   /** Set for an If node: what it asks; its output is `yes` or `no`. */
   condition?: IfConditionDto | null;
+  /** Set for a "run automation" node: which automation, and the values for what it asks. */
+  call?: AutomationCallDto | null;
   label: string;
   continueOnError: boolean;
   target: NodeTargetDto;
