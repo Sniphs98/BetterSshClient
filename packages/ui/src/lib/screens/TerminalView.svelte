@@ -19,7 +19,7 @@
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import { Icon } from '$lib/theme';
   import { displayReference } from './onePasswordRef';
-  import { advance, sshConnectSteps, stepStatus, suggestedCommand } from './sshConnectSteps';
+  import { advance, sshConnectSteps, stageOfError, stepStatus, suggestedCommand } from './sshConnectSteps';
   import { terminalDidExit } from '$lib/ipc/router';
   import { lastError } from '$lib/stores/notifications';
   import { terminalOpen, terminalOpenLocal, terminalWrite, terminalResize, terminalClose } from '$lib/ipc/commands';
@@ -316,6 +316,10 @@
       const message = err instanceof Error ? err.message : String(err);
       if (session.localProfileId) lastError.set(message);
       connectError = message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+      // The error says where it stopped, also when no step was reported (the tab joined a
+      // connection the dashboard was already making).
+      const failedAt = stageOfError(connectError);
+      if (failedAt) connectStage = advance(connectSteps, connectStage, failedAt);
       connectPhase = 'failed';
       showConnecting = true;
       clearTimeout(showTimer);
@@ -371,7 +375,7 @@
   </div>
 
   {#if !session.localProfileId && connectPhase !== 'open' && showConnecting}
-    <div class="absolute inset-0 grid place-items-center bg-surface p-6" style="padding-top: var(--titlebar-h);">
+    <div class="absolute inset-0 z-20 grid place-items-center bg-surface p-6" style="padding-top: var(--titlebar-h);">
       <div class="w-full max-w-md space-y-3 text-center">
         <p class="font-medium">
           {connectPhase === 'failed' ? `Could not connect to ${session.hostName}` : `Connecting to ${session.hostName}`}

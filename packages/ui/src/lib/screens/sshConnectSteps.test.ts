@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advance, sshConnectSteps, stepStatus, suggestedCommand } from './sshConnectSteps';
+import { advance, sshConnectSteps, stageOfError, stepStatus, suggestedCommand } from './sshConnectSteps';
 
 const plain = { hostname: '10.0.0.5', user: 'deploy' };
 
@@ -41,5 +41,15 @@ describe('suggestedCommand', () => {
       'ssh-keygen -R "[127.0.0.1]:2222"'
     );
     expect(suggestedCommand('SSH authentication failed for web')).toBeNull();
+  });
+});
+
+describe('stageOfError', () => {
+  it('reads where a connection stopped from its error', () => {
+    expect(stageOfError('The host key of web (10.0.0.5:22) has changed since the last connection.')).toBe('hostKey');
+    expect(stageOfError('Could not reach web (10.0.0.5:22): no answer')).toBe('reach');
+    expect(stageOfError('SSH authentication failed for web')).toBe('signIn');
+    expect(stageOfError("ProxyJump via 'bastion' failed: …")).toBe('jump');
+    expect(stageOfError('channel open failure')).toBeNull();
   });
 });

@@ -49,6 +49,17 @@ export function stepStatus(steps: SshConnectStep[], current: SshConnectStageDto 
   return failed ? 'failed' : 'active';
 }
 
+/** The step a connection error happened at, read from its message — for when the steps
+ *  themselves weren't reported. Null when it doesn't say. */
+export function stageOfError(error: string): SshConnectStageDto | null {
+  if (/^ProxyJump via|^connecting via/.test(error)) return 'jump';
+  if (/host key/i.test(error)) return 'hostKey';
+  if (/^Could not reach/.test(error)) return 'reach';
+  if (/authentication failed/i.test(error)) return 'signIn';
+  if (/1Password|op:\/\//.test(error)) return 'onePassword';
+  return null;
+}
+
 /** The `ssh-keygen -R …` a changed-host-key error suggests, to offer as a copy button. */
 export function suggestedCommand(error: string): string | null {
   const m = /ssh-keygen -R "[^"]+"/.exec(error);

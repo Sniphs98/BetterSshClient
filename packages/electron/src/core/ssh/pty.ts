@@ -149,7 +149,7 @@ export class PtyManager {
       reportConnectStage({ stage: 'shell' });
       channel = await sshSession.openShell(cols, rows, processLocaleEnv(), cwd);
     } catch (e) {
-      emit({ type: 'error', message: `Terminal: ${(e as Error).message}` });
+      // The tab shows why (its connecting screen), so no status-bar error as well.
       emit({ type: 'ptyExited', sessionId: id });
       throw e;
     }
