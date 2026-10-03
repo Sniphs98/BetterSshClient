@@ -1056,3 +1056,23 @@ test('after 100% an upload says the host is finishing the file, then that it is 
   await expect(panel.getByText(/^Uploading|^Finishing/)).toHaveCount(0);
   await expect(panel.getByRole('progressbar', { name: 'Upload progress' })).toHaveAttribute('data-upload', 'done');
 });
+
+test('the run panel follows the newest step to the bottom', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const state = (window as unknown as { __automationState: { snippets: unknown[]; automations: unknown[] } }).__automationState;
+    state.snippets.push({ id: 's', name: 'Step', command: 'echo step', timeoutSecs: 30 });
+    const nodes = Array.from({ length: 20 }, (_, i) => ({ id: `n${i}`, snippetId: 's', label: `step-${i + 1}`, continueOnError: false, target: 'local' }));
+    const edges = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id }));
+    state.automations.push({ name: 'many-steps', params: [], nodes, edges });
+  });
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Run many-steps' }).click();
+
+  const panel = page.getByRole('dialog', { name: 'Automation run' });
+  await expect(panel.getByText('step-20', { exact: true })).toBeVisible();
+  const list = panel.locator('ul').first();
+  const gap = await list.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  expect(gap).toBeLessThanOrEqual(24);
+});

@@ -18,6 +18,7 @@
   import type { NodeResultDto } from '$lib/bindings';
   import { openExternal } from '$lib/ipc/openExternal';
   import { uploadStatus } from '$lib/stores/automations';
+  import { stickToBottom } from '$lib/actions/stickToBottom';
 
   // A progress line split into text and links (a GitHub run's, a release's), so a link
   // opens in the browser.
@@ -97,7 +98,7 @@
         {#if phase.nodes.size === 0}
           <p class="text-sm text-muted">Starting…</p>
         {:else}
-          <ul class="max-h-[50vh] space-y-1.5 overflow-y-auto">
+          <ul class="max-h-[50vh] space-y-1.5 overflow-y-auto" use:stickToBottom>
             {#each [...phase.nodes] as [nodeId, state] (nodeId)}
               <li class={row}>
                 <div class="flex items-center gap-2">
@@ -130,7 +131,7 @@
                   </ul>
                 {/if}
                 {#if state.status === 'done' && state.result.output}
-                  <pre class={outputBlock}>{state.result.output}</pre>
+                  <pre class={outputBlock} use:stickToBottom>{state.result.output}</pre>
                 {/if}
                 {#if state.status === 'done' && state.result.error && state.result.error !== CANCELED}
                   <p class="text-xs text-status-crit">{state.result.error}</p>
@@ -145,7 +146,7 @@
           </Button>
         </div>
       {:else if phase.kind === 'completed'}
-        <ul class="max-h-[50vh] space-y-1.5 overflow-y-auto">
+        <ul class="max-h-[50vh] space-y-1.5 overflow-y-auto" use:stickToBottom>
           {#each phase.results as result (result.nodeId)}
             <li class={row}>
               <div class="flex items-center gap-2">
@@ -176,7 +177,7 @@
                 </ul>
               {/if}
               {#if result.output}
-                <pre class={outputBlock}>{result.output}</pre>
+                <pre class={outputBlock} use:stickToBottom>{result.output}</pre>
               {/if}
               {#if result.error && result.error !== CANCELED}
                 <p class="text-xs text-status-crit">{result.error}</p>
