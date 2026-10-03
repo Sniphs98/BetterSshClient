@@ -78,9 +78,10 @@ export async function terminalOpen(
   hostName: string,
   cols: number,
   rows: number,
-  onOutput: Channel<TerminalBytes>
+  onOutput: Channel<TerminalBytes>,
+  progressKey?: string
 ): Promise<number> {
-  const res = await commands.terminalOpen(hostName, cols, rows, onOutput);
+  const res = await commands.terminalOpen(hostName, cols, rows, onOutput, progressKey);
   if (res.status === 'error') throw new Error(res.error.message);
   return res.data;
 }

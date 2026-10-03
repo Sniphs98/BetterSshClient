@@ -25,10 +25,11 @@ export const commands = {
     hostName: string,
     cols: number,
     rows: number,
-    onOutput: Channel<TerminalBytes>
+    onOutput: Channel<TerminalBytes>,
+    progressKey?: string
   ): Promise<Result<number, CommandError>> {
     try {
-      const sessionId = (await invoke('terminal_open', hostName, cols, rows)) as number;
+      const sessionId = (await invoke('terminal_open', hostName, cols, rows, progressKey)) as number;
       onOutput.attach(`terminal-output-${sessionId}`);
       return { status: 'ok', data: sessionId };
     } catch (e) {
@@ -275,6 +276,7 @@ const EVENT_CHANNELS = {
   keySetupProgress: 'key-setup-progress',
   keySetupRollback: 'key-setup-rollback',
   metricsUpdated: 'metrics-updated',
+  sshConnectProgress: 'ssh-connect-progress',
   rdpConnectProgress: 'rdp-connect-progress',
   servicesDetected: 'services-detected',
   servicesFailed: 'services-failed',
@@ -305,6 +307,7 @@ type EventMap = {
   keySetupProgress: KeySetupProgress;
   keySetupRollback: KeySetupRollback;
   metricsUpdated: MetricsUpdated;
+  sshConnectProgress: SshConnectProgress;
   rdpConnectProgress: RdpConnectProgress;
   servicesDetected: ServicesDetected;
   servicesFailed: ServicesFailed;
@@ -378,6 +381,10 @@ export type AutomationNodeStarted = { automationName: string; nodeId: string; la
 export type RdpConnectStageDto = 'onePassword' | 'tunnel' | 'reach' | 'secure' | 'signin';
 /** `rdp-connect-progress`: the step a tab's connection has reached (`key` names the tab). */
 export type RdpConnectProgress = { key: string; stage: RdpConnectStageDto };
+/** A step of opening an SSH connection, as the main process reaches it. */
+export type SshConnectStageDto = 'onePassword' | 'jump' | 'reach' | 'hostKey' | 'signIn' | 'shell';
+/** `ssh-connect-progress`: the step a terminal tab's connection has reached (`key` names the tab). */
+export type SshConnectProgress = { key: string; stage: SshConnectStageDto; host?: string };
 export type AutomationNodeProgress = { automationName: string; nodeId: string; message: string };
 export type CommandError = { message: string };
 /** Whether the 1Password CLI is installed, and how to get it. */
@@ -463,6 +470,8 @@ export type HostDto = {
   passwordRef?: string | null;
   /** A 1Password reference the port is read from at connect time. */
   portRef?: string | null;
+  /** The jump host(s) it connects through (ProxyJump), if any. */
+  proxyJump?: string | null;
 };
 /** Inbound host form payload for `save_host`. */
 export type HostInputDto = {

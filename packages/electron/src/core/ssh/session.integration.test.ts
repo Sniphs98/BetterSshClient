@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFile, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { SshSession } from './session.js';
 import { testTargetHost } from '../../testSupport/sshTestTarget.js';
 
@@ -35,6 +38,26 @@ describe('SshSession against the test target', () => {
       await expect(session.runCommand('exit 7').then((o) => o.trim())).resolves.toBe('');
     } finally {
       session.disconnect();
+    }
+  });
+
+  it('says the host key changed — not that sign-in failed — when known_hosts has another key for it', async () => {
+    const host = testTargetHost();
+    const knownHosts = join(homedir(), '.ssh', 'known_hosts');
+    const before = await readFile(knownHosts, 'utf8');
+    // Someone else's key for the same address, as after the server is rebuilt.
+    const other = 'AAAAC3NzaC1lZDI1NTE5AAAAII1Ttb2Ow0fXVGO5dy/kSR1P9yErPHQ/6gmJp7g57kvS';
+    await writeFile(knownHosts, `[${host.hostname}]:${host.port} ssh-ed25519 ${other}\n`);
+    try {
+      const err = await SshSession.connect(host).then(
+        (s) => (s.disconnect(), undefined),
+        (e: unknown) => e
+      );
+      expect((err as Error).message).toMatch(/host key of ssh-test-target .* has changed/);
+      expect((err as Error).message).not.toMatch(/authentication failed/);
+      expect((err as Error).message).toContain(`ssh-keygen -R "[${host.hostname}]:${host.port}"`);
+    } finally {
+      await writeFile(knownHosts, before);
     }
   });
 

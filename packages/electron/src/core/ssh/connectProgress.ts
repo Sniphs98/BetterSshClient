@@ -39,3 +39,9 @@ export function connectReporter(): Reporter {
   const report = current.getStore();
   return report ?? (() => {});
 }
+
+/** Runs `work` without reporting — for a jump host's own connection, whose reaching,
+ *  host key and sign-in aren't the target's steps (its `jump` step covers it). */
+export function withoutConnectProgress<T>(work: () => Promise<T>): Promise<T> {
+  return current.run(() => {}, work);
+}
