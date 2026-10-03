@@ -166,8 +166,9 @@ export const commands = {
   async listAutomations(): Promise<Result<AutomationDto[], CommandError>> {
     return call('list_automations');
   },
-  async saveAutomation(automation: AutomationDto): Promise<Result<null, CommandError>> {
-    return call('save_automation', automation);
+  /** `previousName`: the name it was opened under, or `null` for a new automation. */
+  async saveAutomation(automation: AutomationDto, previousName: string | null): Promise<Result<null, CommandError>> {
+    return call('save_automation', automation, previousName);
   },
   async deleteAutomation(name: string): Promise<Result<null, CommandError>> {
     return call('delete_automation', name);

@@ -66,14 +66,19 @@
     dialog = null;
   }
 
+  /** Why the last delete in the open dialog failed — shown in the dialog, which stays open,
+   *  since a refusal (another automation still runs this one) only in the status bar looked
+   *  like the delete had silently done nothing. */
+  let deleteError = $state<string | null>(null);
+
   async function confirmDeleteAutomation(name: string): Promise<void> {
     try {
       await deleteAutomation(name);
       automations.set(await listAutomations());
+      dialog = null;
     } catch (e) {
-      lastError.set(message(e));
+      deleteError = message(e);
     }
-    dialog = null;
   }
 
   // Export/import — sharing a Snippet or Automation as a portable JSON file (with an Automation
@@ -310,7 +315,10 @@
                 class={iconBtn}
                 title="Delete {automation.name}"
                 aria-label="Delete {automation.name}"
-                onclick={() => (dialog = { kind: 'deleteAutomation', automation })}
+                onclick={() => {
+                  deleteError = null;
+                  dialog = { kind: 'deleteAutomation', automation };
+                }}
               >
                 <Icon name="trash" size={15} />
               </button>
@@ -356,6 +364,9 @@
       <p class="text-sm text-muted">
         Delete “{automation.name}”? The snippets it uses stay in your library.
       </p>
+      {#if deleteError}
+        <p class="text-sm text-status-crit" role="alert">{deleteError}</p>
+      {/if}
       <div class="flex justify-end gap-2 pt-1">
         <Button variant="ghost" onclick={() => (dialog = null)}>Cancel</Button>
         <Button variant="primary" onclick={() => confirmDeleteAutomation(automation.name)}>Delete</Button>

@@ -316,11 +316,12 @@ export async function listAutomations(): Promise<AutomationDto[]> {
   return res.data;
 }
 
-/** Upsert one Automation by name and persist. Rejects with the validation problem(s) if the
+/** Save one Automation and persist. `previousName` is the name it was opened under (a rename
+ *  replaces that one and repoints its callers), or `null` for a new one. Rejects with the validation problem(s) if the
  *  graph is structurally invalid (unknown snippet, a cycle, a template reference
  *  that isn't a direct dependency, …). */
-export async function saveAutomation(automation: AutomationDto): Promise<void> {
-  const res = await commands.saveAutomation(automation);
+export async function saveAutomation(automation: AutomationDto, previousName: string | null): Promise<void> {
+  const res = await commands.saveAutomation(automation, previousName);
   if (res.status === 'error') throw new Error(res.error.message);
 }
 

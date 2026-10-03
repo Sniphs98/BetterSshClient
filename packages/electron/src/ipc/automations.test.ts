@@ -74,6 +74,38 @@ describe('upsertAutomation', () => {
     expect(automations).toHaveLength(1);
     expect(automations[0].edges).toHaveLength(1);
   });
+
+  it('renames in place instead of adding a copy', () => {
+    const automations = [automation({ name: 'deploy' }), automation({ name: 'other' })];
+    upsertAutomation(automations, automation({ name: 'ship' }), 'deploy');
+    expect(automations.map((f) => f.name)).toEqual(['ship', 'other']);
+  });
+
+  it('points callers of the old name at the new one', () => {
+    const caller = automation({
+      name: 'release',
+      nodes: [{ id: 'n1', snippetId: '', label: 'run', continueOnError: false, target: 'local', call: { automation: 'deploy', params: {} } }]
+    });
+    const automations = [automation({ name: 'deploy' }), caller];
+    upsertAutomation(automations, automation({ name: 'ship' }), 'deploy');
+    expect(automations[1].nodes[0].call?.automation).toBe('ship');
+    expect(automations.map((f) => f.name)).toEqual(['ship', 'release']);
+  });
+
+  it('refuses a rename onto a name already in use', () => {
+    const automations = [automation({ name: 'deploy' }), automation({ name: 'ship' })];
+    expect(() => upsertAutomation(automations, automation({ name: 'ship' }), 'deploy')).toThrow(
+      "an automation named 'ship' already exists"
+    );
+    expect(automations.map((f) => f.name)).toEqual(['deploy', 'ship']);
+  });
+
+  it('refuses a new automation under a name already in use', () => {
+    const automations = [automation({ name: 'deploy' })];
+    expect(() => upsertAutomation(automations, automation({ name: 'deploy' }), null)).toThrow(
+      "an automation named 'deploy' already exists"
+    );
+  });
 });
 
 describe('removeAutomation', () => {
