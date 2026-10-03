@@ -8,6 +8,7 @@
   import { palette, paletteItems, paletteSignature, nextIndex, hostStatusDot } from '$lib/stores/palette';
   import { hosts } from '$lib/stores/hosts';
   import { statuses } from '$lib/stores/statuses';
+  import { onlineOnly } from '$lib/stores/dashboardLayout';
   import { sessions, sessionIcon, sessionLabel, sessionStatusDot } from '$lib/stores/sessions';
   import { snippets } from '$lib/stores/automations';
   import { activeEntity } from '$lib/stores/activeEntity';
@@ -21,7 +22,12 @@
   let query = $state('');
   let selected = $state(0);
 
-  const items = $derived(paletteItems($palette.mode, $hosts, $sessions, $snippets, query));
+  // Picking a host: only the ones online, when that's switched on (the same remembered
+  // choice as the dashboard's "Online only").
+  const pickable = $derived(
+    $palette.mode === 'pickHost' && $onlineOnly ? $hosts.filter((h) => $statuses.get(h.name)?.kind === 'connected') : $hosts
+  );
+  const items = $derived(paletteItems($palette.mode, pickable, $sessions, $snippets, query));
   // A value-stable key over the result set: unchanged by a background status flip (same
   // ids, new objects), so the reset effect below can ignore those (see the effect).
   const itemsSignature = $derived(paletteSignature(items));
@@ -37,9 +43,13 @@
   );
   const emptyMessage = $derived(
     $palette.mode === 'pickHost'
-      ? query
-        ? 'No matching hosts.'
-        : 'No hosts configured.'
+      ? $onlineOnly && $hosts.length > 0
+        ? query
+          ? 'No online host matches.'
+          : 'No host is online right now — switch to "All hosts" above.'
+        : query
+          ? 'No matching hosts.'
+          : 'No hosts configured.'
       : $palette.mode === 'pickSnippet'
         ? 'No matching snippets.' // the pinned "new" row means this mode is never truly empty
         : query
@@ -209,6 +219,23 @@
           spellcheck="false"
           class="w-full bg-transparent py-3.5 text-sm text-fg outline-none placeholder:text-faint"
         />
+        {#if $palette.mode === 'pickHost'}
+          <button
+            type="button"
+            class="flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus {$onlineOnly
+              ? 'border-strong text-fg'
+              : 'border-default text-muted hover:text-fg'}"
+            aria-pressed={$onlineOnly}
+            title={$onlineOnly ? 'Showing only hosts that are online — click to show all' : 'Showing all hosts — click to show only those online'}
+            onclick={() => {
+              onlineOnly.toggle();
+              inputEl?.focus();
+            }}
+          >
+            <span class="h-2 w-2 rounded-full {$onlineOnly ? 'bg-status-ok' : 'bg-[var(--border)]'}"></span>
+            {$onlineOnly ? 'Online only' : 'All hosts'}
+          </button>
+        {/if}
       </div>
 
       <ul bind:this={listEl} class="max-h-[min(24rem,50vh)] overflow-y-auto p-2">
