@@ -20,7 +20,7 @@
   // a bar under the top bar (AutomationParamsBar.svelte).
   import { onMount, setContext } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import { SvelteFlow, Background, BackgroundVariant, Controls, type Connection, type OnConnectEnd } from '@xyflow/svelte';
+  import { SvelteFlow, Background, BackgroundVariant, Controls, SelectionMode, type Connection, type OnConnectEnd } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import type { SnippetDto, AutomationDto, AutomationParamDto, AutomationParamKindDto } from '$lib/bindings';
   import { Button, Icon } from '$lib/theme';
@@ -36,6 +36,8 @@
   import AutomationIfNode from './AutomationIfNode.svelte';
   import AutomationCallNode from './AutomationCallNode.svelte';
   import AutoLayoutButton from './AutoLayoutButton.svelte';
+  import CanvasKeys from './CanvasKeys.svelte';
+  import { copyNodes, pasteNodes, readClipboard } from './automationClipboard';
   import { autoLayout } from './automationLayout';
   import SnippetEditor from './SnippetEditor.svelte';
   import { emptyForm, formFromSnippet } from './snippetForm';
@@ -58,7 +60,7 @@
    *  here). +page.svelte keys this component on `automationName`, so a switch between two
    *  automations (or from an existing one to a new draft) always gets a fresh instance —
    *  the "seeded once" state below never has to react to a changed prop. */
-  let { automationName }: { automationName: string | null } = $props();
+  let { automationName, trail = [] }: { automationName: string | null; trail?: string[] } = $props();
 
   // svelte-ignore state_referenced_locally
   const existing = automationName ? $automations.find((f) => f.name === automationName) : undefined;
@@ -212,7 +214,10 @@
     },
     wslDistros: () => distros,
     automationName: () => name,
-    openAutomation: (target: string) => activeEntity.selectAutomation(target)
+    // Into the automation a step runs, remembering the way back (only through a saved
+    // one — a new one has nowhere to come back to).
+    openAutomation: (target: string) =>
+      activeEntity.selectAutomation(target, automationName && !notFound ? [...trail, automationName] : [])
   });
 
   async function submitSnippetEdit(snippet: SnippetDto): Promise<void> {
@@ -336,7 +341,8 @@
   }
 
   onMount(() => {
-    if (!notFound) nameEl?.focus();
+    // A new one starts with its name; an open one with the canvas (so Ctrl+V pastes steps).
+    if (mode === 'add') nameEl?.focus();
   });
 
   const hasHostParam = $derived(params.some((p) => p.kind === 'host'));
@@ -367,8 +373,50 @@
     }
   });
 
+  /** Back to the automation this one was opened from, or to the list. */
   function back(): void {
-    activeEntity.selectAutomations();
+    if (trail.length > 0) activeEntity.selectAutomation(trail[trail.length - 1], trail.slice(0, -1));
+    else activeEntity.selectAutomations();
+  }
+
+  // Copy and paste of steps (Ctrl/⌘+C, Ctrl/⌘+V), here or in another automation.
+  let clipboardNote = $state<string | null>(null);
+  let noteTimer: ReturnType<typeof setTimeout> | undefined;
+  function note(text: string): void {
+    clipboardNote = text;
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => (clipboardNote = null), 2500);
+  }
+  const steps = (n: number): string => `${n} step${n === 1 ? '' : 's'}`;
+
+  function selectAll(): void {
+    canvasNodes = canvasNodes.map((n) => ({ ...n, selected: true }));
+  }
+
+  async function copySelected(): Promise<void> {
+    const selected = canvasNodes.filter((n) => n.selected).filter(isStepNode);
+    if (selected.length === 0) return;
+    await navigator.clipboard.writeText(JSON.stringify(copyNodes(selected, canvasEdges)));
+    note(`Copied ${steps(selected.length)} — Ctrl+V pastes, here or in another automation`);
+  }
+
+  async function paste(at: { x: number; y: number } | null): Promise<void> {
+    const clip = readClipboard(await navigator.clipboard.readText().catch(() => ''));
+    if (!clip || clip.nodes.length === 0) return;
+    // At the mouse; or, with the mouse elsewhere, to the right of what's there.
+    const left = Math.min(...clip.nodes.map((n) => n.position.x));
+    const top = Math.min(...clip.nodes.map((n) => n.position.y));
+    const right = canvasNodes.length > 0 ? Math.max(...canvasNodes.map((n) => n.position.x + (n.measured?.width ?? 240))) + 80 : left;
+    const anchor = at ?? { x: right, y: canvasNodes.length > 0 ? Math.min(...canvasNodes.map((n) => n.position.y)) : top };
+    const taken = new Set(canvasNodes.filter(isStepNode).map((n) => n.data.label));
+    const added = pasteNodes(clip, taken, { x: anchor.x - left, y: anchor.y - top });
+    canvasNodes = [...canvasNodes.map((n) => ({ ...n, selected: false })), ...added.nodes];
+    canvasEdges = [...canvasEdges, ...added.edges];
+    note(
+      added.renamed.size > 0
+        ? `Pasted ${steps(added.nodes.length)}; renamed ${[...added.renamed].map(([a, b]) => `${a} → ${b}`).join(', ')}`
+        : `Pasted ${steps(added.nodes.length)}`
+    );
   }
 
   /** What saving would store, as a string to compare — name, parameters, every node
@@ -631,9 +679,31 @@
 
 <section class="flex h-full flex-col">
   <header class="flex items-center gap-3 border-b border-default px-6 py-3">
-    <button type="button" class={iconBtn} title="Back to Automations" aria-label="Back to Automations" onclick={back}>
+    <button
+      type="button"
+      class={iconBtn}
+      title={trail.length > 0 ? `Back to ${trail[trail.length - 1]}` : 'Back to Automations'}
+      aria-label={trail.length > 0 ? `Back to ${trail[trail.length - 1]}` : 'Back to Automations'}
+      onclick={back}
+    >
       <Icon name="arrow-left" size={18} />
     </button>
+    {#if trail.length > 0}
+      <!-- Opened through "run automation" steps: the way back, one crumb per automation. -->
+      <nav class="flex min-w-0 shrink items-center gap-1 text-sm text-muted" aria-label="Opened from">
+        {#each trail as crumb, i (i)}
+          <button
+            type="button"
+            class="max-w-[10rem] truncate rounded-md px-1.5 py-0.5 transition hover:bg-surface-inset hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+            title="Open {crumb}"
+            onclick={() => activeEntity.selectAutomation(crumb, trail.slice(0, i))}
+          >
+            {crumb}
+          </button>
+          <span class="text-faint" aria-hidden="true">›</span>
+        {/each}
+      </nav>
+    {/if}
     {#if notFound}
       <h1 class="text-lg font-semibold tracking-tight">Automation not found</h1>
     {:else}
@@ -711,12 +781,21 @@
         class="h-full w-full"
         fitView
         minZoom={0.3}
+        selectionOnDrag
+        selectionMode={SelectionMode.Partial}
+        panOnDrag={[1, 2]}
       >
+        <CanvasKeys onSelectAll={selectAll} onCopy={() => void copySelected()} onPaste={(at) => void paste(at)} />
         <Background variant={BackgroundVariant.Dots} />
         <Controls showLock={false}>
           <AutoLayoutButton onArrange={arrange} />
         </Controls>
       </SvelteFlow>
+      {#if clipboardNote}
+        <div class="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full border border-default bg-surface px-3 py-1.5 text-xs text-muted shadow-soft" role="status">
+          {clipboardNote}
+        </div>
+      {/if}
     </div>
   {/if}
 </section>

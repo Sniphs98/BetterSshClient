@@ -47,6 +47,11 @@ describe('activeEntity — exactly one active', () => {
     activeEntity.selectAutomation('release');
     expect(get(activeEntity)).toEqual({ kind: 'automation', automationName: 'release' });
   });
+
+  it('remembers the automations one was opened from, for the way back', () => {
+    activeEntity.selectAutomation('build', ['ship', 'release']);
+    expect(get(activeEntity)).toEqual({ kind: 'automation', automationName: 'build', trail: ['ship', 'release'] });
+  });
 });
 
 describe('activeEntity — leave guard', () => {

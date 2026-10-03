@@ -1120,3 +1120,89 @@ test('"Auto-arrange" lays a jumbled automation out left to right, branches one a
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
 });
+
+test('steps are selected with a box, copied with Ctrl+C and pasted into another automation with Ctrl+V', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await boot(page);
+  await page.evaluate(() => {
+    const st = (window as unknown as { __automationState: { snippets: unknown[]; automations: unknown[] } }).__automationState;
+    st.snippets.push({ id: 's', name: 'Step', command: 'echo step', timeoutSecs: 30 });
+    const step = (id: string, x: number, extra: Record<string, unknown> = {}) => ({ id, snippetId: 's', label: id, continueOnError: false, target: 'local', position: { x, y: 0 }, ...extra });
+    st.automations.push(
+      { name: 'source', params: [], nodes: [step('a', 0), step('b', 320), step('c', 640)], edges: [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }] },
+      // Has a step called "a" already: the pasted one becomes "a-2".
+      { name: 'target', params: [], nodes: [step('a', 0)], edges: [] }
+    );
+  });
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByTitle('Open source').click();
+
+  // A box from above-left of "a" to below-right of "b", not reaching "c".
+  const a = (await page.locator('.svelte-flow__node[data-id="a"]').boundingBox())!;
+  const b = (await page.locator('.svelte-flow__node[data-id="b"]').boundingBox())!;
+  await page.mouse.move(a.x - 20, a.y - 30);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width + 10, b.y + b.height + 30, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator('.svelte-flow__node.selected')).toHaveCount(2);
+  await page.keyboard.press('ControlOrMeta+C');
+  await expect(page.getByRole('status').filter({ hasText: 'Copied 2 steps' })).toBeVisible();
+  await page.screenshot({ path: 'test-results/box-select.png' });
+
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await page.getByTitle('Open target').click();
+  const pane = (await page.locator('.svelte-flow__pane').boundingBox())!;
+  await page.mouse.move(pane.x + pane.width / 2, pane.y + pane.height - 120);
+  await page.keyboard.press('ControlOrMeta+V');
+  await expect(page.getByRole('status').filter({ hasText: 'Pasted 2 steps; renamed a → a-2' })).toBeVisible();
+  await expect(page.locator('.svelte-flow__node')).toHaveCount(3);
+  await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  const saved = await page.evaluate(
+    () =>
+      (window as unknown as { __automationState: { automations: Array<{ name: string; nodes: Array<{ id: string; label: string }>; edges: Array<{ from: string; to: string }> }> } })
+        .__automationState.automations.find((x) => x.name === 'target')!
+  );
+  expect(saved.nodes.map((n) => n.label)).toEqual(['a', 'a-2', 'b']);
+  const id = (label: string) => saved.nodes.find((n) => n.label === label)!.id;
+  expect(saved.edges).toEqual([{ from: id('a-2'), to: id('b') }]);
+});
+
+test('breadcrumbs lead back from an automation opened through a "run automation" step', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const st = (window as unknown as { __automationState: { automations: unknown[] } }).__automationState;
+    const call = (target: string) => ({ id: 'c', snippetId: '', label: 'run', continueOnError: false, target: 'local', call: { automation: target, params: {} }, position: { x: 0, y: 0 } });
+    st.automations.push(
+      { name: 'ship', params: [], nodes: [call('release')], edges: [] },
+      { name: 'release', params: [], nodes: [call('build')], edges: [] },
+      { name: 'build', params: [], nodes: [], edges: [] }
+    );
+  });
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByTitle('Open ship').click();
+  const crumbs = page.getByRole('navigation', { name: 'Opened from' });
+  await expect(crumbs).toHaveCount(0);
+
+  // ship → release → build: the way back grows with each step in.
+  await page.getByRole('button', { name: 'Open release' }).click();
+  await expect(page.getByLabel('Automation name')).toHaveValue('release');
+  await expect(crumbs.getByRole('button')).toHaveText(['ship']);
+  await page.getByRole('button', { name: 'Open build' }).click();
+  await expect(page.getByLabel('Automation name')).toHaveValue('build');
+  await expect(crumbs.getByRole('button')).toHaveText(['ship', 'release']);
+  await page.screenshot({ path: 'test-results/breadcrumbs.png' });
+
+  // The back arrow goes one step back; a crumb goes straight there.
+  await page.getByRole('button', { name: 'Back to release' }).click();
+  await expect(page.getByLabel('Automation name')).toHaveValue('release');
+  await expect(crumbs.getByRole('button')).toHaveText(['ship']);
+  await page.getByRole('button', { name: 'Open build' }).click();
+  await crumbs.getByRole('button', { name: 'ship' }).click();
+  await expect(page.getByLabel('Automation name')).toHaveValue('ship');
+  await expect(crumbs).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to Automations' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+});
