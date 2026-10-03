@@ -1,0 +1,391 @@
+{
+  "kind": "remoty-automation",
+  "version": 1,
+  "automation": {
+    "name": "Test: many steps (scrolling)",
+    "params": [],
+    "nodes": [
+      {
+        "id": "s1",
+        "snippetId": "test-line",
+        "label": "step-1",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 0,
+          "y": 600
+        }
+      },
+      {
+        "id": "s2",
+        "snippetId": "test-line",
+        "label": "step-2",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 280,
+          "y": 600
+        }
+      },
+      {
+        "id": "s3",
+        "snippetId": "test-line",
+        "label": "step-3",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 560,
+          "y": 600
+        }
+      },
+      {
+        "id": "s4",
+        "snippetId": "test-line",
+        "label": "step-4",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 840,
+          "y": 600
+        }
+      },
+      {
+        "id": "s5",
+        "snippetId": "test-line",
+        "label": "step-5",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1120,
+          "y": 600
+        }
+      },
+      {
+        "id": "s6",
+        "snippetId": "test-line",
+        "label": "step-6",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1400,
+          "y": 600
+        }
+      },
+      {
+        "id": "s7",
+        "snippetId": "test-line",
+        "label": "step-7",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 0,
+          "y": 800
+        }
+      },
+      {
+        "id": "s8",
+        "snippetId": "test-line",
+        "label": "step-8",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 280,
+          "y": 800
+        }
+      },
+      {
+        "id": "s9",
+        "snippetId": "test-line",
+        "label": "step-9",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 560,
+          "y": 800
+        }
+      },
+      {
+        "id": "s10",
+        "snippetId": "test-line",
+        "label": "step-10",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 840,
+          "y": 800
+        }
+      },
+      {
+        "id": "s11",
+        "snippetId": "test-line",
+        "label": "step-11",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1120,
+          "y": 800
+        }
+      },
+      {
+        "id": "s12",
+        "snippetId": "test-line",
+        "label": "step-12",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1400,
+          "y": 800
+        }
+      },
+      {
+        "id": "s13",
+        "snippetId": "test-line",
+        "label": "step-13",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 0,
+          "y": 1000
+        }
+      },
+      {
+        "id": "s14",
+        "snippetId": "test-line",
+        "label": "step-14",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 280,
+          "y": 1000
+        }
+      },
+      {
+        "id": "s15",
+        "snippetId": "test-line",
+        "label": "step-15",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 560,
+          "y": 1000
+        }
+      },
+      {
+        "id": "s16",
+        "snippetId": "test-line",
+        "label": "step-16",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 840,
+          "y": 1000
+        }
+      },
+      {
+        "id": "s17",
+        "snippetId": "test-line",
+        "label": "step-17",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1120,
+          "y": 1000
+        }
+      },
+      {
+        "id": "s18",
+        "snippetId": "test-line",
+        "label": "step-18",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1400,
+          "y": 1000
+        }
+      },
+      {
+        "id": "s19",
+        "snippetId": "test-line",
+        "label": "step-19",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 0,
+          "y": 1200
+        }
+      },
+      {
+        "id": "s20",
+        "snippetId": "test-line",
+        "label": "step-20",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 280,
+          "y": 1200
+        }
+      },
+      {
+        "id": "s21",
+        "snippetId": "test-line",
+        "label": "step-21",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 560,
+          "y": 1200
+        }
+      },
+      {
+        "id": "s22",
+        "snippetId": "test-line",
+        "label": "step-22",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 840,
+          "y": 1200
+        }
+      },
+      {
+        "id": "s23",
+        "snippetId": "test-line",
+        "label": "step-23",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1120,
+          "y": 1200
+        }
+      },
+      {
+        "id": "s24",
+        "snippetId": "test-line",
+        "label": "step-24",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1400,
+          "y": 1200
+        }
+      },
+      {
+        "id": "s25",
+        "snippetId": "test-line",
+        "label": "step-25",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 0,
+          "y": 1400
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "s1",
+        "to": "s2"
+      },
+      {
+        "from": "s2",
+        "to": "s3"
+      },
+      {
+        "from": "s3",
+        "to": "s4"
+      },
+      {
+        "from": "s4",
+        "to": "s5"
+      },
+      {
+        "from": "s5",
+        "to": "s6"
+      },
+      {
+        "from": "s6",
+        "to": "s7"
+      },
+      {
+        "from": "s7",
+        "to": "s8"
+      },
+      {
+        "from": "s8",
+        "to": "s9"
+      },
+      {
+        "from": "s9",
+        "to": "s10"
+      },
+      {
+        "from": "s10",
+        "to": "s11"
+      },
+      {
+        "from": "s11",
+        "to": "s12"
+      },
+      {
+        "from": "s12",
+        "to": "s13"
+      },
+      {
+        "from": "s13",
+        "to": "s14"
+      },
+      {
+        "from": "s14",
+        "to": "s15"
+      },
+      {
+        "from": "s15",
+        "to": "s16"
+      },
+      {
+        "from": "s16",
+        "to": "s17"
+      },
+      {
+        "from": "s17",
+        "to": "s18"
+      },
+      {
+        "from": "s18",
+        "to": "s19"
+      },
+      {
+        "from": "s19",
+        "to": "s20"
+      },
+      {
+        "from": "s20",
+        "to": "s21"
+      },
+      {
+        "from": "s21",
+        "to": "s22"
+      },
+      {
+        "from": "s22",
+        "to": "s23"
+      },
+      {
+        "from": "s23",
+        "to": "s24"
+      },
+      {
+        "from": "s24",
+        "to": "s25"
+      }
+    ]
+  },
+  "snippets": [
+    {
+      "id": "test-line",
+      "name": "Test: print a few lines",
+      "command": "echo line one && echo line two && echo line three",
+      "timeoutSecs": 120
+    }
+  ]
+}

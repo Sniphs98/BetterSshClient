@@ -1,0 +1,82 @@
+{
+  "kind": "remoty-automation",
+  "version": 1,
+  "automation": {
+    "name": "Test: if",
+    "params": [
+      {
+        "name": "env",
+        "kind": "text",
+        "label": "Environment (type prod or something else)",
+        "default": "prod"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "if",
+        "snippetId": "",
+        "label": "is-prod",
+        "continueOnError": false,
+        "target": "local",
+        "condition": {
+          "kind": "compare",
+          "left": "{{params.env}}",
+          "op": "equals",
+          "right": "prod"
+        },
+        "position": {
+          "x": 1400,
+          "y": 200
+        }
+      },
+      {
+        "id": "yes",
+        "snippetId": "test-prod",
+        "label": "deploy",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 0,
+          "y": 400
+        }
+      },
+      {
+        "id": "no",
+        "snippetId": "test-not-prod",
+        "label": "skip",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 280,
+          "y": 400
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "if",
+        "to": "yes",
+        "branch": "yes"
+      },
+      {
+        "from": "if",
+        "to": "no",
+        "branch": "no"
+      }
+    ]
+  },
+  "snippets": [
+    {
+      "id": "test-prod",
+      "name": "Test: deploy to prod",
+      "command": "echo deploying to {{params.env}}",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-not-prod",
+      "name": "Test: skip the deploy",
+      "command": "echo not prod, nothing to deploy",
+      "timeoutSecs": 120
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "kind": "remoty-automation",
+  "version": 1,
+  "automation": {
+    "name": "Test: fixed variable",
+    "params": [
+      {
+        "name": "greeting",
+        "kind": "fixed",
+        "default": "hello"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "g",
+        "snippetId": "test-greet",
+        "label": "greet",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1400,
+          "y": 400
+        }
+      }
+    ],
+    "edges": []
+  },
+  "snippets": [
+    {
+      "id": "test-greet",
+      "name": "Test: use a fixed variable",
+      "command": "echo {{params.greeting}} from a fixed variable",
+      "timeoutSecs": 120
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "kind": "remoty-automation",
+  "version": 1,
+  "automation": {
+    "name": "Test: long run to cancel",
+    "params": [],
+    "nodes": [
+      {
+        "id": "t",
+        "snippetId": "test-ticks",
+        "label": "ticks",
+        "continueOnError": false,
+        "target": "wsl",
+        "position": {
+          "x": 1400,
+          "y": 0
+        }
+      },
+      {
+        "id": "after",
+        "snippetId": "test-ok",
+        "label": "after",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 0,
+          "y": 200
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "t",
+        "to": "after"
+      }
+    ]
+  },
+  "snippets": [
+    {
+      "id": "test-ticks",
+      "name": "Test: count to 60 (cancel me)",
+      "command": "for i in $(seq 1 60); do echo \"tick $i\"; sleep 1; done",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-ok",
+      "name": "Test: say ok",
+      "command": "echo all good",
+      "timeoutSecs": 120
+    }
+  ]
+}

@@ -1,0 +1,902 @@
+{
+  "kind": "remoty-library",
+  "version": 1,
+  "automations": [
+    {
+      "name": "Test: success, failure, skip",
+      "params": [],
+      "nodes": [
+        {
+          "id": "a",
+          "snippetId": "test-ok",
+          "label": "first",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "b",
+          "snippetId": "test-fail",
+          "label": "fails",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 280,
+            "y": 0
+          }
+        },
+        {
+          "id": "c",
+          "snippetId": "test-after-fail",
+          "label": "skipped",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 560,
+            "y": 0
+          }
+        },
+        {
+          "id": "d",
+          "snippetId": "test-fail",
+          "label": "fails-but-continues",
+          "continueOnError": true,
+          "target": "local",
+          "position": {
+            "x": 840,
+            "y": 0
+          }
+        },
+        {
+          "id": "e",
+          "snippetId": "test-carry-on",
+          "label": "runs-anyway",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1120,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "a",
+          "to": "b"
+        },
+        {
+          "from": "b",
+          "to": "c"
+        },
+        {
+          "from": "a",
+          "to": "d"
+        },
+        {
+          "from": "d",
+          "to": "e"
+        }
+      ]
+    },
+    {
+      "name": "Test: long run to cancel",
+      "params": [],
+      "nodes": [
+        {
+          "id": "t",
+          "snippetId": "test-ticks",
+          "label": "ticks",
+          "continueOnError": false,
+          "target": "wsl",
+          "position": {
+            "x": 1400,
+            "y": 0
+          }
+        },
+        {
+          "id": "after",
+          "snippetId": "test-ok",
+          "label": "after",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 0,
+            "y": 200
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "t",
+          "to": "after"
+        }
+      ]
+    },
+    {
+      "name": "Test: upload 1 GB from WSL",
+      "params": [
+        {
+          "name": "host",
+          "kind": "host",
+          "label": "Host (e.g. test-container)"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "mk",
+          "snippetId": "test-make-1gb",
+          "label": "make-file",
+          "continueOnError": false,
+          "target": "wsl",
+          "position": {
+            "x": 280,
+            "y": 200
+          }
+        },
+        {
+          "id": "up",
+          "snippetId": "",
+          "label": "upload",
+          "continueOnError": false,
+          "target": "remote",
+          "upload": {
+            "from": "/tmp/test-1gb.bin",
+            "source": "wsl",
+            "to": "/tmp/"
+          },
+          "position": {
+            "x": 560,
+            "y": 200
+          }
+        },
+        {
+          "id": "chk",
+          "snippetId": "test-check-remote",
+          "label": "check",
+          "continueOnError": false,
+          "target": "remote",
+          "position": {
+            "x": 840,
+            "y": 200
+          }
+        },
+        {
+          "id": "cl",
+          "snippetId": "test-clean-wsl",
+          "label": "clean-wsl",
+          "continueOnError": false,
+          "target": "wsl",
+          "position": {
+            "x": 1120,
+            "y": 200
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "mk",
+          "to": "up"
+        },
+        {
+          "from": "up",
+          "to": "chk"
+        },
+        {
+          "from": "chk",
+          "to": "cl"
+        }
+      ]
+    },
+    {
+      "name": "Test: if",
+      "params": [
+        {
+          "name": "env",
+          "kind": "text",
+          "label": "Environment (type prod or something else)",
+          "default": "prod"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "if",
+          "snippetId": "",
+          "label": "is-prod",
+          "continueOnError": false,
+          "target": "local",
+          "condition": {
+            "kind": "compare",
+            "left": "{{params.env}}",
+            "op": "equals",
+            "right": "prod"
+          },
+          "position": {
+            "x": 1400,
+            "y": 200
+          }
+        },
+        {
+          "id": "yes",
+          "snippetId": "test-prod",
+          "label": "deploy",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 0,
+            "y": 400
+          }
+        },
+        {
+          "id": "no",
+          "snippetId": "test-not-prod",
+          "label": "skip",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 280,
+            "y": 400
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "if",
+          "to": "yes",
+          "branch": "yes"
+        },
+        {
+          "from": "if",
+          "to": "no",
+          "branch": "no"
+        }
+      ]
+    },
+    {
+      "name": "Test: release (called by ship)",
+      "params": [
+        {
+          "name": "server",
+          "kind": "host"
+        },
+        {
+          "name": "tag",
+          "kind": "text",
+          "default": "v1.0"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "b",
+          "snippetId": "test-build",
+          "label": "build",
+          "continueOnError": false,
+          "target": "remote",
+          "position": {
+            "x": 560,
+            "y": 400
+          }
+        }
+      ],
+      "edges": []
+    },
+    {
+      "name": "Test: ship (runs release)",
+      "params": [
+        {
+          "name": "host",
+          "kind": "host",
+          "label": "Host (e.g. test-container)"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "r",
+          "snippetId": "",
+          "label": "release",
+          "continueOnError": false,
+          "target": "local",
+          "call": {
+            "automation": "Test: release (called by ship)",
+            "params": {
+              "server": "{{params.host}}",
+              "tag": "v1.2"
+            }
+          },
+          "position": {
+            "x": 840,
+            "y": 400
+          }
+        },
+        {
+          "id": "g",
+          "snippetId": "test-got-it",
+          "label": "show",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1120,
+            "y": 400
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "r",
+          "to": "g"
+        }
+      ]
+    },
+    {
+      "name": "Test: fixed variable",
+      "params": [
+        {
+          "name": "greeting",
+          "kind": "fixed",
+          "default": "hello"
+        }
+      ],
+      "nodes": [
+        {
+          "id": "g",
+          "snippetId": "test-greet",
+          "label": "greet",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1400,
+            "y": 400
+          }
+        }
+      ],
+      "edges": []
+    },
+    {
+      "name": "Test: many steps (scrolling)",
+      "params": [],
+      "nodes": [
+        {
+          "id": "s1",
+          "snippetId": "test-line",
+          "label": "step-1",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 0,
+            "y": 600
+          }
+        },
+        {
+          "id": "s2",
+          "snippetId": "test-line",
+          "label": "step-2",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 280,
+            "y": 600
+          }
+        },
+        {
+          "id": "s3",
+          "snippetId": "test-line",
+          "label": "step-3",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 560,
+            "y": 600
+          }
+        },
+        {
+          "id": "s4",
+          "snippetId": "test-line",
+          "label": "step-4",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 840,
+            "y": 600
+          }
+        },
+        {
+          "id": "s5",
+          "snippetId": "test-line",
+          "label": "step-5",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1120,
+            "y": 600
+          }
+        },
+        {
+          "id": "s6",
+          "snippetId": "test-line",
+          "label": "step-6",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1400,
+            "y": 600
+          }
+        },
+        {
+          "id": "s7",
+          "snippetId": "test-line",
+          "label": "step-7",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 0,
+            "y": 800
+          }
+        },
+        {
+          "id": "s8",
+          "snippetId": "test-line",
+          "label": "step-8",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 280,
+            "y": 800
+          }
+        },
+        {
+          "id": "s9",
+          "snippetId": "test-line",
+          "label": "step-9",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 560,
+            "y": 800
+          }
+        },
+        {
+          "id": "s10",
+          "snippetId": "test-line",
+          "label": "step-10",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 840,
+            "y": 800
+          }
+        },
+        {
+          "id": "s11",
+          "snippetId": "test-line",
+          "label": "step-11",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1120,
+            "y": 800
+          }
+        },
+        {
+          "id": "s12",
+          "snippetId": "test-line",
+          "label": "step-12",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1400,
+            "y": 800
+          }
+        },
+        {
+          "id": "s13",
+          "snippetId": "test-line",
+          "label": "step-13",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 0,
+            "y": 1000
+          }
+        },
+        {
+          "id": "s14",
+          "snippetId": "test-line",
+          "label": "step-14",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 280,
+            "y": 1000
+          }
+        },
+        {
+          "id": "s15",
+          "snippetId": "test-line",
+          "label": "step-15",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 560,
+            "y": 1000
+          }
+        },
+        {
+          "id": "s16",
+          "snippetId": "test-line",
+          "label": "step-16",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 840,
+            "y": 1000
+          }
+        },
+        {
+          "id": "s17",
+          "snippetId": "test-line",
+          "label": "step-17",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1120,
+            "y": 1000
+          }
+        },
+        {
+          "id": "s18",
+          "snippetId": "test-line",
+          "label": "step-18",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1400,
+            "y": 1000
+          }
+        },
+        {
+          "id": "s19",
+          "snippetId": "test-line",
+          "label": "step-19",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 0,
+            "y": 1200
+          }
+        },
+        {
+          "id": "s20",
+          "snippetId": "test-line",
+          "label": "step-20",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 280,
+            "y": 1200
+          }
+        },
+        {
+          "id": "s21",
+          "snippetId": "test-line",
+          "label": "step-21",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 560,
+            "y": 1200
+          }
+        },
+        {
+          "id": "s22",
+          "snippetId": "test-line",
+          "label": "step-22",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 840,
+            "y": 1200
+          }
+        },
+        {
+          "id": "s23",
+          "snippetId": "test-line",
+          "label": "step-23",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1120,
+            "y": 1200
+          }
+        },
+        {
+          "id": "s24",
+          "snippetId": "test-line",
+          "label": "step-24",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1400,
+            "y": 1200
+          }
+        },
+        {
+          "id": "s25",
+          "snippetId": "test-line",
+          "label": "step-25",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 0,
+            "y": 1400
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "s1",
+          "to": "s2"
+        },
+        {
+          "from": "s2",
+          "to": "s3"
+        },
+        {
+          "from": "s3",
+          "to": "s4"
+        },
+        {
+          "from": "s4",
+          "to": "s5"
+        },
+        {
+          "from": "s5",
+          "to": "s6"
+        },
+        {
+          "from": "s6",
+          "to": "s7"
+        },
+        {
+          "from": "s7",
+          "to": "s8"
+        },
+        {
+          "from": "s8",
+          "to": "s9"
+        },
+        {
+          "from": "s9",
+          "to": "s10"
+        },
+        {
+          "from": "s10",
+          "to": "s11"
+        },
+        {
+          "from": "s11",
+          "to": "s12"
+        },
+        {
+          "from": "s12",
+          "to": "s13"
+        },
+        {
+          "from": "s13",
+          "to": "s14"
+        },
+        {
+          "from": "s14",
+          "to": "s15"
+        },
+        {
+          "from": "s15",
+          "to": "s16"
+        },
+        {
+          "from": "s16",
+          "to": "s17"
+        },
+        {
+          "from": "s17",
+          "to": "s18"
+        },
+        {
+          "from": "s18",
+          "to": "s19"
+        },
+        {
+          "from": "s19",
+          "to": "s20"
+        },
+        {
+          "from": "s20",
+          "to": "s21"
+        },
+        {
+          "from": "s21",
+          "to": "s22"
+        },
+        {
+          "from": "s22",
+          "to": "s23"
+        },
+        {
+          "from": "s23",
+          "to": "s24"
+        },
+        {
+          "from": "s24",
+          "to": "s25"
+        }
+      ]
+    },
+    {
+      "name": "Test: parallel branches",
+      "params": [],
+      "nodes": [
+        {
+          "id": "start",
+          "snippetId": "test-ok",
+          "label": "start",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 280,
+            "y": 1400
+          }
+        },
+        {
+          "id": "left",
+          "snippetId": "test-slow",
+          "label": "left",
+          "continueOnError": false,
+          "target": "wsl",
+          "position": {
+            "x": 560,
+            "y": 1400
+          }
+        },
+        {
+          "id": "right",
+          "snippetId": "test-slow",
+          "label": "right",
+          "continueOnError": false,
+          "target": "wsl",
+          "position": {
+            "x": 840,
+            "y": 1400
+          }
+        },
+        {
+          "id": "join",
+          "snippetId": "test-join",
+          "label": "join",
+          "continueOnError": false,
+          "target": "local",
+          "position": {
+            "x": 1120,
+            "y": 1400
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "start",
+          "to": "left"
+        },
+        {
+          "from": "start",
+          "to": "right"
+        },
+        {
+          "from": "left",
+          "to": "join"
+        },
+        {
+          "from": "right",
+          "to": "join"
+        }
+      ]
+    }
+  ],
+  "snippets": [
+    {
+      "id": "test-ok",
+      "name": "Test: say ok",
+      "command": "echo all good",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-fail",
+      "name": "Test: fail on purpose",
+      "command": "echo this step fails on purpose && exit /b 1",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-after-fail",
+      "name": "Test: runs only if the one before worked",
+      "command": "echo you should not see this",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-carry-on",
+      "name": "Test: runs anyway",
+      "command": "echo the failed step was set to continue on error",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-ticks",
+      "name": "Test: count to 60 (cancel me)",
+      "command": "for i in $(seq 1 60); do echo \"tick $i\"; sleep 1; done",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-make-1gb",
+      "name": "Test: make a 1 GB file in WSL",
+      "command": "fallocate -l 1G /tmp/test-1gb.bin && ls -lh /tmp/test-1gb.bin",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-check-remote",
+      "name": "Test: check the upload on the host, then remove it",
+      "command": "ls -lh {{nodes.upload.output}} && rm {{nodes.upload.output}}",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-clean-wsl",
+      "name": "Test: remove the 1 GB file in WSL",
+      "command": "rm -f /tmp/test-1gb.bin && echo removed",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-build",
+      "name": "Test: build (on the host)",
+      "command": "echo \"building {{params.tag}} on $(hostname)\"",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-got-it",
+      "name": "Test: show what the called automation put out",
+      "command": "echo got: {{nodes.release.output}}",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-prod",
+      "name": "Test: deploy to prod",
+      "command": "echo deploying to {{params.env}}",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-not-prod",
+      "name": "Test: skip the deploy",
+      "command": "echo not prod, nothing to deploy",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-greet",
+      "name": "Test: use a fixed variable",
+      "command": "echo {{params.greeting}} from a fixed variable",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-line",
+      "name": "Test: print a few lines",
+      "command": "echo line one && echo line two && echo line three",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-slow",
+      "name": "Test: take 5 seconds (WSL)",
+      "command": "echo start on $(hostname); sleep 5; echo done after 5 s",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-join",
+      "name": "Test: after both branches",
+      "command": "echo both branches are done",
+      "timeoutSecs": 120
+    }
+  ]
+}
