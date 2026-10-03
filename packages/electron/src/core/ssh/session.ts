@@ -6,7 +6,7 @@ import { Client, type AnyAuthMethod, type ClientChannel, type ConnectConfig } fr
 
 import type { Host } from './client.js';
 import { ConnectionPool, type Lease } from './connectionPool.js';
-import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
+import { checkKnownHosts, hostPattern, learnKnownHost } from './knownHosts.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
 import { readSecretCached, resolvePort, resolveReference } from '../secrets/onePassword.js';
@@ -31,6 +31,22 @@ const EXEC_TIMEOUT_MS = 30_000;
 
 export class SshCommandError extends Error {}
 export class SshAuthError extends Error {}
+/** The server's host key isn't the one `~/.ssh/known_hosts` has for it (or that file
+ *  can't be read): the connection is refused before any password or key is offered. */
+export class SshHostKeyError extends Error {}
+
+/** What to tell the user when `host`'s key was refused — and what to do if the change is expected. */
+export function hostKeyMessage(host: Pick<Host, 'name' | 'hostname' | 'port'>, verdict: 'key-changed' | 'unreadable'): string {
+  if (verdict === 'unreadable') {
+    return `Could not check the host key of ${host.name}: ~/.ssh/known_hosts can't be read`;
+  }
+  const pattern = hostPattern(host.hostname, host.port);
+  return (
+    `The host key of ${host.name} (${host.hostname}:${host.port}) has changed since the last connection. ` +
+    `That can mean someone is in between — or that the server was reinstalled. If you expect the change, ` +
+    `remove the old key with: ssh-keygen -R "${pattern}" — then connect again.`
+  );
+}
 
 /** The command run (with a PTY attached) to open a terminal already inside a host's
  *  configured default path: `cd` there, then `exec` the user's shell as a login shell
@@ -460,6 +476,8 @@ async function authMethods(host: Host, problems: string[]): Promise<AnyAuthMetho
  *  ("Too many authentication failures"); only then does it fall back to a
  *  fresh connection per method, so every method still gets its turn. */
 async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<Client> {
+  /** Set when the host key was refused: no point trying another method then. */
+  let refusedKey: 'key-changed' | 'unreadable' | undefined;
   const base: ConnectConfig = {
     host: host.hostname,
     port: host.port,
@@ -467,7 +485,7 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
     readyTimeout: CONNECT_TIMEOUT_MS,
     keepaliveInterval: 15_000,
     keepaliveCountMax: 3,
-    hostVerifier: makeHostVerifier(host.hostname, host.port),
+    hostVerifier: makeHostVerifier(host.hostname, host.port, (verdict) => (refusedKey = verdict)),
     ...extra
   };
 
@@ -476,6 +494,7 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
   if (methods.length > 0) {
     const attempt = await tryConnect({ ...base, authHandler: methods });
     if (attempt.client) return attempt.client;
+    if (refusedKey) throw new SshHostKeyError(hostKeyMessage(host, refusedKey));
 
     // A tunnel `sock` is consumed by its first connection, so a per-method
     // retry can't reuse it — and there is nothing left to retry when the
@@ -535,7 +554,11 @@ async function tryConnect(config: ConnectConfig): Promise<ConnectAttempt> {
 
 /** The host-key verifier for `host`. `ssh2` hands the raw SSH wire-format
  *  public key to the callback (no `hostHash` option set). */
-function makeHostVerifier(hostname: string, port: number): NonNullable<ConnectConfig['hostVerifier']> {
+function makeHostVerifier(
+  hostname: string,
+  port: number,
+  onRefused: (verdict: 'key-changed' | 'unreadable') => void
+): NonNullable<ConnectConfig['hostVerifier']> {
   return (keyBlob: Buffer, callback: (valid: boolean) => void): void => {
     checkKnownHosts(hostname, port, keyBlob)
       .then(async (verdict) => {
@@ -551,10 +574,14 @@ function makeHostVerifier(hostname: string, port: number): NonNullable<ConnectCo
             return;
           case 'key-changed':
           case 'unreadable':
+            onRefused(verdict);
             callback(false);
         }
       })
-      .catch(() => callback(false));
+      .catch(() => {
+        onRefused('unreadable');
+        callback(false);
+      });
   };
 }
 
