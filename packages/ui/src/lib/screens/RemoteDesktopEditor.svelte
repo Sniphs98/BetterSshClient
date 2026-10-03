@@ -21,12 +21,18 @@
     mode,
     initial,
     onSubmit,
-    onCancel
+    onCancel,
+    onExport,
+    onDelete
   }: {
     mode: 'add' | 'edit';
     initial: RemoteDesktopFormFields;
     onSubmit: (input: RemoteDesktopConnectionInputDto) => Promise<void>;
     onCancel: () => void;
+    /** Editing: export this connection to a file / delete it — kept here rather than on
+     *  its card, which has room for the actions used every day. */
+    onExport?: () => void;
+    onDelete?: () => void;
   } = $props();
 
   // Seeded once from `initial`; the editor is remounted per open, so the prop never
@@ -347,7 +353,22 @@
       <p class="px-5 pb-3 text-xs text-status-crit">{error}</p>
     {/if}
 
-    <footer class="flex justify-end gap-2 border-t border-default px-5 py-3">
+    <footer class="flex items-center justify-end gap-2 border-t border-default px-5 py-3">
+      {#if mode === 'edit' && (onExport || onDelete)}
+        <div class="mr-auto flex items-center gap-1">
+          {#if onExport}
+            <Button variant="ghost" onclick={onExport} title="Export {initial.name}">
+              <Icon name="download" size={13} />
+              Export…
+            </Button>
+          {/if}
+          {#if onDelete}
+            <Button variant="ghost" onclick={onDelete} title="Delete {initial.name}">
+              <span class="flex items-center gap-1.5 text-status-crit"><Icon name="trash" size={13} />Delete</span>
+            </Button>
+          {/if}
+        </div>
+      {/if}
       <Button variant="ghost" onclick={onCancel}>Cancel</Button>
       <Button variant="primary" type="submit" disabled={saving}>
         {mode === 'add' ? 'Add connection' : 'Save'}

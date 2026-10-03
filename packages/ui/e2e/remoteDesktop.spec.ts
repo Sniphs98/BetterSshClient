@@ -178,8 +178,10 @@ test('create, edit, connect to, and delete an RDP connection', async ({ page }) 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('admin@10.0.0.9:3389')).toBeVisible();
 
-  // Delete: confirm dialog, then the card is gone.
-  await page.getByRole('button', { name: 'Delete office-pc' }).click();
+  // Delete: in the connection's editor (not on its card), then a confirm dialog.
+  await expect(page.getByRole('button', { name: 'Delete office-pc' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Edit office-pc' }).click();
+  await page.getByRole('dialog', { name: 'Edit RDP connection' }).getByRole('button', { name: 'Delete office-pc' }).click();
   await page.getByRole('dialog', { name: 'Delete connection' }).getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByText('office-pc', { exact: true })).toHaveCount(0);
   await expect(page.getByText('No connections yet')).toBeVisible();
@@ -373,8 +375,11 @@ test('profiles export to a file, and an import settles a taken name first', asyn
   await boot(page, { connections: [{ id: 'c1', name: 'office-pc', protocol: 'rdp', hostname: '10.0.0.5', port: 3389, hasPassword: true }] });
   await page.getByRole('button', { name: 'Switch to Remote Desktop' }).click();
 
-  // Export: one profile from its card, then every profile from the toolbar.
-  await page.getByRole('button', { name: 'Export office-pc' }).click();
+  // Export: one profile from its editor, then every profile from the toolbar.
+  await page.getByRole('button', { name: 'Edit office-pc' }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit RDP connection' });
+  await editor.getByRole('button', { name: 'Export office-pc' }).click();
+  await editor.getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('button', { name: 'Export all' }).click();
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { __bundleCalls: unknown[][] }).__bundleCalls))
