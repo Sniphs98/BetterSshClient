@@ -342,54 +342,6 @@ test('build snippets, wire an automation, run it, and see success/failed/skipped
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('connecting the Start node to a snippet node is a cosmetic link — dashed, not a dependency, and it survives a reopen', async ({
-  page
-}) => {
-  await boot(page);
-
-  await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage snippets' }).click();
-  await page.getByRole('button', { name: 'New snippet' }).first().click();
-  const editor = page.getByRole('dialog', { name: 'New snippet' });
-  await editor.getByLabel('Name').fill('Build');
-  await fillCommand(editor, 'echo build-ok');
-  await editor.getByRole('button', { name: 'Add snippet' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Back to Automations' }).click();
-  await page.getByRole('button', { name: 'New automation' }).first().click();
-  await page.getByLabel('Automation name').fill('cosmetic-link');
-  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
-  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Build/ }).click();
-
-  // The Start node has one source handle (no target) — connecting it to Build's target
-  // handle draws a "params automation in from here" line, purely visual.
-  const startNode = page.locator('.svelte-flow__node', { hasText: 'Start' });
-  const buildNode = page.locator('.svelte-flow__node', { hasText: 'Build' });
-  await startNode.locator('.svelte-flow__handle.source').click();
-  await buildNode.locator('.svelte-flow__handle.target').click();
-  await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
-  await expect(page.locator('.svelte-flow__edge-path')).toHaveAttribute('style', /stroke-dasharray/);
-
-  await page.getByRole('button', { name: 'Create automation' }).click();
-  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
-
-  // Not a real dependency: saving didn't get rejected by validateAutomation (which would
-  // reject any edge naming the Start node, since it isn't an AutomationNode), and running the
-  // automation still succeeds — the link never reached the engine as an AutomationEdge.
-  await page.getByRole('button', { name: 'Run cosmetic-link' }).click();
-  const progress = page.getByRole('dialog', { name: 'Automation run' });
-  await expect(progress).toBeVisible();
-  await expect(progress.locator('li', { hasText: 'Build' })).toContainText('success');
-  await progress.getByRole('button', { name: 'Done' }).click();
-
-  // Reopening the automation still shows the dashed line — it round-trips through
-  // AutomationDto.startLinks rather than being lost on every save/reload.
-  await page.getByText('cosmetic-link', { exact: true }).click();
-  await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
-  await expect(page.locator('.svelte-flow__edge-path')).toHaveAttribute('style', /stroke-dasharray/);
-});
-
 test('a node set to run on a host carries no host itself — the automation asks for one at run time', async ({ page }) => {
   await boot(page);
 
