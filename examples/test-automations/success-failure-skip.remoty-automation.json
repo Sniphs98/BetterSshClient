@@ -1,0 +1,109 @@
+{
+  "kind": "remoty-automation",
+  "version": 1,
+  "automation": {
+    "name": "Test: success, failure, skip",
+    "params": [],
+    "nodes": [
+      {
+        "id": "a",
+        "snippetId": "test-ok",
+        "label": "first",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": "b",
+        "snippetId": "test-fail",
+        "label": "fails",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 280,
+          "y": 0
+        }
+      },
+      {
+        "id": "c",
+        "snippetId": "test-after-fail",
+        "label": "skipped",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 560,
+          "y": 0
+        }
+      },
+      {
+        "id": "d",
+        "snippetId": "test-fail",
+        "label": "fails-but-continues",
+        "continueOnError": true,
+        "target": "local",
+        "position": {
+          "x": 840,
+          "y": 0
+        }
+      },
+      {
+        "id": "e",
+        "snippetId": "test-carry-on",
+        "label": "runs-anyway",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1120,
+          "y": 0
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "a",
+        "to": "b"
+      },
+      {
+        "from": "b",
+        "to": "c"
+      },
+      {
+        "from": "a",
+        "to": "d"
+      },
+      {
+        "from": "d",
+        "to": "e"
+      }
+    ]
+  },
+  "snippets": [
+    {
+      "id": "test-ok",
+      "name": "Test: say ok",
+      "command": "echo all good",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-fail",
+      "name": "Test: fail on purpose",
+      "command": "echo this step fails on purpose && exit /b 1",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-after-fail",
+      "name": "Test: runs only if the one before worked",
+      "command": "echo you should not see this",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-carry-on",
+      "name": "Test: runs anyway",
+      "command": "echo the failed step was set to continue on error",
+      "timeoutSecs": 120
+    }
+  ]
+}

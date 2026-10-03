@@ -1,0 +1,92 @@
+{
+  "kind": "remoty-automation",
+  "version": 1,
+  "automation": {
+    "name": "Test: parallel branches",
+    "params": [],
+    "nodes": [
+      {
+        "id": "start",
+        "snippetId": "test-ok",
+        "label": "start",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 280,
+          "y": 1400
+        }
+      },
+      {
+        "id": "left",
+        "snippetId": "test-slow",
+        "label": "left",
+        "continueOnError": false,
+        "target": "wsl",
+        "position": {
+          "x": 560,
+          "y": 1400
+        }
+      },
+      {
+        "id": "right",
+        "snippetId": "test-slow",
+        "label": "right",
+        "continueOnError": false,
+        "target": "wsl",
+        "position": {
+          "x": 840,
+          "y": 1400
+        }
+      },
+      {
+        "id": "join",
+        "snippetId": "test-join",
+        "label": "join",
+        "continueOnError": false,
+        "target": "local",
+        "position": {
+          "x": 1120,
+          "y": 1400
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "start",
+        "to": "left"
+      },
+      {
+        "from": "start",
+        "to": "right"
+      },
+      {
+        "from": "left",
+        "to": "join"
+      },
+      {
+        "from": "right",
+        "to": "join"
+      }
+    ]
+  },
+  "snippets": [
+    {
+      "id": "test-ok",
+      "name": "Test: say ok",
+      "command": "echo all good",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-slow",
+      "name": "Test: take 5 seconds (WSL)",
+      "command": "echo start on $(hostname); sleep 5; echo done after 5 s",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-join",
+      "name": "Test: after both branches",
+      "command": "echo both branches are done",
+      "timeoutSecs": 120
+    }
+  ]
+}

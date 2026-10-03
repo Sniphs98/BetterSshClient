@@ -1,0 +1,99 @@
+{
+  "kind": "remoty-automation",
+  "version": 1,
+  "automation": {
+    "name": "Test: upload 1 GB from WSL",
+    "params": [
+      {
+        "name": "host",
+        "kind": "host",
+        "label": "Host (e.g. test-container)"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "mk",
+        "snippetId": "test-make-1gb",
+        "label": "make-file",
+        "continueOnError": false,
+        "target": "wsl",
+        "position": {
+          "x": 280,
+          "y": 200
+        }
+      },
+      {
+        "id": "up",
+        "snippetId": "",
+        "label": "upload",
+        "continueOnError": false,
+        "target": "remote",
+        "upload": {
+          "from": "/tmp/test-1gb.bin",
+          "source": "wsl",
+          "to": "/tmp/"
+        },
+        "position": {
+          "x": 560,
+          "y": 200
+        }
+      },
+      {
+        "id": "chk",
+        "snippetId": "test-check-remote",
+        "label": "check",
+        "continueOnError": false,
+        "target": "remote",
+        "position": {
+          "x": 840,
+          "y": 200
+        }
+      },
+      {
+        "id": "cl",
+        "snippetId": "test-clean-wsl",
+        "label": "clean-wsl",
+        "continueOnError": false,
+        "target": "wsl",
+        "position": {
+          "x": 1120,
+          "y": 200
+        }
+      }
+    ],
+    "edges": [
+      {
+        "from": "mk",
+        "to": "up"
+      },
+      {
+        "from": "up",
+        "to": "chk"
+      },
+      {
+        "from": "chk",
+        "to": "cl"
+      }
+    ]
+  },
+  "snippets": [
+    {
+      "id": "test-make-1gb",
+      "name": "Test: make a 1 GB file in WSL",
+      "command": "fallocate -l 1G /tmp/test-1gb.bin && ls -lh /tmp/test-1gb.bin",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-check-remote",
+      "name": "Test: check the upload on the host, then remove it",
+      "command": "ls -lh {{nodes.upload.output}} && rm {{nodes.upload.output}}",
+      "timeoutSecs": 120
+    },
+    {
+      "id": "test-clean-wsl",
+      "name": "Test: remove the 1 GB file in WSL",
+      "command": "rm -f /tmp/test-1gb.bin && echo removed",
+      "timeoutSecs": 120
+    }
+  ]
+}
