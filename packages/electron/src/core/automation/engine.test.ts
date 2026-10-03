@@ -1089,3 +1089,103 @@ describe('fixed variables', () => {
     expect(ran).toEqual(['push registry.example.com/web']);
   });
 });
+
+describe('run-automation nodes', () => {
+  const snippets = new Map<string, Snippet>([
+    ['build', snippet({ id: 'build', name: 'Build', command: 'make {{params.target}}' })],
+    ['notify', snippet({ id: 'notify', name: 'Notify', command: 'notify {{nodes.release.output}}' })],
+    ['fail', snippet({ id: 'fail', name: 'Fail', command: 'exit 1' })]
+  ]);
+
+  // "release" builds a target on a host; "deploy" runs it, handing on its own values,
+  // then uses what it put out.
+  const release: Automation = {
+    name: 'release',
+    params: [
+      { name: 'target', kind: 'text' },
+      { name: 'server', kind: 'host' },
+      { name: 'mode', kind: 'fixed', default: 'prod' }
+    ],
+    nodes: [node({ id: 'b', snippetId: 'build', label: 'build', target: 'remote' })],
+    edges: []
+  };
+  function deploy(params: Record<string, string> = { target: '{{params.what}}', server: '{{params.host}}' }): Automation {
+    return {
+      name: 'deploy',
+      params: [
+        { name: 'what', kind: 'text' },
+        { name: 'host', kind: 'host' }
+      ],
+      nodes: [
+        node({ id: 'r', snippetId: '', label: 'release', call: { automation: 'release', params } }),
+        node({ id: 'n', snippetId: 'notify', label: 'notify' })
+      ],
+      edges: [{ from: 'r', to: 'n' }]
+    };
+  }
+  const byName = (...all: Automation[]) => new Map(all.map((a) => [a.name, a]));
+
+  function deps(ran: string[], automations: Map<string, Automation>): RunAutomationDeps {
+    const run = (where: string, command: string) => {
+      ran.push(`${where}: ${command}`);
+      return command === 'exit 1' ? { output: 'boom', ok: false, error: 'exit 1' } : { output: `${where} did ${command}`, ok: true };
+    };
+    return {
+      runLocal: async (command) => run('local', command),
+      runWsl: async () => ({ output: '', ok: true }),
+      wslUploadSource: async (_d, p) => p,
+      runGitHub: async () => '',
+      connectHost: async (host) => ({ runShell: async (command) => run(host, command), upload: async () => {}, disconnect: () => {} }),
+      automations
+    };
+  }
+
+  it('is valid when the automation exists and every value it asks for is given', () => {
+    expect(validateAutomation(deploy(), snippets, byName(release, deploy()))).toEqual([]);
+  });
+
+  it('says what is wrong: no such automation, a missing value, a value it does not ask for', () => {
+    const missing = deploy({ server: 'web-1', extra: 'x' });
+    expect(validateAutomation(missing, snippets, byName(release, missing))).toEqual([
+      '"release" needs a value for "target" of automation "release"',
+      '"release" sets "extra", which automation "release" doesn\'t ask for'
+    ]);
+    expect(validateAutomation(deploy(), snippets, byName(deploy()))).toEqual(['"release" runs automation "release", which doesn\'t exist']);
+  });
+
+  it('finds a loop through other automations', () => {
+    const a: Automation = { name: 'a', params: [], nodes: [node({ id: 'x', snippetId: '', label: 'to-b', call: { automation: 'b', params: {} } })], edges: [] };
+    const b: Automation = { name: 'b', params: [], nodes: [node({ id: 'y', snippetId: '', label: 'to-a', call: { automation: 'a', params: {} } })], edges: [] };
+    expect(validateAutomation(a, snippets, byName(a, b))).toEqual(['"to-b" would run in a loop: a → b → a']);
+  });
+
+  it("runs the automation with the values handed on; its last step's output is the node's", async () => {
+    const ran: string[] = [];
+    const lines: string[] = [];
+    const results = await runAutomation(deploy(), snippets, { what: 'app', host: 'web-1' }, deps(ran, byName(release, deploy())), (e) => {
+      if (e.kind === 'nodeProgress') lines.push(e.message);
+    });
+    // The called automation built on the host it was handed, with the target it was handed.
+    expect(ran).toEqual(['web-1: make app', 'local: notify web-1 did make app']);
+    expect(results.map((r) => [r.label, r.status, r.output])).toEqual([
+      ['release', 'success', 'web-1 did make app'],
+      ['notify', 'success', 'local did notify web-1 did make app']
+    ]);
+    expect(lines).toEqual(['Running automation "release"', '▸ build', '✓ build']);
+  });
+
+  it('fails when a step of the called automation fails, naming it', async () => {
+    const failing: Automation = { name: 'release', params: [], nodes: [node({ id: 'f', snippetId: 'fail', label: 'broken' })], edges: [] };
+    const caller = deploy({});
+    const results = await runAutomation(caller, snippets, { what: 'app', host: 'web-1' }, deps([], byName(failing, caller)));
+    expect(results[0]).toMatchObject({ status: 'failed', error: 'step "broken" of "release" failed: exit 1' });
+    expect(results[1].status).toBe('skipped');
+  });
+
+  it('stops a loop at run time too', async () => {
+    const self: Automation = { name: 'self', params: [], nodes: [node({ id: 's', snippetId: '', label: 'again', call: { automation: 'self', params: {} } })], edges: [] };
+    const results = await runAutomation(self, snippets, {}, deps([], byName(self)));
+    expect(results[0].status).toBe('failed');
+    expect(results[0].error).toMatch(/loop/);
+  });
+});

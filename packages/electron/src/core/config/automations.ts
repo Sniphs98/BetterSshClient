@@ -6,6 +6,7 @@ import { parse, stringify } from 'smol-toml';
 import { automationsConfigPath } from './platform.js';
 import type { Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind, NodeTarget } from '../automation/types.js';
 import { parseGitHubStep } from '../automation/githubStep.js';
+import { parseAutomationCall } from '../automation/callStep.js';
 import { paramKind, parseIfBranch, parseIfCondition } from '../automation/ifCondition.js';
 
 /** `automations.toml` I/O — Automations wire Snippets (loaded separately, from
@@ -42,12 +43,14 @@ function automationNodeFromToml(raw: Record<string, unknown>, automationName: st
   const github = raw.github === undefined ? undefined : parseGitHubStep(raw.github, `automation "${automationName}" node "${raw.id}" github`);
   const condition =
     raw.condition === undefined ? undefined : parseIfCondition(raw.condition, `automation "${automationName}" node "${raw.id}" condition`);
+  const call = raw.call === undefined ? undefined : parseAutomationCall(raw.call, `automation "${automationName}" node "${raw.id}" call`);
   return {
     id: raw.id,
     snippetId: raw.snippetId,
     github,
     upload,
     condition,
+    call,
     wslDistro: target === 'wsl' && typeof raw.wslDistro === 'string' && raw.wslDistro !== '' ? raw.wslDistro : undefined,
     label: raw.label,
     continueOnError: raw.continueOnError === true,
@@ -77,6 +80,7 @@ function automationNodeToToml(node: AutomationNode): Record<string, unknown> {
   }
   if (node.github !== undefined) out.github = { ...node.github };
   if (node.condition !== undefined) out.condition = { ...node.condition };
+  if (node.call !== undefined) out.call = { automation: node.call.automation, params: { ...node.call.params } };
   if (node.target === 'wsl' && node.wslDistro) out.wslDistro = node.wslDistro;
   if (node.position !== undefined) out.position = { x: node.position.x, y: node.position.y };
   return out;

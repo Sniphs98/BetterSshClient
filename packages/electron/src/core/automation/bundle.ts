@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Snippet, NodeTarget, Automation, AutomationEdge, AutomationNode, AutomationParam, AutomationParamKind } from './types.js';
 import { parseGitHubStep } from './githubStep.js';
+import { parseAutomationCall } from './callStep.js';
 import { paramKind, parseIfBranch, parseIfCondition } from './ifCondition.js';
 import { arr, bool, num, obj, optionalStr, str, uniqueName } from '../config/bundleFields.js';
 
@@ -51,7 +52,8 @@ export function buildAutomationBundle(automation: Automation, snippetsById: Map<
   const seen = new Set<string>();
   const snippets: Snippet[] = [];
   for (const node of automation.nodes) {
-    if (node.upload !== undefined || node.github !== undefined || node.condition !== undefined || seen.has(node.snippetId)) continue;
+    if (node.upload !== undefined || node.github !== undefined || node.condition !== undefined || node.call !== undefined) continue;
+    if (seen.has(node.snippetId)) continue;
     const snippet = snippetsById.get(node.snippetId);
     if (snippet === undefined) {
       throw new Error(`automation "${automation.name}" references an unknown snippet`);
@@ -104,15 +106,17 @@ function parseAutomationNode(raw: unknown, ctx: string): AutomationNode {
   }
   const github = o.github === undefined || o.github === null ? undefined : parseGitHubStep(o.github, `${ctx}.github`);
   const condition = o.condition === undefined || o.condition === null ? undefined : parseIfCondition(o.condition, `${ctx}.condition`);
+  const call = o.call === undefined || o.call === null ? undefined : parseAutomationCall(o.call, `${ctx}.call`);
   return {
     id: str(o.id, `${ctx}.id`),
     snippetId:
-      (upload !== undefined || github !== undefined || condition !== undefined) && o.snippetId === undefined
+      (upload !== undefined || github !== undefined || condition !== undefined || call !== undefined) && o.snippetId === undefined
         ? ''
         : str(o.snippetId, `${ctx}.snippetId`),
     upload,
     github,
     condition,
+    call,
     wslDistro: target === 'wsl' ? optionalStr(o.wslDistro, `${ctx}.wslDistro`) || undefined : undefined,
     label: str(o.label, `${ctx}.label`),
     continueOnError: bool(o.continueOnError, `${ctx}.continueOnError`),

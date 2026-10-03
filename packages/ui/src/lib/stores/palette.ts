@@ -25,7 +25,9 @@ export type PaletteItem =
   | { kind: 'githubRun' }
   | { kind: 'githubDownload' }
   /** Pinned too: the built-in If, which runs one way or another. */
-  | { kind: 'ifStep' };
+  | { kind: 'ifStep' }
+  /** Pinned too: run another automation. */
+  | { kind: 'callStep' };
 
 function hostHaystack(h: HostDto): string {
   return `${h.name} ${h.hostname} ${h.user} ${h.tags.join(' ')}`.toLowerCase();
@@ -66,6 +68,7 @@ export function paletteItems(
     return [
       { kind: 'newSnippet' },
       { kind: 'ifStep' },
+      { kind: 'callStep' },
       { kind: 'uploadStep' },
       { kind: 'githubRun' },
       { kind: 'githubDownload' },
@@ -106,6 +109,8 @@ export function paletteSignature(items: PaletteItem[]): string {
           return 'github-download';
         case 'ifStep':
           return 'if-step';
+        case 'callStep':
+          return 'call-step';
       }
     })
     .join('\u0000');
@@ -139,7 +144,7 @@ export interface PaletteState {
 /** What `pickSnippet()` resolves with: an existing Snippet, `'upload'` (the pinned
  *  upload-step row), `'new'` (the pinned "new" row was chosen — the caller opens its own add-snippet form), or `null` (dismissed
  *  without choosing). */
-export type SnippetPickResult = SnippetDto | 'new' | 'upload' | 'githubRun' | 'githubDownload' | 'if' | null;
+export type SnippetPickResult = SnippetDto | 'new' | 'upload' | 'githubRun' | 'githubDownload' | 'if' | 'call' | null;
 
 function createPalette() {
   const { subscribe, set } = writable<PaletteState>({ open: false, mode: 'navigate' });
@@ -191,7 +196,7 @@ function createPalette() {
       set({ open: false, mode: 'navigate' });
     },
     /** Snippet-picker mode: hand the chosen result back to its caller and close. */
-    chooseSnippet(result: SnippetDto | 'new' | 'upload' | 'githubRun' | 'githubDownload' | 'if'): void {
+    chooseSnippet(result: SnippetDto | 'new' | 'upload' | 'githubRun' | 'githubDownload' | 'if' | 'call'): void {
       const resolve = pendingSnippet;
       pendingSnippet = null;
       pendingHost?.(null);
