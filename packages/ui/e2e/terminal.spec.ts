@@ -9,7 +9,9 @@ import { expect, test, type Page } from '@playwright/test';
 // `sh`, no picker) is the load-bearing automation the stage requires.
 const HOSTS = [
   { name: 'web-1', hostname: 'web-1.example.com', user: 'deploy', port: 22, tags: ['prod'], source: 'manual', hasKey: true },
-  { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false }
+  { name: 'db-1', hostname: 'db-1.example.com', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false },
+  // Rebuilt since the last connection: its host key no longer matches.
+  { name: 'rebuilt', hostname: '127.0.0.1', user: 'remoty', port: 2222, tags: [], source: 'manual', hasKey: false }
 ];
 
 async function boot(
@@ -76,6 +78,20 @@ async function boot(
               return Promise.resolve(sid);
             }
             case 'terminal_open': {
+              if (args[0] === 'rebuilt') {
+                // Gets as far as the host key, as the main process would report — then refuses.
+                const key = args[3];
+                return new Promise((_resolve, reject) =>
+                  setTimeout(() => {
+                    fire('ssh-connect-progress', { key, stage: 'reach' });
+                    fire('ssh-connect-progress', { key, stage: 'hostKey' });
+                    reject({
+                      message:
+                        'The host key of rebuilt (127.0.0.1:2222) has changed since the last connection. That can mean someone is in between — or that the server was reinstalled. If you expect the change, remove the old key with: ssh-keygen -R "[127.0.0.1]:2222" — then connect again.'
+                    });
+                  }, 2000)
+                );
+              }
               const sid = ++nextSession;
               // A shell prompt proves the streamed output renders + flips status to connected.
               setTimeout(() => sendToTerminal(sid, 'remoty-ready> '), 0);
@@ -129,7 +145,7 @@ async function boot(
 
   await page.goto('/');
   // The status-bar total confirms the app booted and `list_hosts` resolved.
-  await expect(page.getByText('2 hosts')).toBeVisible();
+  await expect(page.getByText(`${HOSTS.length} hosts`)).toBeVisible();
 }
 
 test('host-first: spawn a terminal from a card, run a command, see output, then close', async ({
@@ -450,4 +466,27 @@ test('a host without a startup command runs nothing when its terminal opens', as
   // Give a queued command time to have been sent, then check none was.
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => (window as unknown as CommandsWindow).__terminalCommands)).toEqual([]);
+});
+
+test('a terminal that cannot connect shows the steps, where it stopped and why, with a way out', async ({ page }) => {
+  await boot(page);
+  await page.getByTitle('sh on rebuilt').click();
+
+  await expect(page.getByText('Connecting to rebuilt')).toBeVisible();
+  await expect(page.getByText('Could not connect to rebuilt')).toBeVisible();
+  const steps = page.getByRole('list', { name: 'Connection steps' }).getByRole('listitem');
+  await expect(steps).toHaveText(['Reaching 127.0.0.1:2222', 'Checking the host key', 'Signing in as remoty', 'Opening the shell']);
+  await expect(steps.nth(0)).toHaveAttribute('data-status', 'done');
+  await expect(steps.nth(1)).toHaveAttribute('data-status', 'failed');
+  await expect(steps.nth(2)).toHaveAttribute('data-status', 'pending');
+  await expect(page.getByRole('alert')).toContainText('has changed since the last connection');
+  await expect(page.getByRole('button', { name: 'Copy the ssh-keygen command' })).toBeVisible();
+  await page.screenshot({ path: 'test-results/ssh-connect-failed.png', animations: 'disabled' });
+
+  // "Try again" opens a fresh tab in its place; "Close tab" just closes it.
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('button', { name: 'rebuilt · terminal', exact: true })).toHaveCount(1);
+  await expect(page.getByText('Could not connect to rebuilt')).toBeVisible();
+  await page.getByRole('button', { name: 'Close tab' }).click();
+  await expect(page.getByRole('button', { name: 'rebuilt · terminal', exact: true })).toHaveCount(0);
 });

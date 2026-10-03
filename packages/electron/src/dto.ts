@@ -5,6 +5,7 @@
 
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
+import { jumpValue } from './core/ssh/jump.js';
 import type { Snippet, NodeTarget, GitHubStep, IfBranch, IfCondition, Automation, AutomationCall, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
 import type { ImportAction, ImportEntryPreview } from './core/config/sshHostBundle.js';
@@ -36,6 +37,8 @@ export interface HostDto {
   passwordRef?: string;
   /** The port's 1Password reference, likewise. */
   portRef?: string;
+  /** The jump host(s) it connects through (ProxyJump), if any. */
+  proxyJump?: string;
 }
 
 /** Inbound host form payload for `save_host`. Always builds a manual `Host`:
@@ -97,7 +100,8 @@ export function hostToDto(host: Host): HostDto {
     defaultPath: host.defaultPath,
     startupCommand: host.startupCommand,
     passwordRef: host.passwordRef,
-    portRef: host.portRef
+    portRef: host.portRef,
+    proxyJump: jumpValue(host)
   };
 }
 
