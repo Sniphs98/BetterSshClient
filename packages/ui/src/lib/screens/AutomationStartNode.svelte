@@ -133,33 +133,5 @@
       <Icon name="plus" size={13} />
       Add parameter
     </button>
-
-    <!-- Branches that don't depend on each other can run side by side. -->
-    <div class="space-y-1.5 border-t border-default pt-2.5">
-      <label class="nodrag flex items-center gap-2 text-xs text-muted">
-        <input
-          type="checkbox"
-          checked={ctx.maxParallel() > 1}
-          onchange={(e) => ctx.setMaxParallel(e.currentTarget.checked ? 4 : 1)}
-          class="accent-current"
-        />
-        Run branches in parallel
-      </label>
-      {#if ctx.maxParallel() > 1}
-        <label class="nodrag flex items-center gap-2 pl-6 text-xs text-faint">
-          up to
-          <input
-            type="number"
-            min="2"
-            max="16"
-            value={ctx.maxParallel()}
-            onchange={(e) => ctx.setMaxParallel(Number(e.currentTarget.value))}
-            class="{rowField} w-14 text-center"
-            aria-label="Steps at once"
-          />
-          steps at once
-        </label>
-      {/if}
-    </div>
   </div>
 </div>

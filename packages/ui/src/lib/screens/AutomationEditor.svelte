@@ -380,10 +380,6 @@
 
   setContext(AUTOMATION_PARAMS_CONTEXT, {
     params: () => params,
-    maxParallel: () => maxParallel,
-    setMaxParallel: (n: number) => {
-      maxParallel = Math.max(1, Math.min(16, Math.floor(n) || 1));
-    },
     addParam: (paramName: string, kind: AutomationParamKindDto) => {
       const trimmed = paramName.trim();
       if (!trimmed || params.some((p) => p.name === trimmed)) return;
@@ -566,6 +562,11 @@
     canvasNodes = canvasNodes.map((n) => ({ ...n, position: positions.get(n.id) ?? n.position }));
   }
 
+  /** Steps at once, kept between 1 (one after the other) and 16. */
+  function setMaxParallel(n: number): void {
+    maxParallel = Math.max(1, Math.min(16, Math.floor(n) || 1));
+  }
+
   async function save(): Promise<void> {
     const automationNameTrimmed = name.trim();
     if (!automationNameTrimmed) {
@@ -698,6 +699,33 @@
         placeholder="Automation name"
         aria-label="Automation name"
       />
+      <!-- Branches that don't depend on each other can run side by side. -->
+      <div class="flex shrink-0 items-center gap-2 rounded-full border border-default py-1 pl-3 pr-1.5 text-xs text-muted">
+        <label class="flex items-center gap-2" title="Steps that don't depend on each other run at the same time">
+          <input
+            type="checkbox"
+            checked={maxParallel > 1}
+            onchange={(e) => setMaxParallel(e.currentTarget.checked ? 4 : 1)}
+            class="accent-current"
+          />
+          Run branches in parallel
+        </label>
+        {#if maxParallel > 1}
+          <label class="flex items-center gap-1.5 text-faint">
+            up to
+            <input
+              type="number"
+              min="2"
+              max="16"
+              value={maxParallel}
+              onchange={(e) => setMaxParallel(Number(e.currentTarget.value))}
+              class="w-12 rounded-full bg-surface-inset px-2 py-0.5 text-center text-xs text-fg outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              aria-label="Steps at once"
+            />
+            at once
+          </label>
+        {/if}
+      </div>
       <div class="ml-auto flex items-center gap-2">
         <Button variant="ghost" onclick={back}>Cancel</Button>
         <Button variant="primary" onclick={save} disabled={saving}>
