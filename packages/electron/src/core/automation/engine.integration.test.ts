@@ -74,7 +74,11 @@ describe('upload node against the test target', () => {
       });
       expect(result.status).toBe('success');
       expect(lines.length).toBeGreaterThan(0);
-      expect(lines[lines.length - 1]).toMatch(/^Uploading big-\d+\.bin — 100% \(20 MB of 20 MB/);
+      // Up to 100%, then the host finishing the file, then done.
+      const [sent, finishing, done] = lines.slice(-3);
+      expect(sent).toMatch(/^Uploading big-\d+\.bin — 100% \(20 MB of 20 MB/);
+      expect(finishing).toMatch(/^Finishing big-\d+\.bin on the host/);
+      expect(done).toMatch(/^Uploaded big-\d+\.bin \(20 MB in /);
       const cleanup: Automation = {
         name: 'it-upload-cleanup',
         params: [{ name: 'host', kind: 'host' }],
