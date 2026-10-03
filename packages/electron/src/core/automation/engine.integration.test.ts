@@ -25,7 +25,7 @@ function deps(): RunAutomationDeps {
       const session = await SshSession.connect(testTargetHost());
       return {
         runShell: (cmd, timeoutMs) => session.runShell(cmd, timeoutMs),
-        upload: (from, to) => uploadOverSession(session, hostName, from, to),
+        upload: (from, to, signal, onProgress) => uploadOverSession(session, hostName, from, to, signal, onProgress),
         disconnect: () => session.disconnect()
       };
     }
@@ -52,6 +52,36 @@ describe('upload node against the test target', () => {
       expect(results.map((r) => r.status)).toEqual(['success', 'success']);
       expect(results[0].output).toMatch(/^\/tmp\/payload-\d+\.txt$/);
       expect(results[1].output).toContain('hello from the upload node');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports how far a bigger file is, up to 100%', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'remoty-upload-'));
+    const file = join(dir, `big-${Date.now()}.bin`);
+    await writeFile(file, Buffer.alloc(20 * 1024 * 1024, 7));
+    try {
+      const automation: Automation = {
+        name: 'it-upload-progress',
+        params: [{ name: 'host', kind: 'host' }],
+        nodes: [{ id: 'u', snippetId: '', upload: { from: file, to: '/tmp/' }, label: 'upload', continueOnError: false, target: 'remote' }],
+        edges: []
+      };
+      const lines: string[] = [];
+      const [result] = await runAutomation(automation, new Map(), { host: 'ssh-test-target' }, deps(), (e) => {
+        if (e.kind === 'nodeProgress') lines.push(e.message);
+      });
+      expect(result.status).toBe('success');
+      expect(lines.length).toBeGreaterThan(0);
+      expect(lines[lines.length - 1]).toMatch(/^Uploading big-\d+\.bin — 100% \(20 MB of 20 MB/);
+      const cleanup: Automation = {
+        name: 'it-upload-cleanup',
+        params: [{ name: 'host', kind: 'host' }],
+        nodes: [{ id: 'c', snippetId: 'rm', label: 'rm', continueOnError: false, target: 'remote' }],
+        edges: []
+      };
+      await runAutomation(cleanup, new Map([['rm', { id: 'rm', name: 'rm', command: `rm -f ${result.output}`, timeoutSecs: 30 }]]), { host: 'ssh-test-target' }, deps());
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
