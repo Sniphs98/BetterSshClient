@@ -36,6 +36,8 @@
   import AutomationGitHubNode from './AutomationGitHubNode.svelte';
   import AutomationIfNode from './AutomationIfNode.svelte';
   import AutomationCallNode from './AutomationCallNode.svelte';
+  import AutoLayoutButton from './AutoLayoutButton.svelte';
+  import { autoLayout } from './automationLayout';
   import SnippetEditor from './SnippetEditor.svelte';
   import { emptyForm, formFromSnippet } from './snippetForm';
   import {
@@ -553,6 +555,17 @@
     });
   };
 
+  /** "Auto-arrange": every node moved to where the layout puts it — a change like any
+   *  other move, so it can be saved or discarded. */
+  function arrange(): void {
+    const positions = autoLayout(
+      canvasNodes.map((n) => ({ id: n.id, width: n.measured?.width, height: n.measured?.height })),
+      canvasEdges.map((e) => ({ source: e.source, target: e.target })),
+      START_NODE_ID
+    );
+    canvasNodes = canvasNodes.map((n) => ({ ...n, position: positions.get(n.id) ?? n.position }));
+  }
+
   async function save(): Promise<void> {
     const automationNameTrimmed = name.trim();
     if (!automationNameTrimmed) {
@@ -726,7 +739,9 @@
         minZoom={0.3}
       >
         <Background variant={BackgroundVariant.Dots} />
-        <Controls showLock={false} />
+        <Controls showLock={false}>
+          <AutoLayoutButton onArrange={arrange} />
+        </Controls>
       </SvelteFlow>
     </div>
   {/if}

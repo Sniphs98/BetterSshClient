@@ -1124,3 +1124,47 @@ test('a new automation runs its branches in parallel; it can be switched off, an
   await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
   expect((await saved('fan-out'))?.maxParallel).toBeUndefined();
 });
+
+test('"Auto-arrange" lays a jumbled automation out left to right, branches one above the other', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const state = (window as unknown as { __automationState: { snippets: unknown[]; automations: unknown[] } }).__automationState;
+    state.snippets.push({ id: 's', name: 'Step', command: 'echo step', timeoutSecs: 30 });
+    // Every node somewhere else: overlapping, right to left.
+    const at = [
+      { x: 600, y: 300 },
+      { x: 40, y: 320 },
+      { x: 620, y: 310 },
+      { x: -200, y: 0 }
+    ];
+    const nodes = ['start', 'left', 'right', 'join'].map((id, i) => ({ id, snippetId: 's', label: id, continueOnError: false, target: 'local', position: at[i] }));
+    state.automations.push({
+      name: 'jumbled',
+      params: [],
+      nodes,
+      edges: [
+        { from: 'start', to: 'left' },
+        { from: 'start', to: 'right' },
+        { from: 'left', to: 'join' },
+        { from: 'right', to: 'join' }
+      ]
+    });
+  });
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByTitle('Open jumbled').click();
+
+  await page.getByRole('button', { name: 'Auto-arrange' }).click();
+  await page.waitForTimeout(600);
+  const box = async (label: string) =>
+    (await page.locator(`.svelte-flow__node[data-id="${label}"]`).boundingBox())!;
+  const [start, left, right, join] = await Promise.all(['start', 'left', 'right', 'join'].map(box));
+  expect(start.x + start.width).toBeLessThan(left.x);
+  expect(Math.abs(left.x - right.x)).toBeLessThan(2);
+  expect(left.y + left.height <= right.y || right.y + right.height <= left.y).toBe(true);
+  expect(join.x).toBeGreaterThan(left.x + left.width);
+  await page.screenshot({ path: 'test-results/auto-arrange.png' });
+
+  // Moved nodes are a change: it can be saved.
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+});
