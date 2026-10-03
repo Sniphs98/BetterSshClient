@@ -556,37 +556,17 @@
               </button>
             {/if}
             <!-- Editing an import adopts it into hosts.toml (§4.2); ~/.ssh/config is
-                 never written, so the action is offered whatever the source. Delete
-                 stays manual-only: there is nothing of an import to remove here. -->
+                 never written, so the action is offered whatever the source. Export and
+                 delete are in the editor, like a Remote Desktop connection's. -->
             <button
               type="button"
               class={iconBtn}
-              title="Export {card.host.name} to a file, without its password or key"
-              aria-label="Export {card.host.name}"
-              onclick={() => exportHosts([card.host.name])}
-            >
-              <Icon name="download" size={14} />
-            </button>
-            <button
-              type="button"
-              class={iconBtn}
-              title="Edit {card.host.name}"
+              title="Edit {card.host.name} — export and delete are in there too"
               aria-label="Edit {card.host.name}"
               onclick={() => (dialog = { kind: 'edit', host: card.host })}
             >
               <Icon name="edit" size={14} />
             </button>
-            {#if card.host.source === 'manual'}
-              <button
-                type="button"
-                class={iconBtn}
-                title="Delete {card.host.name}"
-                aria-label="Delete {card.host.name}"
-                onclick={() => (dialog = { kind: 'delete', host: card.host })}
-              >
-                <Icon name="trash" size={14} />
-              </button>
-            {/if}
           </div>
         </div>
 
@@ -719,6 +699,8 @@
     imported={host.source === 'sshConfig'}
     onSubmit={submit}
     onCancel={() => (dialog = null)}
+    onExport={() => void exportHosts([host.name])}
+    onDelete={host.source === 'manual' ? () => (dialog = { kind: 'delete', host }) : undefined}
   />
 {:else if dialog?.kind === 'delete'}
   {@const host = dialog.host}

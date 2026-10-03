@@ -170,7 +170,10 @@ test('deletes a manual host after confirmation', async ({ page }) => {
   await boot(page);
   await expect(page.getByText('web-1', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Delete web-1' }).click();
+  // Delete is in the host's editor, not on its card.
+  await expect(page.getByRole('button', { name: 'Delete web-1' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Edit web-1' }).click();
+  await page.getByRole('dialog', { name: 'Edit host' }).getByRole('button', { name: 'Delete web-1' }).click();
   const confirm = page.getByRole('dialog', { name: 'Delete host' });
   await expect(confirm).toBeVisible();
   await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
@@ -184,11 +187,11 @@ test('an SSH-config host is adopted by editing it', async ({ page }) => {
   // The import is marked, and there is nothing here to delete: it lives in
   // ~/.ssh/config, which this app never writes.
   await expect(page.getByText('ssh config')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Delete imported' })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Edit imported' }).click();
   const editor = page.getByRole('dialog', { name: 'Edit host' });
   await expect(editor).toBeVisible();
+  await expect(editor.getByRole('button', { name: 'Delete imported' })).toHaveCount(0);
   // The form states what saving does, since the SSH config file itself does not change.
   await expect(editor.getByText(/never written/)).toBeVisible();
 
@@ -199,7 +202,8 @@ test('an SSH-config host is adopted by editing it', async ({ page }) => {
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('root@adopted.example.com:22')).toBeVisible();
   await expect(page.getByText('ssh config')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Delete imported' })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Edit imported' }).click();
+  await expect(page.getByRole('dialog', { name: 'Edit host' }).getByRole('button', { name: 'Delete imported' })).toHaveCount(1);
 });
 
 test('rejects a new host whose name already exists', async ({ page }) => {
@@ -288,7 +292,11 @@ test('hosts export to a file — one, a folder, or all — and an import asks ab
   await boot(page);
   const calls = () => page.evaluate(() => (window as unknown as { __bundleCalls: unknown[][] }).__bundleCalls);
 
-  await page.getByRole('button', { name: 'Export web-1' }).click();
+  // One host from its editor, then every host from the toolbar.
+  await page.getByRole('button', { name: 'Edit web-1' }).click();
+  const exportFrom = page.getByRole('dialog', { name: 'Edit host' });
+  await exportFrom.getByRole('button', { name: 'Export web-1' }).click();
+  await exportFrom.getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('button', { name: 'Export all' }).click();
   await expect.poll(calls).toEqual([
     ['export_ssh_hosts', ['web-1']],
