@@ -432,7 +432,7 @@
                 </div>
               </div>
             </div>
-            <div class="flex flex-wrap items-center gap-1.5">
+            <div class="flex items-center gap-1.5">
               <button
                 type="button"
                 class={pill}
@@ -457,29 +457,11 @@
               <button
                 type="button"
                 class={iconBtn}
-                title="Edit {connection.name}"
+                title="Edit {connection.name} — export and delete are in there too"
                 aria-label="Edit {connection.name}"
                 onclick={() => (dialog = { kind: 'edit', connection })}
               >
                 <Icon name="edit" size={14} />
-              </button>
-              <button
-                type="button"
-                class={iconBtn}
-                title="Export {connection.name} to a file, without its password"
-                aria-label="Export {connection.name}"
-                onclick={() => exportProfiles([connection.id])}
-              >
-                <Icon name="download" size={14} />
-              </button>
-              <button
-                type="button"
-                class={iconBtn}
-                title="Delete {connection.name}"
-                aria-label="Delete {connection.name}"
-                onclick={() => (dialog = { kind: 'delete', connection })}
-              >
-                <Icon name="trash" size={14} />
               </button>
             </div>
           </div>
@@ -514,6 +496,8 @@
     initial={formFromConnection(connection)}
     onSubmit={submit}
     onCancel={() => (dialog = null)}
+    onExport={() => void exportProfiles([connection.id])}
+    onDelete={() => (dialog = { kind: 'delete', connection })}
   />
 {:else if dialog?.kind === 'import'}
   <ConnectionImportDialog
