@@ -67,7 +67,7 @@
                  automation to a fresh "new automation" draft) fully remounts the editor rather
                  than reusing its "seeded once from the prop" local state. -->
             {#key $activeEntity.automationName}
-              <AutomationEditor automationName={$activeEntity.automationName} />
+              <AutomationEditor automationName={$activeEntity.automationName} trail={$activeEntity.trail ?? []} />
             {/key}
           {:else if $activeEntity.kind === 'settings'}
             <Settings />

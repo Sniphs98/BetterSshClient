@@ -15,7 +15,13 @@ export type ActiveEntity =
    *  room a modal can't give it. `automationName: null` is a new, unsaved automation; a string
    *  is the name of the existing Automation being edited (Automation has no separate id — its
    *  name is already the unique key `upsertAutomation` keys on). */
-  | { kind: 'automation'; automationName: string | null };
+  | {
+      kind: 'automation';
+      automationName: string | null;
+      /** The automations this one was opened from, through their "run automation" steps,
+       *  outermost first — shown as breadcrumbs leading back. Empty when opened from the list. */
+      trail?: string[];
+    };
 
 /** Asked before Content switches away from what's active; returns `true` to hold the
  *  switch (an editor with unsaved changes asking first), calling `leave` later to let
@@ -40,7 +46,8 @@ function createActiveEntity() {
     selectRemoteDesktop: () => go({ kind: 'remoteDesktop' }),
     selectSettings: () => go({ kind: 'settings' }),
     activateSession: (id: number) => go({ kind: 'session', id }),
-    selectAutomation: (automationName: string | null) => go({ kind: 'automation', automationName }),
+    selectAutomation: (automationName: string | null, trail: string[] = []) =>
+      go({ kind: 'automation', automationName, ...(trail.length > 0 ? { trail } : {}) }),
     /** Installs `g` until the returned function removes it — one at a time, the
      *  editor that's showing. */
     setLeaveGuard: (g: LeaveGuard): (() => void) => {
