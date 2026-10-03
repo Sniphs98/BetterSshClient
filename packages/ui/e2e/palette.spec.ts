@@ -27,9 +27,15 @@ const HOSTS = [
 
 async function bootWithHosts(page: Page): Promise<void> {
   await page.addInitScript((hosts) => {
+    const listeners: Record<string, Array<(p: unknown) => void>> = {};
+    // Lets a test send an event the app listens for (a host coming online, say).
+    (window as unknown as { __fire: unknown }).__fire = (channel: string, payload: unknown) => (listeners[channel] ?? []).forEach((cb) => cb(payload));
     (window as unknown as { remoty: unknown }).remoty = {
       invoke: (channel: string) => (channel === 'list_hosts' ? Promise.resolve(hosts) : Promise.resolve(null)),
-      on: () => () => {},
+      on: (channel: string, cb: (p: unknown) => void) => {
+        (listeners[channel] ||= []).push(cb);
+        return () => {};
+      },
       settings: { get: () => Promise.resolve(undefined), set: () => Promise.resolve() },
       openExternal: () => Promise.resolve(),
       homeDir: () => Promise.resolve('/home/user'),
@@ -83,4 +89,29 @@ test('a spawner opens the host-picker and spawns a session for the chosen host',
   const row = page.getByRole('button', { name: 'db-1 · terminal', exact: true });
   await expect(row).toBeVisible();
   await expect(row).toHaveAttribute('aria-current', 'true');
+});
+
+test('the host picker can show only the hosts that are online, and remembers it', async ({ page }) => {
+  await bootWithHosts(page);
+  await page.evaluate(() =>
+    (window as unknown as { __fire: (c: string, p: unknown) => void }).__fire('host-status-changed', { hostName: 'web-1', status: { kind: 'connected' } })
+  );
+
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  const picker = page.getByRole('dialog', { name: 'Pick a host' });
+  await expect(picker.getByRole('button', { name: /db-1/ })).toBeVisible();
+
+  await picker.getByRole('button', { name: 'All hosts' }).click();
+  await expect(picker.getByRole('button', { name: 'Online only' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(picker.getByRole('button', { name: /web-1/ })).toBeVisible();
+  await expect(picker.getByRole('button', { name: /db-1/ })).toHaveCount(0);
+  // Typing still goes to the search field.
+  await page.keyboard.type('web');
+  await expect(picker.getByRole('textbox')).toHaveValue('web');
+  await page.screenshot({ path: 'test-results/picker-online-only.png' });
+
+  // The same choice as the dashboard's.
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Online only' })).toHaveAttribute('aria-pressed', 'true');
 });
