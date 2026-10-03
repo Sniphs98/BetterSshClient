@@ -17,7 +17,7 @@
   } from '$lib/stores/automations';
   import type { NodeResultDto } from '$lib/bindings';
   import { openExternal } from '$lib/ipc/openExternal';
-  import { uploadProgress } from '$lib/stores/automations';
+  import { uploadStatus } from '$lib/stores/automations';
 
   // A progress line split into text and links (a GitHub run's, a release's), so a link
   // opens in the browser.
@@ -119,9 +119,10 @@
                             <button type="button" class="underline decoration-dotted hover:text-fg" onclick={() => void openExternal(part.text)}>{part.text}</button>
                           {:else}{part.text}{/if}
                         {/each}
-                        {#if uploadProgress(line) !== null}
-                          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface" role="progressbar" aria-valuenow={uploadProgress(line)} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress">
-                            <div class="h-full rounded-full bg-accent transition-[width] duration-300" style="width: {uploadProgress(line)}%"></div>
+                        {#if uploadStatus(line)}
+                          {@const up = uploadStatus(line)!}
+                          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface" role="progressbar" aria-valuenow={up.kind === 'sending' ? up.percent : 100} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress" data-upload={up.kind}>
+                            <div class="h-full rounded-full transition-[width] duration-300 {up.kind === 'done' ? 'bg-status-ok' : 'bg-accent'} {up.kind === 'finishing' ? 'upload-finishing' : ''}" style="width: {up.kind === 'sending' ? up.percent : 100}%"></div>
                           </div>
                         {/if}
                       </li>
@@ -164,9 +165,10 @@
                           <button type="button" class="underline decoration-dotted hover:text-fg" onclick={() => void openExternal(part.text)}>{part.text}</button>
                         {:else}{part.text}{/if}
                       {/each}
-                      {#if uploadProgress(line) !== null}
-                        <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface" role="progressbar" aria-valuenow={uploadProgress(line)} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress">
-                          <div class="h-full rounded-full bg-accent transition-[width] duration-300" style="width: {uploadProgress(line)}%"></div>
+                      {#if uploadStatus(line)}
+                        {@const up = uploadStatus(line)!}
+                        <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-surface" role="progressbar" aria-valuenow={up.kind === 'sending' ? up.percent : 100} aria-valuemin={0} aria-valuemax={100} aria-label="Upload progress" data-upload={up.kind}>
+                          <div class="h-full rounded-full transition-[width] duration-300 {up.kind === 'done' ? 'bg-status-ok' : 'bg-accent'} {up.kind === 'finishing' ? 'upload-finishing' : ''}" style="width: {up.kind === 'sending' ? up.percent : 100}%"></div>
                         </div>
                       {/if}
                     </li>
@@ -200,3 +202,21 @@
     </div>
   </Modal>
 {/if}
+
+<style>
+  /* Sent, but the host is still writing the file: the full bar pulses, so it reads as
+     "still working" rather than stuck at 100%. */
+  .upload-finishing {
+    animation: upload-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes upload-pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .upload-finishing {
+      animation: none;
+    }
+  }
+</style>

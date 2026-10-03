@@ -155,7 +155,7 @@ async function boot(page: Page): Promise<void> {
                 fire('automation-node-started', { automationName, nodeId: node.id, label: node.label });
                 if ((node as { upload?: unknown }).upload) {
                   // An upload: its progress, as the engine reports it.
-                  for (const p of ['Uploading image.tar.gz — 20% (53 MB of 266 MB)', 'Uploading image.tar.gz — 65% (173 MB of 266 MB, 11 MB/s)']) {
+                  for (const p of ['Uploading image.tar.gz — 20% (53 MB of 266 MB)', 'Uploading image.tar.gz — 65% (173 MB of 266 MB, 11 MB/s)', ...(automationName === 'ship-image-done' ? ['Uploading image.tar.gz — 100% (266 MB of 266 MB, 22 MB/s)', 'Finishing image.tar.gz on the host — the server is writing it to disk…', 'Uploaded image.tar.gz (266 MB in 12.1 s, 22 MB/s)'] : [])]) {
                     fire('automation-node-progress', { automationName, nodeId: node.id, message: p });
                   }
                 }
@@ -1032,4 +1032,27 @@ test('from a node that runs another automation, its button or a double-click ope
   await expect(prompt).toBeVisible();
   await prompt.getByRole('button', { name: 'Discard' }).click();
   await expect(nameField).toHaveValue('release');
+});
+
+test('after 100% an upload says the host is finishing the file, then that it is done', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() =>
+    (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations.push({
+      name: 'ship-image-done',
+      params: [{ name: 'host', kind: 'host' }],
+      nodes: [{ id: 'u', snippetId: '', label: 'upload', continueOnError: false, target: 'remote', upload: { from: 'image.tar.gz', to: '/tmp/' } }],
+      edges: []
+    })
+  );
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Run ship-image-done' }).click();
+  const runDialog = page.getByRole('dialog', { name: 'Run automation' });
+  await runDialog.getByRole('button', { name: 'Choose a host…' }).click();
+  await page.getByRole('dialog', { name: 'Pick a host' }).getByRole('button', { name: /web-1/ }).click();
+  await runDialog.getByRole('button', { name: 'Run', exact: true }).click();
+
+  const panel = page.getByRole('dialog', { name: 'Automation run' });
+  await expect(panel.getByText('Uploaded image.tar.gz (266 MB in 12.1 s, 22 MB/s)')).toBeVisible();
+  await expect(panel.getByText(/^Uploading|^Finishing/)).toHaveCount(0);
+  await expect(panel.getByRole('progressbar', { name: 'Upload progress' })).toHaveAttribute('data-upload', 'done');
 });

@@ -7,6 +7,7 @@ import {
   topoOrder,
   uploadDestination,
   uploadProgressLine,
+  uploadDoneLine,
   formatSize,
   compareTexts,
   validateAutomation,
@@ -670,16 +671,19 @@ describe('upload progress', () => {
         if (e.kind === 'nodeProgress') lines.push(e.message.replace(/, [\d.]+ \w+\/s\)$/, ')'));
       }
     );
-    expect(lines).toEqual([
+    expect(lines.map((l) => l.replace(/ in [\d.]+ s\)$/, ')'))).toEqual([
       'Uploading image.tar.gz — 0% (0 B of 4.0 MB)',
       'Uploading image.tar.gz — 25% (1.0 MB of 4.0 MB)',
-      'Uploading image.tar.gz — 100% (4.0 MB of 4.0 MB)'
+      'Uploading image.tar.gz — 100% (4.0 MB of 4.0 MB)',
+      'Finishing image.tar.gz on the host — the server is writing it to disk…',
+      'Uploaded image.tar.gz (4.0 MB)'
     ]);
   });
 
   it('adds the speed once it has been going a second', () => {
     expect(uploadProgressLine('a.tgz', 50 * 1024 * 1024, 100 * 1024 * 1024, 5000)).toBe('Uploading a.tgz — 50% (50 MB of 100 MB, 10 MB/s)');
     expect(formatSize(1536)).toBe('1.5 KB');
+    expect(uploadDoneLine('a.tgz', 100 * 1024 * 1024, 4000)).toBe('Uploaded a.tgz (100 MB in 4.0 s, 25 MB/s)');
     expect(formatSize(3 * 1024 ** 3)).toBe('3.0 GB');
   });
 });

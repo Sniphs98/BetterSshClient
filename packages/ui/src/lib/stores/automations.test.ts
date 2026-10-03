@@ -12,7 +12,7 @@ import {
   reduceAutomationFailed,
   reduceNodeProgress,
   reduceNodeResult,
-  uploadProgress,
+  uploadStatus,
   reduceNodeStarted,
   type AutomationRun
 } from './automations';
@@ -148,9 +148,20 @@ describe('activeRuns', () => {
 describe('upload progress lines', () => {
   const running = (): AutomationRun => ({ automationName: 'ship', phase: { kind: 'running', nodes: new Map() } }) as AutomationRun;
 
-  it('reads the percentage of an upload line, nothing from others', () => {
-    expect(uploadProgress('Uploading image.tar.gz — 45% (120 MB of 266 MB, 11 MB/s)')).toBe(45);
-    expect(uploadProgress('Running automation "x"')).toBeNull();
+  it("reads an upload line's state: sending with its percentage, finishing, done — nothing from others", () => {
+    expect(uploadStatus('Uploading image.tar.gz — 45% (120 MB of 266 MB, 11 MB/s)')).toEqual({ kind: 'sending', percent: 45 });
+    expect(uploadStatus('Finishing image.tar.gz on the host — the server is writing it to disk…')).toEqual({ kind: 'finishing' });
+    expect(uploadStatus('Uploaded image.tar.gz (266 MB in 12.1 s, 22 MB/s)')).toEqual({ kind: 'done' });
+    expect(uploadStatus('Running automation "x"')).toBeNull();
+  });
+
+  it('finishing and done replace the 100% line too', () => {
+    let run: AutomationRun | null = running();
+    run = reduceNodeProgress(run, 'ship', 'u', 'Uploading a — 100% (10 MB of 10 MB)');
+    run = reduceNodeProgress(run, 'ship', 'u', 'Finishing a on the host — the server is writing it to disk…');
+    expect(run?.progress?.u).toEqual(['Finishing a on the host — the server is writing it to disk…']);
+    run = reduceNodeProgress(run, 'ship', 'u', 'Uploaded a (10 MB in 3.0 s, 3.3 MB/s)');
+    expect(run?.progress?.u).toEqual(['Uploaded a (10 MB in 3.0 s, 3.3 MB/s)']);
   });
 
   it("an upload's next line replaces its last one; other lines are added", () => {

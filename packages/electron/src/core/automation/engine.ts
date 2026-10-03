@@ -162,6 +162,19 @@ export function uploadProgressLine(name: string, done: number, total: number, el
   return `Uploading ${name} — ${percent}% (${formatSize(done)} of ${formatSize(total)}${speed})`;
 }
 
+/** Once every byte is sent: the server still has to finish writing the file (closing
+ *  it can take seconds for a big one), so the panel says so instead of sitting at 100%. */
+export function uploadFinishingLine(name: string): string {
+  return `Finishing ${name} on the host — the server is writing it to disk…`;
+}
+
+/** The upload is done: `Uploaded image.tar.gz (266 MB in 12.1 s, 22 MB/s)`. */
+export function uploadDoneLine(name: string, bytes: number, elapsedMs: number): string {
+  const secs = elapsedMs / 1000;
+  const speed = secs >= 1 ? `, ${formatSize(bytes / secs)}/s` : '';
+  return `Uploaded ${name} (${formatSize(bytes)} in ${secs.toFixed(1)} s${speed})`;
+}
+
 /** Save-time structural validation — not execution. Returns a list of problem
  *  strings (empty means valid): an unknown `snippetId`, a duplicate label or
  *  parameter name, more than one `'host'`-kind parameter, a remote node with no host
@@ -611,11 +624,17 @@ export async function runAutomation(
           const connection = await untilCanceled(connectionFor(nodeHostName!));
           const fileName = from.split(/[\\/]/).filter(Boolean).pop() ?? from;
           const uploadStarted = Date.now();
+          const report = (message: string): void => onProgress?.({ kind: 'nodeProgress', nodeId, message });
+          let size: number | undefined;
           await untilCanceled(
-            connection.upload(local, to, signal, (done, total) =>
-              onProgress?.({ kind: 'nodeProgress', nodeId, message: uploadProgressLine(fileName, done, total, Date.now() - uploadStarted) })
-            )
+            connection.upload(local, to, signal, (done, total) => {
+              size = total;
+              report(uploadProgressLine(fileName, done, total, Date.now() - uploadStarted));
+              if (done === total) report(uploadFinishingLine(fileName));
+            })
           );
+          // Only after progress lines — a transfer that told nothing has no size to give.
+          if (size !== undefined) report(uploadDoneLine(fileName, size, Date.now() - uploadStarted));
           // The output is where it landed, so the next node can use it as is:
           // `docker load < {{nodes.upload.output}}`.
           exec = { output: to, ok: true };
