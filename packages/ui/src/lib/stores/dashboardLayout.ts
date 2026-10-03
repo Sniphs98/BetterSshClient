@@ -110,3 +110,32 @@ function createKeptFolders(settingsKey: string) {
 
 export const keptFolders = createKeptFolders('dashboardFolders');
 export const rdpKeptFolders = createKeptFolders('remoteDesktopFolders');
+
+// Whether the dashboard shows only the hosts that are online, or all of them. Remembered
+// on this machine, like the collapsed sections.
+const ONLINE_ONLY_KEY = 'remoty-dashboard-online-only';
+
+function createOnlineOnly() {
+  let initial = false;
+  try {
+    initial = localStorage.getItem(ONLINE_ONLY_KEY) === 'true';
+  } catch {
+    // localStorage unavailable: all hosts.
+  }
+  const { subscribe, update } = writable<boolean>(initial);
+  return {
+    subscribe,
+    toggle(): void {
+      update((on) => {
+        try {
+          localStorage.setItem(ONLINE_ONLY_KEY, String(!on));
+        } catch {
+          // Still switches for this run.
+        }
+        return !on;
+      });
+    }
+  };
+}
+
+export const onlineOnly = createOnlineOnly();

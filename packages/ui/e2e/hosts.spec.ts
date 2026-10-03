@@ -20,6 +20,7 @@ async function boot(page: Page, hosts: Array<Record<string, unknown>> = HOSTS): 
       const bundleCalls: unknown[][] = [];
       (window as unknown as { __bundleCalls: unknown[][] }).__bundleCalls = bundleCalls;
 
+      (window as unknown as { __fire: unknown }).__fire = (channel: string, payload: unknown) => fire(channel, payload);
       function fire(channel: string, payload: unknown): void {
         for (const cb of listeners[channel] ?? []) cb(payload);
       }
@@ -378,4 +379,30 @@ test('a save that fails from the question keeps the dialog open with the reason'
   await expect(editor).toBeVisible();
   await expect(editor.getByText('Hostname / IP cannot be empty')).toBeVisible();
   await expect(editor.getByLabel('Name', { exact: true })).toHaveValue('no-hostname');
+});
+
+test('"Online only" shows just the hosts that are up, and is remembered', async ({ page }) => {
+  await boot(page);
+  const fire = (hostName: string, kind: string) =>
+    page.evaluate(
+      ([h, k]) => (window as unknown as { __fire: (c: string, p: unknown) => void }).__fire('host-status-changed', { hostName: h, status: { kind: k } }),
+      [hostName, kind]
+    );
+  await fire('web-1', 'connected');
+  await fire('imported', 'failed');
+
+  const toggle = page.getByRole('button', { name: 'All hosts' });
+  await toggle.click();
+  await expect(page.getByRole('button', { name: 'Online only' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('web-1', { exact: true })).toBeVisible();
+  await expect(page.getByText('imported', { exact: true })).toHaveCount(0);
+
+  // Still on after a restart of the app.
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Online only' })).toBeVisible();
+  // Nothing has reported in yet after the reload: nothing is online.
+  await expect(page.getByText('No host is online right now.')).toBeVisible();
+  await page.getByRole('button', { name: 'Show all hosts' }).click();
+  await expect(page.getByText('imported', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'All hosts' })).toHaveAttribute('aria-pressed', 'false');
 });

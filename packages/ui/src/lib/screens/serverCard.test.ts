@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import type { ConnectionStatusDto, HostDto, MetricsDto } from '$lib/bindings';
 import type { HostServices } from '$lib/stores/services';
-import { deriveCard, formatLastSeen, metricStatus, QUICK_ACTIONS, filterHosts } from './serverCard';
+import { deriveCard, formatLastSeen, metricStatus, onlineCards, QUICK_ACTIONS, filterHosts } from './serverCard';
 
 function host(name = 'web-1'): HostDto {
   return { name, hostname: '10.0.0.1', user: 'root', port: 22, tags: [], source: 'manual', hasKey: false, monitoring: 'ssh' };
@@ -263,5 +263,17 @@ describe('formatLastSeen', () => {
     expect(formatLastSeen(now - 5 * 60_000, now)).toBe('last seen 5m ago');
     expect(formatLastSeen(now - 3 * 3_600_000, now)).toBe('last seen 3h ago');
     expect(formatLastSeen(now - 2 * 24 * 3_600_000, now)).toBe('last seen 2d ago');
+  });
+});
+
+describe('onlineCards', () => {
+  it('keeps the connected hosts — healthy or in alert — and drops the rest', () => {
+    const card = (name: string) => ({ host: { name } });
+    const statuses = new Map([
+      ['up', { kind: 'connected' }],
+      ['down', { kind: 'failed' }],
+      ['coming', { kind: 'connecting' }]
+    ]);
+    expect(onlineCards([card('up'), card('down'), card('coming'), card('never')], statuses).map((c) => c.host.name)).toEqual(['up']);
   });
 });

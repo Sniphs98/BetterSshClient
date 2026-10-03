@@ -10,9 +10,10 @@
   import { get } from 'svelte/store';
   import type { ConnectionImportPreviewDto, HostDto, HostInputDto, TerminalProfileDto } from '$lib/bindings';
   import { Surface, Chip, StatusDot, Icon, Button, statusToken } from '$lib/theme';
-  import { serverCards, filterHosts, formatLastSeen, QUICK_ACTIONS, type ServerCard } from './serverCard';
+  import { serverCards, filterHosts, formatLastSeen, onlineCards, QUICK_ACTIONS, type ServerCard } from './serverCard';
+  import { statuses } from '$lib/stores/statuses';
   import { folderNameProblem, folderNames, groupCards, LOCAL_KEY } from './dashboardSections';
-  import { collapsedSections, keptFolders } from '$lib/stores/dashboardLayout';
+  import { collapsedSections, keptFolders, onlineOnly } from '$lib/stores/dashboardLayout';
   import { spawnSession, spawnLocalTerminal } from '$lib/stores/navigation';
   import { streamerMode, displayHostname } from '$lib/stores/streamer';
   import { addressLine } from './onePasswordRef';
@@ -54,10 +55,11 @@
   let query = $state('');
   let searchOpen = $state(false);
   let searchInput = $state<HTMLInputElement>();
-  const visibleCards = $derived(filterHosts($serverCards, query));
+  // "Online only": just the hosts that are up (remembered — see dashboardLayout.ts).
+  const visibleCards = $derived(filterHosts($onlineOnly ? onlineCards($serverCards, $statuses) : $serverCards, query));
   // Accordion sections: a folder each, then the hosts in none (dashboardSections.ts).
   // Kept folders show even when empty — except while searching, where only matches count.
-  const sections = $derived(groupCards(visibleCards, query.trim() ? [] : $keptFolders));
+  const sections = $derived(groupCards(visibleCards, query.trim() || $onlineOnly ? [] : $keptFolders));
   // Every folder a host is in is kept, so it outlives its last card (dragged out).
   $effect(() => keptFolders.keepAll(folderNames($hosts)));
 
@@ -270,6 +272,17 @@
   <div class="mb-5 flex items-center gap-3">
     <h1 class="text-lg font-semibold tracking-tight">Dashboard</h1>
     <div class="ml-auto flex items-center gap-2">
+      <!-- All hosts, or only the ones online: a toggle that's remembered. -->
+      <button
+        type="button"
+        class="{pill} {$onlineOnly ? 'border-strong text-fg' : ''}"
+        aria-pressed={$onlineOnly}
+        title={$onlineOnly ? 'Showing only hosts that are online — click to show all' : 'Showing all hosts — click to show only those online'}
+        onclick={() => onlineOnly.toggle()}
+      >
+        <span class="h-2 w-2 rounded-full {$onlineOnly ? 'bg-status-ok' : 'bg-[var(--border)]'}"></span>
+        {$onlineOnly ? 'Online only' : 'All hosts'}
+      </button>
       <!-- Host search: a round toggle that slides a live filter field out to its left. -->
       <div class="flex items-center">
         <input
@@ -377,7 +390,12 @@
     </div>
   {:else if query.trim() && visibleCards.length === 0}
     <div class="flex flex-col items-center justify-center gap-2 py-20 text-center">
-      <p class="text-sm text-muted">No hosts match “{query}”.</p>
+      <p class="text-sm text-muted">No {$onlineOnly ? 'online ' : ''}hosts match “{query}”.</p>
+    </div>
+  {:else if $onlineOnly && visibleCards.length === 0}
+    <div class="flex flex-col items-center justify-center gap-2 py-20 text-center">
+      <p class="text-sm text-muted">No host is online right now.</p>
+      <button type="button" class="{pill} mt-2" onclick={() => onlineOnly.toggle()}>Show all hosts</button>
     </div>
   {:else}
     {#each sections as section (section.key)}

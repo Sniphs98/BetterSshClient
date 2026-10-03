@@ -164,6 +164,12 @@ export const serverCards = derived(
     )
 );
 
+/** The cards of hosts that are online — connected, healthy or in alert, as the status
+ *  bar counts them. Connecting, unreachable and not-yet-checked ones are left out. */
+export function onlineCards<C extends { host: { name: string } }>(cards: C[], statuses: Map<string, { kind: string }>): C[] {
+  return cards.filter((c) => statuses.get(c.host.name)?.kind === 'connected');
+}
+
 /** "last seen" wording for an offline card: coarse, since it only needs to say roughly
  *  how long the host has been gone. */
 export function formatLastSeen(lastSeen: number, now: number): string {
