@@ -7,9 +7,10 @@ import { Client, type AnyAuthMethod, type ClientChannel, type ConnectConfig } fr
 import type { Host } from './client.js';
 import { ConnectionPool, type Lease } from './connectionPool.js';
 import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
+import { connectReporter, reportConnectStage } from './connectProgress.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
-import { readSecretCached, resolvePort, resolveReference } from '../secrets/onePassword.js';
+import { isSecretReference, readSecretCached, resolvePort, resolveReference } from '../secrets/onePassword.js';
 
 /**
  * SSH session management via `ssh2`. Ported from
@@ -361,6 +362,7 @@ async function connectAndAuth(host: Host): Promise<SshConnection> {
 
   const jumps: Client[] = [];
   for (const hop of chain) {
+    reportConnectStage({ stage: 'jump', host: hop.name });
     try {
       const client = jumps.length === 0 ? await connectDirect(hop) : await connectTunnelled(jumps[jumps.length - 1], hop);
       jumps.push(client);
@@ -386,6 +388,9 @@ async function connectAndAuth(host: Host): Promise<SshConnection> {
  *  (`op://…` in the field itself), and its port where it has a `portRef`. Done per
  *  hop, before dialling it. */
 export async function resolveHostAddress(host: Host): Promise<Host> {
+  if ([host.hostname, host.user].some(isSecretReference) || host.portRef !== undefined || host.passwordRef !== undefined) {
+    reportConnectStage({ stage: 'onePassword' });
+  }
   const hostname = await resolveReference(host.hostname);
   const port = await resolvePort(host.portRef, host.port);
   const user = await resolveReference(host.user);
@@ -473,6 +478,10 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
 
   const problems: string[] = [];
   const methods = await authMethods(host, problems);
+  // Captured here: the host-key check runs from socket events, outside this context.
+  const report = connectReporter();
+  base.hostVerifier = makeHostVerifier(host.hostname, host.port, report);
+  report({ stage: 'reach' });
   if (methods.length > 0) {
     const attempt = await tryConnect({ ...base, authHandler: methods });
     if (attempt.client) return attempt.client;
@@ -535,19 +544,29 @@ async function tryConnect(config: ConnectConfig): Promise<ConnectAttempt> {
 
 /** The host-key verifier for `host`. `ssh2` hands the raw SSH wire-format
  *  public key to the callback (no `hostHash` option set). */
-function makeHostVerifier(hostname: string, port: number): NonNullable<ConnectConfig['hostVerifier']> {
+function makeHostVerifier(
+  hostname: string,
+  port: number,
+  report: (stage: { stage: 'hostKey' } | { stage: 'signIn' }) => void = () => {}
+): NonNullable<ConnectConfig['hostVerifier']> {
   return (keyBlob: Buffer, callback: (valid: boolean) => void): void => {
+    // Reached the server: it presented its key. Accepted, sign-in comes next.
+    report({ stage: 'hostKey' });
+    const accept = (): void => {
+      report({ stage: 'signIn' });
+      callback(true);
+    };
     checkKnownHosts(hostname, port, keyBlob)
       .then(async (verdict) => {
         switch (verdict) {
           case 'known-match':
-            callback(true);
+            accept();
             return;
           case 'unknown':
             // Trust On First Use: accept, and record best-effort. Recording
             // failure must never fail the connection it accepted.
             await learnKnownHost(hostname, port, keyBlob);
-            callback(true);
+            accept();
             return;
           case 'key-changed':
           case 'unreadable':
