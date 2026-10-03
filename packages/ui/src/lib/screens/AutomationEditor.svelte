@@ -16,9 +16,8 @@
   // than baked into any snippet node — at most one `'host'`-kind, whose run-time
   // value is the target for every remote snippet node in this automation, plus any
   // number of `'text'`-kind ones substituted via `{{params.<name>}}`. This is what
-  // lets one automation definition run identically against different hosts. They're drawn
-  // as the graph's own permanent "Start" node (AutomationStartNode.svelte) rather than a
-  // toolbar above the canvas — see automationCanvasTypes.ts's note on `START_NODE_ID`.
+  // lets one automation definition run identically against different hosts. They're set in
+  // a bar under the top bar (AutomationParamsBar.svelte).
   import { onMount, setContext } from 'svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { SvelteFlow, Background, BackgroundVariant, Controls, type Connection, type OnConnectEnd } from '@xyflow/svelte';
@@ -31,17 +30,18 @@
   import { palette } from '$lib/stores/palette';
   import { theme } from '$lib/stores/theme';
   import AutomationCanvasNode from './AutomationCanvasNode.svelte';
-  import AutomationStartNode from './AutomationStartNode.svelte';
+  import AutomationParamsBar from './AutomationParamsBar.svelte';
   import AutomationUploadNode from './AutomationUploadNode.svelte';
   import AutomationGitHubNode from './AutomationGitHubNode.svelte';
   import AutomationIfNode from './AutomationIfNode.svelte';
   import AutomationCallNode from './AutomationCallNode.svelte';
+  import AutoLayoutButton from './AutoLayoutButton.svelte';
+  import { autoLayout } from './automationLayout';
   import SnippetEditor from './SnippetEditor.svelte';
   import { emptyForm, formFromSnippet } from './snippetForm';
   import {
     AUTOMATION_NODE_ACTIONS_CONTEXT,
     AUTOMATION_PARAMS_CONTEXT,
-    START_NODE_ID,
     type AnyCanvasNode,
     type AutomationCanvasEdge,
     type SnippetNode,
@@ -50,8 +50,7 @@
     type GitHubNode,
     type IfNode,
     type CallNode,
-    type AutomationNodeActionsContext,
-    type StartNode
+    type AutomationNodeActionsContext
   } from './automationCanvasTypes';
 
   /** `null` opens a fresh, unsaved automation; a name loads that existing Automation from the
@@ -65,6 +64,9 @@
   const existing = automationName ? $automations.find((f) => f.name === automationName) : undefined;
   const mode: 'add' | 'edit' = existing ? 'edit' : 'add';
   const initial: AutomationDto = existing ?? { name: '', params: [], nodes: [], edges: [] };
+  /** Steps at once: an existing automation keeps what it had (one after the other unless
+   *  set); a new one lets its branches run in parallel, up to 4. */
+  const PARALLEL_DEFAULT = 4;
   // A name was passed but no longer matches anything in the store (deleted from
   // elsewhere between listing and opening) — surface that instead of silently
   // presenting an empty "new automation" draft under the old name.
@@ -76,8 +78,7 @@
     upload: AutomationUploadNode,
     github: AutomationGitHubNode,
     if: AutomationIfNode,
-    call: AutomationCallNode,
-    start: AutomationStartNode
+    call: AutomationCallNode
   };
 
   /** A simple left-to-right, wrapping grid — used only for a node that has no saved
@@ -90,7 +91,7 @@
     return n.type === 'snippet';
   }
 
-  /** Every node that is saved as an `AutomationNode` — everything but Start. */
+  /** Every node that is saved as an `AutomationNode`. */
   function isStepNode(n: AnyCanvasNode): n is StepNode {
     return n.type === 'snippet' || n.type === 'upload' || n.type === 'github' || n.type === 'if' || n.type === 'call';
   }
@@ -101,19 +102,11 @@
     return { id: `${from}:${branch}->${to}`, source: from, target: to, sourceHandle: branch, label: branch };
   }
 
-  const startNode: StartNode = {
-    id: START_NODE_ID,
-    type: 'start',
-    position: { x: -280, y: 60 },
-    data: {},
-    deletable: false,
-    selectable: false
-  };
-
   let name = $state(initial.name);
   let params = $state<AutomationParamDto[]>(initial.params.map((p) => ({ ...p })));
+  // svelte-ignore state_referenced_locally
+  let maxParallel = $state(existing ? (existing.maxParallel ?? 1) : PARALLEL_DEFAULT);
   let canvasNodes = $state<AnyCanvasNode[]>([
-    startNode,
     ...initial.nodes.map((n, i): StepNode => {
       if (n.call) {
         return {
@@ -176,28 +169,7 @@
       };
     })
   ]);
-  /** A decorative "params automation in from here" line, never a real `AutomationEdge` — see
-   *  automationCanvasTypes.ts's note on `START_NODE_ID`. Dashed + faded so it reads as
-   *  cosmetic rather than a dependency, the same visual language a disabled control
-   *  elsewhere in this app uses for "present but not load-bearing". */
-  function startLinkEdge(targetId: string): AutomationCanvasEdge {
-    return {
-      id: `${START_NODE_ID}->${targetId}`,
-      source: START_NODE_ID,
-      target: targetId,
-      style: 'stroke-dasharray: 4 4; opacity: 0.55;'
-    };
-  }
-
-  let canvasEdges = $state<AutomationCanvasEdge[]>([
-    ...initial.edges.map((e) => branchEdge(e.from, e.to, e.branch)),
-    // Dropping a link to a node id that no longer exists (the Snippet/node was
-    // deleted since this was last saved) rather than letting svelte-flow choke on an
-    // edge with a dangling target.
-    ...(initial.startLinks ?? [])
-      .filter((targetId) => initial.nodes.some((n) => n.id === targetId))
-      .map(startLinkEdge)
-  ]);
+  let canvasEdges = $state<AutomationCanvasEdge[]>(initial.edges.map((e) => branchEdge(e.from, e.to, e.branch)));
   /** Where a newly picked/created Snippet lands: `position` is a drag-to-empty
    *  drop's flow coordinates (`null` for the toolbar's "+" button, which just appends
    *  at a default grid spot), `wireFrom` is the node the drag started at (`null` for
@@ -260,9 +232,7 @@
 
   /** Places `snippet` as a new node — at `placement.position` if given (a drag-to-empty
    *  drop), otherwise the default append-to-grid spot — and, if `placement.wireFrom` names
-   *  a node, wires an edge from it to the new node (a real dependency edge, unless
-   *  `wireFrom` is the Start node, in which case it's the decorative `startLinkEdge`
-   *  instead — see that function's doc comment). Shared by every way a node gets added:
+   *  a node, wires an edge from it to the new node. Shared by every way a node gets added:
    *  the toolbar's "+" menu, the drag-to-empty popup, and creating a brand new
    *  Snippet from either of those. */
   function addSnippetNode(snippet: SnippetDto, placement: NodePlacement): void {
@@ -351,7 +321,7 @@
   /** The edge a placement asks for, from `wireFrom` (by `handle`, out of an If) to the new node `id`. */
   function wire(wireFrom: string | null, id: string, handle?: string | null): void {
     if (!wireFrom) return;
-    canvasEdges = [...canvasEdges, wireFrom === START_NODE_ID ? startLinkEdge(id) : branchEdge(wireFrom, id, handle)];
+    canvasEdges = [...canvasEdges, branchEdge(wireFrom, id, handle)];
   }
 
   async function submitNewSnippet(snippet: SnippetDto): Promise<void> {
@@ -408,6 +378,7 @@
     return JSON.stringify({
       name: name.trim(),
       params,
+      maxParallel,
       nodes: canvasNodes
         .filter(isStepNode)
         .map((n) => {
@@ -496,19 +467,9 @@
    *  svelte-flow's `Handle` always adds a plain edge to the store *itself* the instant a
    *  drag connects two handles (`store.addEdge`, inside `Handle.svelte`'s
    *  `onConnectExtended`) — this callback runs only afterward, as a notification, with
-   *  that edge already sitting in `canvasEdges`. So for a connection out of the Start
-   *  node — never a real dependency, see `startLinkEdge`'s doc comment — this restyles
-   *  the edge already added rather than pushing a second one (which the `exists`-style
-   *  guard an earlier version had would've just silently dropped anyway). Every other
-   *  connection needs no handling here at all; the store already added it correctly. */
+   *  that edge already sitting in `canvasEdges`. Only an If's edges need anything more. */
   function onconnect(connection: Connection): void {
     if (!connection.source || !connection.target) return;
-    if (connection.source === START_NODE_ID) {
-      canvasEdges = canvasEdges.map((e) =>
-        e.source === connection.source && e.target === connection.target ? startLinkEdge(e.target) : e
-      );
-      return;
-    }
     // Out of an If: label the edge with the way it leaves by.
     if (connection.sourceHandle === 'yes' || connection.sourceHandle === 'no') {
       const handle = connection.sourceHandle;
@@ -543,6 +504,21 @@
     });
   };
 
+  /** "Auto-arrange": every node moved to where the layout puts it — a change like any
+   *  other move, so it can be saved or discarded. */
+  function arrange(): void {
+    const positions = autoLayout(
+      canvasNodes.map((n) => ({ id: n.id, width: n.measured?.width, height: n.measured?.height })),
+      canvasEdges.map((e) => ({ source: e.source, target: e.target }))
+    );
+    canvasNodes = canvasNodes.map((n) => ({ ...n, position: positions.get(n.id) ?? n.position }));
+  }
+
+  /** Steps at once, kept between 1 (one after the other) and 16. */
+  function setMaxParallel(n: number): void {
+    maxParallel = Math.max(1, Math.min(16, Math.floor(n) || 1));
+  }
+
   async function save(): Promise<void> {
     const automationNameTrimmed = name.trim();
     if (!automationNameTrimmed) {
@@ -575,13 +551,7 @@
       return;
     }
 
-    // A connection out of the Start node is decorative, never a real dependency (see
-    // startLinkEdge's doc comment) — split out of `edges` into `startLinks` (target ids
-    // only) rather than sent as an AutomationEdge, which the backend's validateAutomation would
-    // reject outright (Start isn't an AutomationNode, so an edge naming it as `from` fails "an
-    // edge references a node that is not in this automation").
-    const realEdges = canvasEdges.filter((e) => e.source !== START_NODE_ID);
-    const startLinks = canvasEdges.filter((e) => e.source === START_NODE_ID).map((e) => e.target);
+    const realEdges = canvasEdges;
 
     // n.position is a $state proxy (svelte-flow's bind:nodes lives in a $state array,
     // and Svelte 5 deep-proxies nested objects) — Electron's ipcRenderer.invoke sends
@@ -630,7 +600,7 @@
         const branch = e.sourceHandle === 'yes' || e.sourceHandle === 'no' ? e.sourceHandle : undefined;
         return fromIf && branch ? { from: e.source, to: e.target, branch } : { from: e.source, to: e.target };
       }),
-      startLinks: startLinks.length > 0 ? startLinks : undefined
+      maxParallel: maxParallel > 1 ? maxParallel : undefined
     };
     error = null;
     saving = true;
@@ -674,6 +644,33 @@
         placeholder="Automation name"
         aria-label="Automation name"
       />
+      <!-- Branches that don't depend on each other can run side by side. -->
+      <div class="flex shrink-0 items-center gap-2 rounded-full border border-default py-1 pl-3 pr-1.5 text-xs text-muted">
+        <label class="flex items-center gap-2" title="Steps that don't depend on each other run at the same time">
+          <input
+            type="checkbox"
+            checked={maxParallel > 1}
+            onchange={(e) => setMaxParallel(e.currentTarget.checked ? 4 : 1)}
+            class="accent-current"
+          />
+          Run branches in parallel
+        </label>
+        {#if maxParallel > 1}
+          <label class="flex items-center gap-1.5 text-faint">
+            up to
+            <input
+              type="number"
+              min="2"
+              max="16"
+              value={maxParallel}
+              onchange={(e) => setMaxParallel(Number(e.currentTarget.value))}
+              class="w-12 rounded-full bg-surface-inset px-2 py-0.5 text-center text-xs text-fg outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              aria-label="Steps at once"
+            />
+            at once
+          </label>
+        {/if}
+      </div>
       <div class="ml-auto flex items-center gap-2">
         <Button variant="ghost" onclick={back}>Cancel</Button>
         <Button variant="primary" onclick={save} disabled={saving}>
@@ -688,6 +685,7 @@
       <p class="text-sm text-muted">“{automationName}” no longer exists — it may have been deleted.</p>
     </div>
   {:else}
+    <AutomationParamsBar />
     {#if error}
       <p class="border-b border-default px-6 py-2 text-xs text-status-crit">{error}</p>
     {/if}
@@ -715,7 +713,9 @@
         minZoom={0.3}
       >
         <Background variant={BackgroundVariant.Dots} />
-        <Controls showLock={false} />
+        <Controls showLock={false}>
+          <AutoLayoutButton onArrange={arrange} />
+        </Controls>
       </SvelteFlow>
     </div>
   {/if}

@@ -342,54 +342,6 @@ test('build snippets, wire an automation, run it, and see success/failed/skipped
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('connecting the Start node to a snippet node is a cosmetic link — dashed, not a dependency, and it survives a reopen', async ({
-  page
-}) => {
-  await boot(page);
-
-  await page.getByRole('button', { name: 'Automations', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage snippets' }).click();
-  await page.getByRole('button', { name: 'New snippet' }).first().click();
-  const editor = page.getByRole('dialog', { name: 'New snippet' });
-  await editor.getByLabel('Name').fill('Build');
-  await fillCommand(editor, 'echo build-ok');
-  await editor.getByRole('button', { name: 'Add snippet' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Back to Automations' }).click();
-  await page.getByRole('button', { name: 'New automation' }).first().click();
-  await page.getByLabel('Automation name').fill('cosmetic-link');
-  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
-  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /Build/ }).click();
-
-  // The Start node has one source handle (no target) — connecting it to Build's target
-  // handle draws a "params automation in from here" line, purely visual.
-  const startNode = page.locator('.svelte-flow__node', { hasText: 'Start' });
-  const buildNode = page.locator('.svelte-flow__node', { hasText: 'Build' });
-  await startNode.locator('.svelte-flow__handle.source').click();
-  await buildNode.locator('.svelte-flow__handle.target').click();
-  await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
-  await expect(page.locator('.svelte-flow__edge-path')).toHaveAttribute('style', /stroke-dasharray/);
-
-  await page.getByRole('button', { name: 'Create automation' }).click();
-  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
-
-  // Not a real dependency: saving didn't get rejected by validateAutomation (which would
-  // reject any edge naming the Start node, since it isn't an AutomationNode), and running the
-  // automation still succeeds — the link never reached the engine as an AutomationEdge.
-  await page.getByRole('button', { name: 'Run cosmetic-link' }).click();
-  const progress = page.getByRole('dialog', { name: 'Automation run' });
-  await expect(progress).toBeVisible();
-  await expect(progress.locator('li', { hasText: 'Build' })).toContainText('success');
-  await progress.getByRole('button', { name: 'Done' }).click();
-
-  // Reopening the automation still shows the dashed line — it round-trips through
-  // AutomationDto.startLinks rather than being lost on every save/reload.
-  await page.getByText('cosmetic-link', { exact: true }).click();
-  await expect(page.locator('.svelte-flow__edge')).toHaveCount(1);
-  await expect(page.locator('.svelte-flow__edge-path')).toHaveAttribute('style', /stroke-dasharray/);
-});
-
 test('a node set to run on a host carries no host itself — the automation asks for one at run time', async ({ page }) => {
   await boot(page);
 
@@ -1075,4 +1027,96 @@ test('the run panel follows the newest step to the bottom', async ({ page }) => 
   const gap = await list.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
   expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
   expect(gap).toBeLessThanOrEqual(24);
+});
+
+test('a new automation runs its branches in parallel; it can be switched off, and existing ones keep one after the other', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() =>
+    (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations.push({
+      name: 'old-one',
+      params: [],
+      nodes: [{ id: 'i', snippetId: '', label: 'if', continueOnError: false, target: 'local', condition: { kind: 'compare', left: 'a', op: 'equals', right: 'a' }, position: { x: 0, y: 0 } }],
+      edges: []
+    })
+  );
+  const saved = (name: string) =>
+    page.evaluate(
+      (n) => (window as unknown as { __automationState: { automations: Array<{ name: string; maxParallel?: number }> } }).__automationState.automations.find((a) => a.name === n),
+      name
+    );
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+
+  // New: on, up to 4.
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('fan-out');
+  const parallel = page.getByLabel('Run branches in parallel');
+  await expect(parallel).toBeChecked();
+  await expect(page.getByLabel('Steps at once')).toHaveValue('4');
+  await page.getByLabel('Steps at once').fill('3');
+  await page.getByLabel('Steps at once').blur();
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /If…/ }).click();
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  expect((await saved('fan-out'))?.maxParallel).toBe(3);
+
+  // Existing without the setting: off — and switching it on is a change to save.
+  await page.getByTitle('Open old-one').click();
+  await expect(parallel).not.toBeChecked();
+  await expect(page.getByLabel('Steps at once')).toHaveCount(0);
+  await parallel.check();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  expect((await saved('old-one'))?.maxParallel).toBe(4);
+
+  // Off again: saved without it.
+  await page.getByTitle('Open fan-out').click();
+  await parallel.uncheck();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  expect((await saved('fan-out'))?.maxParallel).toBeUndefined();
+});
+
+test('"Auto-arrange" lays a jumbled automation out left to right, branches one above the other', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const state = (window as unknown as { __automationState: { snippets: unknown[]; automations: unknown[] } }).__automationState;
+    state.snippets.push({ id: 's', name: 'Step', command: 'echo step', timeoutSecs: 30 });
+    // Every node somewhere else: overlapping, right to left.
+    const at = [
+      { x: 600, y: 300 },
+      { x: 40, y: 320 },
+      { x: 620, y: 310 },
+      { x: -200, y: 0 }
+    ];
+    const nodes = ['start', 'left', 'right', 'join'].map((id, i) => ({ id, snippetId: 's', label: id, continueOnError: false, target: 'local', position: at[i] }));
+    state.automations.push({
+      name: 'jumbled',
+      params: [],
+      nodes,
+      edges: [
+        { from: 'start', to: 'left' },
+        { from: 'start', to: 'right' },
+        { from: 'left', to: 'join' },
+        { from: 'right', to: 'join' }
+      ]
+    });
+  });
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByTitle('Open jumbled').click();
+
+  await page.getByRole('button', { name: 'Auto-arrange' }).click();
+  await page.waitForTimeout(600);
+  const box = async (label: string) =>
+    (await page.locator(`.svelte-flow__node[data-id="${label}"]`).boundingBox())!;
+  const [start, left, right, join] = await Promise.all(['start', 'left', 'right', 'join'].map(box));
+  expect(start.x + start.width).toBeLessThan(left.x);
+  expect(Math.abs(left.x - right.x)).toBeLessThan(2);
+  expect(left.y + left.height <= right.y || right.y + right.height <= left.y).toBe(true);
+  expect(join.x).toBeGreaterThan(left.x + left.width);
+  await page.screenshot({ path: 'test-results/auto-arrange.png' });
+
+  // Moved nodes are a change: it can be saved.
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
 });

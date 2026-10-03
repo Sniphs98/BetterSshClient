@@ -198,6 +198,8 @@ export interface AutomationDto {
   nodes: AutomationNodeDto[];
   edges: AutomationEdgeDto[];
   startLinks?: string[];
+  /** How many nodes may run at once; unset or 1 is one after the other. */
+  maxParallel?: number;
 }
 
 export function automationToDto(automation: Automation): AutomationDto {

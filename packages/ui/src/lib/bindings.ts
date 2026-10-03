@@ -413,6 +413,8 @@ export type AutomationDto = {
    *  dependency edge (every param is already visible to every node regardless of
    *  edges), round-tripped purely so the line is still there next time the automation opens. */
   startLinks?: string[] | null;
+  /** How many nodes may run at once; unset or 1 is one after the other. */
+  maxParallel?: number | null;
 };
 /** `to` depends on `from` — `from` must complete before `to` can start. */
 export type AutomationEdgeDto = { from: string; to: string; /** Out of an If node: which way. */ branch?: IfBranchDto | null };

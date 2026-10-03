@@ -561,24 +561,24 @@ export async function runAutomation(
     onProgress?.({ kind: 'nodeResult', result });
   }
 
-  try {
-    for (const nodeId of order) {
+  /** One node, once everything before it has settled: skipped, failed early, or run. */
+  async function runNode(nodeId: string): Promise<void> {
       const node = nodeById.get(nodeId)!;
       const snippet = snippetsById.get(node.snippetId);
 
       if (signal?.aborted) {
         settle(nodeId, { nodeId, label: node.label, status: 'skipped', output: '', error: CANCELED, durationMs: 0 });
-        continue;
+        return;
       }
 
       if (snippet === undefined && node.upload === undefined && node.github === undefined && node.condition === undefined && node.call === undefined) {
         settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'snippet no longer exists', durationMs: 0 });
-        continue;
+        return;
       }
       const nodeHostName = hostParam ? paramValues[hostParam.name] : undefined;
       if (node.target === 'remote' && !nodeHostName) {
         settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'node runs on a host but the automation has no host parameter value', durationMs: 0 });
-        continue;
+        return;
       }
 
       const predecessorIds = predecessorsOf.get(nodeId) ?? [];
@@ -589,7 +589,7 @@ export async function runAutomation(
       if (incoming.length > 0 && live.length === 0) {
         offBranch.add(nodeId);
         settle(nodeId, { nodeId, label: node.label, status: 'skipped', output: '', durationMs: 0 });
-        continue;
+        return;
       }
       const blocked = live.some((e) => {
         const r = resultsById.get(e.from)!;
@@ -597,7 +597,7 @@ export async function runAutomation(
       });
       if (blocked) {
         settle(nodeId, { nodeId, label: node.label, status: 'skipped', output: '', durationMs: 0 });
-        continue;
+        return;
       }
 
       onProgress?.({ kind: 'nodeStarted', nodeId, label: node.label });
@@ -663,6 +663,36 @@ export async function runAutomation(
         error: exec.ok ? undefined : exec.error,
         durationMs: Date.now() - startedAt
       });
+  }
+
+  // Which nodes come after which, and how many unsettled predecessors each still has.
+  const successors = new Map<string, string[]>(automation.nodes.map((n) => [n.id, []]));
+  const waitingOn = new Map<string, number>(automation.nodes.map((n) => [n.id, 0]));
+  for (const edge of automation.edges) {
+    if (!successors.has(edge.from) || !waitingOn.has(edge.to)) continue;
+    successors.get(edge.from)!.push(edge.to);
+    waitingOn.set(edge.to, waitingOn.get(edge.to)! + 1);
+  }
+  // At most `limit` nodes at once: 1 (one after the other, in `order`) unless the
+  // automation lets its branches run in parallel.
+  const limit = Math.max(1, Math.floor(automation.maxParallel ?? 1));
+  const ready = order.filter((id) => waitingOn.get(id) === 0);
+  const running = new Map<string, Promise<string>>();
+
+  try {
+    while (ready.length > 0 || running.size > 0) {
+      while (ready.length > 0 && running.size < limit) {
+        const nodeId = ready.shift()!;
+        running.set(nodeId, runNode(nodeId).then(() => nodeId));
+      }
+      const done = await Promise.race(running.values());
+      running.delete(done);
+      // Its successors may be ready now — taken in the automation's own order.
+      for (const next of successors.get(done) ?? []) {
+        const left = waitingOn.get(next)! - 1;
+        waitingOn.set(next, left);
+        if (left === 0) ready.push(next);
+      }
     }
   } finally {
     for (const connection of connections.values()) connection.then((c) => c.disconnect(), () => {});

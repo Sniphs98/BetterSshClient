@@ -4,6 +4,7 @@
   "automation": {
     "name": "Test: parallel branches",
     "params": [],
+    "maxParallel": 4,
     "nodes": [
       {
         "id": "start",

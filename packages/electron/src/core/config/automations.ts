@@ -121,7 +121,8 @@ function automationFromToml(raw: Record<string, unknown>): Automation {
   const startLinks = Array.isArray(raw.startLinks)
     ? raw.startLinks.filter((s): s is string => typeof s === 'string')
     : undefined;
-  return { name: raw.name, params, nodes, edges, startLinks };
+  const maxParallel = typeof raw.maxParallel === 'number' && raw.maxParallel > 1 ? Math.floor(raw.maxParallel) : undefined;
+  return { name: raw.name, params, nodes, edges, startLinks, ...(maxParallel ? { maxParallel } : {}) };
 }
 
 function automationToToml(automation: Automation): Record<string, unknown> {
@@ -134,6 +135,7 @@ function automationToToml(automation: Automation): Record<string, unknown> {
   // Omitted when empty, like a node's `position` — keeps an automation with no decorative
   // Start-node links out of the TOML entirely rather than writing `startLinks = []`.
   if (automation.startLinks !== undefined && automation.startLinks.length > 0) out.startLinks = automation.startLinks;
+  if (automation.maxParallel !== undefined && automation.maxParallel > 1) out.maxParallel = automation.maxParallel;
   return out;
 }
 

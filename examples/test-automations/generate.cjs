@@ -120,10 +120,10 @@ const automations = [
     edges: Array.from({ length: 24 }, (_, i) => ({ from: `s${i + 1}`, to: `s${i + 2}` }))
   },
   {
-    // Two branches of 5 s each: today they run one after the other (~10 s in all);
-    // with parallel branches it would be ~5 s.
+    // Two branches of 5 s each, run side by side: ~5 s in all (~10 s one after the other).
     name: 'Test: parallel branches',
     params: [],
+    maxParallel: 4,
     nodes: [
       node('start', S.ok.id, 'start'),
       node('left', S.slow.id, 'left', { target: 'wsl' }),
