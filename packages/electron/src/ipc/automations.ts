@@ -63,6 +63,11 @@ export function upsertAutomation(automations: Automation[], input: AutomationDto
 }
 
 export function removeAutomation(automations: Automation[], name: string): void {
+  const callers = automations.filter((f) => f.name !== name && f.nodes.some((n) => n.call?.automation.trim() === name));
+  if (callers.length > 0) {
+    const names = callers.map((f) => `'${f.name}'`).join(', ');
+    throw new Error(`cannot delete: run by automation${callers.length > 1 ? 's' : ''} ${names}`);
+  }
   const i = automations.findIndex((f) => f.name === name);
   if (i !== -1) automations.splice(i, 1);
 }
@@ -118,7 +123,10 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
     try {
       const [automations, snippets] = await Promise.all([loadAutomations(), loadSnippets()]);
       const automation = automationFromDto(input);
-      const problems = validateAutomation(automation, new Map(snippets.map((a) => [a.id, a])));
+      // Checked against the others as they'll be once this one is saved.
+      const byName = new Map(automations.map((f) => [f.name, f]));
+      byName.set(automation.name, automation);
+      const problems = validateAutomation(automation, new Map(snippets.map((a) => [a.id, a])), byName);
       if (problems.length > 0) throw new Error(problems.join('; '));
       upsertAutomation(automations, input);
       await saveAutomations(automations);
@@ -278,10 +286,12 @@ async function executeAutomationRun(
   try {
     let automation: Automation | undefined;
     let snippets: Snippet[];
+    let automationsByName: Map<string, Automation>;
     try {
       const [automations, loadedSnippets] = await Promise.all([loadAutomations(), loadSnippets()]);
       automation = automations.find((f) => f.name === automationName);
       snippets = loadedSnippets;
+      automationsByName = new Map(automations.map((f) => [f.name, f]));
     } catch (err) {
       state.emit('automation-failed', { automationName, error: (err as Error).message });
       return;
@@ -292,7 +302,7 @@ async function executeAutomationRun(
     }
 
     const snippetsById = new Map(snippets.map((a) => [a.id, a]));
-    const problems = validateAutomation(automation, snippetsById);
+    const problems = validateAutomation(automation, snippetsById, automationsByName);
     if (problems.length > 0) {
       state.emit('automation-failed', { automationName, error: problems.join('; ') });
       return;
@@ -308,6 +318,7 @@ async function executeAutomationRun(
       runLocal: runLocalCommand,
       runWsl: runWslCommand,
       wslUploadSource,
+      automations: automationsByName,
       runGitHub: async (step, report, stepSignal) => {
         const client = new GitHubClient(await resolveGitHubToken());
         const opts = stepSignal ? { sleep: abortableSleep(stepSignal) } : {};
@@ -320,7 +331,7 @@ async function executeAutomationRun(
         return {
           runShell: (cmd, timeoutMs, runSignal) => session.runShell(cmd, timeoutMs, runSignal),
           // Over the same connection as the commands: one login, one 1Password prompt.
-          upload: (from, to, runSignal) => uploadOverSession(session, hostName, from, to, runSignal),
+          upload: (from, to, runSignal, onProgress) => uploadOverSession(session, hostName, from, to, runSignal, onProgress),
           disconnect: () => session.disconnect()
         };
       }

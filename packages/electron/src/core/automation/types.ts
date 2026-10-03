@@ -92,6 +92,16 @@ export type IfCondition =
   | { kind: 'compare'; left: string; op: IfOperator; right: string }
   | { kind: 'command'; command: string; timeoutSecs: number };
 
+/** A built-in step instead of a snippet: runs another automation, as a whole, and waits
+ *  for it. `params` gives the values its run would ask for (by its parameters' names);
+ *  each may use `{{params.<name>}}` and `{{nodes.<label>.output}}` of this automation —
+ *  to hand on the host, say. Its output is the output of the called automation's last step. */
+export interface AutomationCall {
+  /** The called automation's name. */
+  automation: string;
+  params: Record<string, string>;
+}
+
 /** Which of an If node's two ways an edge out of it is. */
 export type IfBranch = 'yes' | 'no';
 
@@ -108,6 +118,8 @@ export interface AutomationNode {
    *  nodes on that way out of it run (see `AutomationEdge.branch`). A `'command'`
    *  condition runs where `target` says; a `'compare'` one targets 'local'. */
   condition?: IfCondition;
+  /** Set for a "run automation" node, which runs no snippet itself (target 'local'). */
+  call?: AutomationCall;
   /** Unique within the automation; the `{{nodes.<label>.output}}` handle. */
   label: string;
   /** An automation-wiring concern, not a property of the reusable Snippet: does this

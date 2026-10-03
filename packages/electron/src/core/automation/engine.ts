@@ -74,6 +74,7 @@ function templatedText(node: AutomationNode, snippetsById: Map<string, Snippet>)
   if (node.upload !== undefined) return `${node.upload.from}\n${node.upload.to}`;
   if (node.condition !== undefined) return conditionTexts(node.condition).join('\n');
   if (node.github !== undefined) return githubTexts(node.github).join('\n');
+  if (node.call !== undefined) return Object.values(node.call.params).join('\n');
   return snippetsById.get(node.snippetId)?.command;
 }
 
@@ -141,6 +142,39 @@ export function uploadDestination(from: string, to: string): string {
   return `${dest}${name}`;
 }
 
+/** "1.4 GB" — a size for a progress line. */
+export function formatSize(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+/** An upload's progress line: `Uploading image.tar.gz — 45% (120 MB of 266 MB, 11 MB/s)`.
+ *  The panel draws a bar from it and replaces the previous one rather than adding a line. */
+export function uploadProgressLine(name: string, done: number, total: number, elapsedMs: number): string {
+  const percent = total > 0 ? Math.min(100, Math.floor((done / total) * 100)) : 0;
+  const speed = elapsedMs >= 1000 ? `, ${formatSize(done / (elapsedMs / 1000))}/s` : '';
+  return `Uploading ${name} — ${percent}% (${formatSize(done)} of ${formatSize(total)}${speed})`;
+}
+
+/** Once every byte is sent: the server still has to finish writing the file (closing
+ *  it can take seconds for a big one), so the panel says so instead of sitting at 100%. */
+export function uploadFinishingLine(name: string): string {
+  return `Finishing ${name} on the host — the server is writing it to disk…`;
+}
+
+/** The upload is done: `Uploaded image.tar.gz (266 MB in 12.1 s, 22 MB/s)`. */
+export function uploadDoneLine(name: string, bytes: number, elapsedMs: number): string {
+  const secs = elapsedMs / 1000;
+  const speed = secs >= 1 ? `, ${formatSize(bytes / secs)}/s` : '';
+  return `Uploaded ${name} (${formatSize(bytes)} in ${secs.toFixed(1)} s${speed})`;
+}
+
 /** Save-time structural validation — not execution. Returns a list of problem
  *  strings (empty means valid): an unknown `snippetId`, a duplicate label or
  *  parameter name, more than one `'host'`-kind parameter, a remote node with no host
@@ -149,7 +183,13 @@ export function uploadDestination(from: string, to: string): string {
  *  (a node reference must additionally be a *direct* predecessor — template scope is
  *  exactly what an edge means, "this output is visible to that node"; a param
  *  reference has no such restriction, since every param is automation-wide), and a cycle. */
-export function validateAutomation(automation: Automation, snippetsById: Map<string, Snippet>): string[] {
+export function validateAutomation(
+  automation: Automation,
+  snippetsById: Map<string, Snippet>,
+  /** Every automation, by name — to check "run automation" nodes against. Without it
+   *  those are checked only for having a name. */
+  automationsByName?: Map<string, Automation>
+): string[] {
   const problems: string[] = [];
   const nodeIds = new Set(automation.nodes.map((n) => n.id));
   const nodeById = new Map(automation.nodes.map((n) => [n.id, n]));
@@ -182,6 +222,8 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
       } else if (!c.command.trim()) {
         problems.push(`if "${node.label}" needs a command to run`);
       }
+    } else if (node.call !== undefined) {
+      problems.push(...callProblems(automation, node, automationsByName));
     } else if (snippetsById.get(node.snippetId) === undefined) {
       problems.push(`node "${node.label}" references an unknown snippet`);
     }
@@ -256,6 +298,50 @@ export function validateAutomation(automation: Automation, snippetsById: Map<str
   return problems;
 }
 
+/** What's wrong with "run automation" node `node` of `automation`: no automation named,
+ *  one that doesn't exist, a value missing for something it asks for (or one for a
+ *  parameter it doesn't have), or a loop — it calling, through any number of others, back. */
+function callProblems(automation: Automation, node: AutomationNode, automationsByName?: Map<string, Automation>): string[] {
+  const call = node.call!;
+  const name = call.automation.trim();
+  if (!name) return [`"${node.label}" needs an automation to run`];
+  const problems: string[] = [];
+  if (node.target !== 'local') problems.push(`"${node.label}" runs another automation, so it runs on this machine`);
+  if (automationsByName === undefined) return problems;
+  const called = automationsByName.get(name);
+  if (called === undefined) return [...problems, `"${node.label}" runs automation "${name}", which doesn't exist`];
+  for (const p of called.params) {
+    if (p.kind !== 'fixed' && !call.params[p.name]?.trim()) {
+      problems.push(`"${node.label}" needs a value for "${p.label || p.name}" of automation "${name}"`);
+    }
+  }
+  for (const given of Object.keys(call.params)) {
+    if (!called.params.some((p) => p.name === given && p.kind !== 'fixed')) {
+      problems.push(`"${node.label}" sets "${given}", which automation "${name}" doesn't ask for`);
+    }
+  }
+  const loop = callLoop(automation.name, name, automationsByName);
+  if (loop) problems.push(`"${node.label}" would run in a loop: ${loop.join(' → ')}`);
+  return problems;
+}
+
+/** The chain of calls from `from` that leads back to `start`, if one does. */
+export function callLoop(start: string, from: string, automationsByName: Map<string, Automation>): string[] | undefined {
+  const seen = new Set<string>();
+  function walk(name: string, path: string[]): string[] | undefined {
+    if (name === start) return [...path, name];
+    if (seen.has(name)) return undefined;
+    seen.add(name);
+    for (const n of automationsByName.get(name)?.nodes ?? []) {
+      if (n.call === undefined) continue;
+      const found = walk(n.call.automation.trim(), [...path, name]);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  return walk(from, [start]);
+}
+
 /** Run-time check, distinct from `validateAutomation`'s save-time structural check: does
  *  `paramValues` (what the user typed into the "run this automation" prompt) supply a
  *  non-blank value for every parameter the automation declares? Returns each missing
@@ -296,8 +382,9 @@ export const CANCELED = 'canceled';
 export interface RunAutomationConnection {
   /** `signal` stops the command (the run was canceled); it resolves then all the same. */
   runShell(cmd: string, timeoutMs: number, signal?: AbortSignal): Promise<{ output: string; ok: boolean; error?: string }>;
-  /** Copies the local file `from` to `to` on the host; rejects with why it failed. */
-  upload(from: string, to: string, signal?: AbortSignal): Promise<void>;
+  /** Copies the local file `from` to `to` on the host; rejects with why it failed.
+   *  `onProgress` hears how far it is (bytes sent, of the file's size). */
+  upload(from: string, to: string, signal?: AbortSignal, onProgress?: (done: number, total: number) => void): Promise<void>;
   disconnect(): void;
 }
 
@@ -319,6 +406,8 @@ export interface RunAutomationDeps {
   ) => Promise<{ output: string; ok: boolean; error?: string }>;
   /** An upload from WSL: the path Windows reads WSL file `path` at; rejects if it isn't there. */
   wslUploadSource: (distro: string | undefined, path: string) => Promise<string>;
+  /** Every automation, by name — what a "run automation" node can run. */
+  automations?: Map<string, Automation>;
 }
 
 export type AutomationProgressEvent =
@@ -346,7 +435,10 @@ export async function runAutomation(
   onProgress?: (event: AutomationProgressEvent) => void,
   /** Cancels the run: the running node stops and fails as `canceled`, every node after it
    *  is skipped, and the run still completes with all its results. */
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** For a nested run (a "run automation" node): the automations already running above
+   *  it, so a loop the save-time check didn't see still stops. */
+  callStack: string[] = []
 ): Promise<NodeResult[]> {
   const order = topoOrder(automation);
   const paramValues = effectiveParamValues(automation, askedParamValues);
@@ -418,6 +510,52 @@ export async function runAutomation(
     return { output: result.ok ? 'yes' : 'no', ok: true };
   }
 
+  /** A "run automation" node: runs the automation as a nested run with the values given,
+   *  reporting each of its steps as a line of progress. Fails when one of its steps
+   *  fails (one that isn't set to continue on error); its output is the output of the
+   *  last step that ran. */
+  async function runCall(
+    nodeId: string,
+    node: AutomationNode,
+    predecessors: Map<string, NodeResult>
+  ): Promise<{ output: string; ok: boolean; error?: string }> {
+    const call = node.call!;
+    const name = call.automation.trim();
+    const called = deps.automations?.get(name);
+    if (called === undefined) return { output: '', ok: false, error: `automation "${name}" no longer exists` };
+    const stack = [...callStack, automation.name];
+    if (stack.includes(called.name)) return { output: '', ok: false, error: `runs in a loop: ${[...stack, called.name].join(' → ')}` };
+    const problems = validateAutomation(called, snippetsById, deps.automations);
+    if (problems.length > 0) return { output: '', ok: false, error: `automation "${name}": ${problems.join('; ')}` };
+    const values = Object.fromEntries(
+      Object.entries(call.params).map(([k, v]) => [k, substituteTemplate(v, predecessors, paramValues).trim()])
+    );
+    const missing = missingParamValues(called, values);
+    if (missing.length > 0) return { output: '', ok: false, error: `automation "${name}" needs a value for: ${missing.join(', ')}` };
+
+    const report = (message: string): void => onProgress?.({ kind: 'nodeProgress', nodeId, message });
+    report(`Running automation "${name}"`);
+    const results = await runAutomation(
+      called,
+      snippetsById,
+      values,
+      deps,
+      (event) => {
+        if (event.kind === 'nodeStarted') report(`▸ ${event.label}`);
+        else if (event.kind === 'nodeProgress') report(`  ${event.message}`);
+        else if (event.result.status === 'success') report(`✓ ${event.result.label}`);
+        else if (event.result.status === 'failed') report(`✗ ${event.result.label}: ${event.result.error ?? 'failed'}`);
+      },
+      signal,
+      stack
+    );
+    const calledNodes = new Map(called.nodes.map((n) => [n.id, n]));
+    const failure = results.find((r) => r.status === 'failed' && !calledNodes.get(r.nodeId)?.continueOnError);
+    const last = [...results].reverse().find((r) => r.status === 'success');
+    if (failure) return { output: last?.output ?? '', ok: false, error: `step "${failure.label}" of "${name}" failed: ${failure.error ?? 'failed'}` };
+    return { output: last?.output ?? '', ok: true };
+  }
+
   function settle(nodeId: string, result: NodeResult): void {
     resultsById.set(nodeId, result);
     onProgress?.({ kind: 'nodeResult', result });
@@ -433,7 +571,7 @@ export async function runAutomation(
         continue;
       }
 
-      if (snippet === undefined && node.upload === undefined && node.github === undefined && node.condition === undefined) {
+      if (snippet === undefined && node.upload === undefined && node.github === undefined && node.condition === undefined && node.call === undefined) {
         settle(nodeId, { nodeId, label: node.label, status: 'failed', output: '', error: 'snippet no longer exists', durationMs: 0 });
         continue;
       }
@@ -468,7 +606,9 @@ export async function runAutomation(
 
       let exec: { output: string; ok: boolean; error?: string };
       try {
-        if (node.condition !== undefined) {
+        if (node.call !== undefined) {
+          exec = await untilCanceled(runCall(nodeId, node, predecessorsByLabel));
+        } else if (node.condition !== undefined) {
           exec = await untilCanceled(evaluateCondition(node, node.condition, predecessorsByLabel, nodeHostName));
         } else if (node.github !== undefined) {
           const step = substituteGitHubStep(node.github, predecessorsByLabel, paramValues);
@@ -482,7 +622,19 @@ export async function runAutomation(
           // A file in WSL is read where WSL keeps it, not looked up by name on Windows.
           const local = node.upload.source === 'wsl' ? await untilCanceled(deps.wslUploadSource(node.upload.wslDistro || undefined, from)) : from;
           const connection = await untilCanceled(connectionFor(nodeHostName!));
-          await untilCanceled(connection.upload(local, to, signal));
+          const fileName = from.split(/[\\/]/).filter(Boolean).pop() ?? from;
+          const uploadStarted = Date.now();
+          const report = (message: string): void => onProgress?.({ kind: 'nodeProgress', nodeId, message });
+          let size: number | undefined;
+          await untilCanceled(
+            connection.upload(local, to, signal, (done, total) => {
+              size = total;
+              report(uploadProgressLine(fileName, done, total, Date.now() - uploadStarted));
+              if (done === total) report(uploadFinishingLine(fileName));
+            })
+          );
+          // Only after progress lines — a transfer that told nothing has no size to give.
+          if (size !== undefined) report(uploadDoneLine(fileName, size, Date.now() - uploadStarted));
           // The output is where it landed, so the next node can use it as is:
           // `docker load < {{nodes.upload.output}}`.
           exec = { output: to, ok: true };

@@ -35,6 +35,7 @@
   import AutomationUploadNode from './AutomationUploadNode.svelte';
   import AutomationGitHubNode from './AutomationGitHubNode.svelte';
   import AutomationIfNode from './AutomationIfNode.svelte';
+  import AutomationCallNode from './AutomationCallNode.svelte';
   import SnippetEditor from './SnippetEditor.svelte';
   import { emptyForm, formFromSnippet } from './snippetForm';
   import {
@@ -48,6 +49,7 @@
     type UploadNode,
     type GitHubNode,
     type IfNode,
+    type CallNode,
     type AutomationNodeActionsContext,
     type StartNode
   } from './automationCanvasTypes';
@@ -74,6 +76,7 @@
     upload: AutomationUploadNode,
     github: AutomationGitHubNode,
     if: AutomationIfNode,
+    call: AutomationCallNode,
     start: AutomationStartNode
   };
 
@@ -89,7 +92,7 @@
 
   /** Every node that is saved as an `AutomationNode` — everything but Start. */
   function isStepNode(n: AnyCanvasNode): n is StepNode {
-    return n.type === 'snippet' || n.type === 'upload' || n.type === 'github' || n.type === 'if';
+    return n.type === 'snippet' || n.type === 'upload' || n.type === 'github' || n.type === 'if' || n.type === 'call';
   }
 
   /** An edge out of an If node leaves by its `yes` or its `no` handle — labelled so. */
@@ -112,6 +115,14 @@
   let canvasNodes = $state<AnyCanvasNode[]>([
     startNode,
     ...initial.nodes.map((n, i): StepNode => {
+      if (n.call) {
+        return {
+          id: n.id,
+          type: 'call' as const,
+          position: n.position ?? layoutPosition(i),
+          data: { label: n.label, continueOnError: n.continueOnError, call: structuredClone(n.call) }
+        };
+      }
       if (n.condition) {
         return {
           id: n.id,
@@ -227,7 +238,9 @@
     editSnippet: (snippetId: string) => {
       editingSnippetId = snippetId;
     },
-    wslDistros: () => distros
+    wslDistros: () => distros,
+    automationName: () => name,
+    openAutomation: (target: string) => activeEntity.selectAutomation(target)
   });
 
   async function submitSnippetEdit(snippet: SnippetDto): Promise<void> {
@@ -317,6 +330,19 @@
         target: 'local',
         wslDistro: ''
       }
+    };
+    canvasNodes = [...canvasNodes, node];
+    wire(placement.wireFrom, id, placement.wireHandle);
+  }
+
+  /** Places a new "run automation" step; the automation is chosen on the node. */
+  function addCallNode(placement: NodePlacement): void {
+    const id = crypto.randomUUID();
+    const node: CallNode = {
+      id,
+      type: 'call',
+      position: placement.position ?? layoutPosition(canvasNodes.filter(isStepNode).length),
+      data: { label: uniqueLabel('run'), continueOnError: false, call: { automation: '', params: {} } }
     };
     canvasNodes = [...canvasNodes, node];
     wire(placement.wireFrom, id, placement.wireHandle);
@@ -452,6 +478,10 @@
       addIfNode(placement);
       return;
     }
+    if (result === 'call') {
+      addCallNode(placement);
+      return;
+    }
     if (result === 'githubRun' || result === 'githubDownload') {
       addGitHubNode(placement, result === 'githubRun' ? 'runWorkflow' : 'downloadAsset');
       return;
@@ -564,7 +594,9 @@
       params: params.map((p) => ({ ...p })),
       nodes: stepNodes.map((n) => ({
         id: n.id,
-        ...(n.type === 'if'
+        ...(n.type === 'call'
+          ? { snippetId: '', call: JSON.parse(JSON.stringify(n.data.call)), target: 'local' as const }
+          : n.type === 'if'
           ? {
               snippetId: '',
               condition: JSON.parse(JSON.stringify(n.data.condition)),

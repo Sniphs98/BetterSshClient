@@ -126,6 +126,26 @@ describe('saveAutomations / loadAutomations round trip', () => {
     expect(await loadAutomations(path)).toEqual(original);
   });
 
+  it('round-trips a node that runs another automation, with the values it hands on', async () => {
+    const original = [
+      automation({
+        nodes: [
+          {
+            id: 'c',
+            snippetId: '',
+            label: 'release',
+            continueOnError: false,
+            target: 'local',
+            call: { automation: 'release', params: { server: '{{params.host}}', tag: 'v1' } }
+          }
+        ],
+        edges: []
+      })
+    ];
+    await saveAutomations(original, path);
+    expect(await loadAutomations(path)).toEqual(original);
+  });
+
   it('round-trips a WSL node with its distribution', async () => {
     const original = [
       automation({

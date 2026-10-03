@@ -34,7 +34,7 @@ function knownHostsPath(): string {
   return join(homedir(), '.ssh', 'known_hosts');
 }
 
-function hostPattern(host: string, port: number): string {
+export function hostPattern(host: string, port: number): string {
   return port === 22 ? host : `[${host}]:${port}`;
 }
 

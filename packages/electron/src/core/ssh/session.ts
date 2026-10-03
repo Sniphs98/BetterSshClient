@@ -6,10 +6,11 @@ import { Client, type AnyAuthMethod, type ClientChannel, type ConnectConfig } fr
 
 import type { Host } from './client.js';
 import { ConnectionPool, type Lease } from './connectionPool.js';
-import { checkKnownHosts, learnKnownHost } from './knownHosts.js';
+import { checkKnownHosts, hostPattern, learnKnownHost } from './knownHosts.js';
+import { connectReporter, reportConnectStage, withoutConnectProgress } from './connectProgress.js';
 import { resolveChain, jumpValue } from './jump.js';
 import { loadAllHosts } from '../config/hosts.js';
-import { readSecretCached, resolvePort, resolveReference } from '../secrets/onePassword.js';
+import { isSecretReference, readSecretCached, resolvePort, resolveReference } from '../secrets/onePassword.js';
 
 /**
  * SSH session management via `ssh2`. Ported from
@@ -31,6 +32,35 @@ const EXEC_TIMEOUT_MS = 30_000;
 
 export class SshCommandError extends Error {}
 export class SshAuthError extends Error {}
+/** The server's host key isn't the one `~/.ssh/known_hosts` has for it (or that file
+ *  can't be read): the connection is refused before any password or key is offered. */
+export class SshHostKeyError extends Error {}
+/** The server couldn't be reached at all: refused, timed out, no such name. */
+export class SshUnreachableError extends Error {}
+
+/** What to tell the user when `host` can't be reached, from the socket's own error. */
+export function unreachableMessage(host: Pick<Host, 'name' | 'hostname' | 'port'>, error?: string): string {
+  const where = `${host.hostname}:${host.port}`;
+  const why = error ?? '';
+  if (/ECONNREFUSED/.test(why)) return `Could not reach ${host.name} (${where}): nothing is listening on that port — is SSH running there, and is the port right?`;
+  if (/ENOTFOUND|EAI_AGAIN/.test(why)) return `Could not reach ${host.name}: there is no host called ${host.hostname}`;
+  if (/timed out|ETIMEDOUT/i.test(why)) return `Could not reach ${host.name} (${where}): no answer — is it switched on, and is the address right?`;
+  if (/EHOSTUNREACH|ENETUNREACH/.test(why)) return `Could not reach ${host.name} (${where}): there is no route to it from this network`;
+  return `Could not reach ${host.name} (${where})${why ? `: ${why}` : ''}`;
+}
+
+/** What to tell the user when `host`'s key was refused — and what to do if the change is expected. */
+export function hostKeyMessage(host: Pick<Host, 'name' | 'hostname' | 'port'>, verdict: 'key-changed' | 'unreadable'): string {
+  if (verdict === 'unreadable') {
+    return `Could not check the host key of ${host.name}: ~/.ssh/known_hosts can't be read`;
+  }
+  const pattern = hostPattern(host.hostname, host.port);
+  return (
+    `The host key of ${host.name} (${host.hostname}:${host.port}) has changed since the last connection. ` +
+    `That can mean someone is in between — or that the server was reinstalled. If you expect the change, ` +
+    `remove the old key with: ssh-keygen -R "${pattern}" — then connect again.`
+  );
+}
 
 /** The command run (with a PTY attached) to open a terminal already inside a host's
  *  configured default path: `cd` there, then `exec` the user's shell as a login shell
@@ -361,8 +391,11 @@ async function connectAndAuth(host: Host): Promise<SshConnection> {
 
   const jumps: Client[] = [];
   for (const hop of chain) {
+    reportConnectStage({ stage: 'jump', host: hop.name });
     try {
-      const client = jumps.length === 0 ? await connectDirect(hop) : await connectTunnelled(jumps[jumps.length - 1], hop);
+      const client = await withoutConnectProgress(() =>
+        jumps.length === 0 ? connectDirect(hop) : connectTunnelled(jumps[jumps.length - 1], hop)
+      );
       jumps.push(client);
     } catch (e) {
       for (const j of jumps) j.end();
@@ -386,6 +419,9 @@ async function connectAndAuth(host: Host): Promise<SshConnection> {
  *  (`op://…` in the field itself), and its port where it has a `portRef`. Done per
  *  hop, before dialling it. */
 export async function resolveHostAddress(host: Host): Promise<Host> {
+  if ([host.hostname, host.user].some(isSecretReference) || host.portRef !== undefined || host.passwordRef !== undefined) {
+    reportConnectStage({ stage: 'onePassword' });
+  }
   const hostname = await resolveReference(host.hostname);
   const port = await resolvePort(host.portRef, host.port);
   const user = await resolveReference(host.user);
@@ -460,6 +496,12 @@ async function authMethods(host: Host, problems: string[]): Promise<AnyAuthMetho
  *  ("Too many authentication failures"); only then does it fall back to a
  *  fresh connection per method, so every method still gets its turn. */
 async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<Client> {
+  /** Set when the host key was refused: no point trying another method then. */
+  let refusedKey: 'key-changed' | 'unreadable' | undefined;
+  /** Set once the server presented its key — it was reached. */
+  let reached = false;
+  // Captured here: the host-key check runs from socket events, outside this context.
+  const report = connectReporter();
   const base: ConnectConfig = {
     host: host.hostname,
     port: host.port,
@@ -467,15 +509,27 @@ async function authenticate(host: Host, extra: Partial<ConnectConfig>): Promise<
     readyTimeout: CONNECT_TIMEOUT_MS,
     keepaliveInterval: 15_000,
     keepaliveCountMax: 3,
-    hostVerifier: makeHostVerifier(host.hostname, host.port),
+    hostVerifier: makeHostVerifier(
+      host.hostname,
+      host.port,
+      (verdict) => (refusedKey = verdict),
+      (stage) => {
+        if (stage.stage === 'hostKey') reached = true;
+        report(stage);
+      }
+    ),
     ...extra
   };
 
   const problems: string[] = [];
   const methods = await authMethods(host, problems);
+  report({ stage: 'reach' });
   if (methods.length > 0) {
     const attempt = await tryConnect({ ...base, authHandler: methods });
     if (attempt.client) return attempt.client;
+    if (refusedKey) throw new SshHostKeyError(hostKeyMessage(host, refusedKey));
+    // Never got as far as the server's key: it isn't reachable — not a sign-in problem.
+    if (!reached) throw new SshUnreachableError(unreachableMessage(host, attempt.error));
 
     // A tunnel `sock` is consumed by its first connection, so a per-method
     // retry can't reuse it — and there is nothing left to retry when the
@@ -498,6 +552,8 @@ interface ConnectAttempt {
   handshake: boolean;
   /** The server rejected every offered method (as opposed to hanging up early). */
   exhausted: boolean;
+  /** What went wrong, as ssh2 or the socket said it. */
+  error?: string;
 }
 
 async function tryConnect(config: ConnectConfig): Promise<ConnectAttempt> {
@@ -505,10 +561,11 @@ async function tryConnect(config: ConnectConfig): Promise<ConnectAttempt> {
     const client = new Client();
     let settled = false;
     let handshake = false;
+    let error: string | undefined;
     const fail = (exhausted: boolean): void => {
       if (settled) return;
       settled = true;
-      resolve({ handshake, exhausted });
+      resolve({ handshake, exhausted, error });
     };
     client.on('handshake', () => {
       handshake = true;
@@ -522,6 +579,7 @@ async function tryConnect(config: ConnectConfig): Promise<ConnectAttempt> {
       // An unreachable agent (no agent running) is reported as an error, but
       // `ssh2` carries on with the next method on the same connection.
       if (err.level === 'agent') return;
+      error ??= err.message;
       fail(err.level === 'client-authentication');
     });
     client.on('close', () => fail(false));
@@ -535,26 +593,41 @@ async function tryConnect(config: ConnectConfig): Promise<ConnectAttempt> {
 
 /** The host-key verifier for `host`. `ssh2` hands the raw SSH wire-format
  *  public key to the callback (no `hostHash` option set). */
-function makeHostVerifier(hostname: string, port: number): NonNullable<ConnectConfig['hostVerifier']> {
+function makeHostVerifier(
+  hostname: string,
+  port: number,
+  onRefused: (verdict: 'key-changed' | 'unreadable') => void,
+  report: (stage: { stage: 'hostKey' } | { stage: 'signIn' }) => void
+): NonNullable<ConnectConfig['hostVerifier']> {
   return (keyBlob: Buffer, callback: (valid: boolean) => void): void => {
+    // Reached the server: it presented its key. Accepted, sign-in comes next.
+    report({ stage: 'hostKey' });
+    const accept = (): void => {
+      report({ stage: 'signIn' });
+      callback(true);
+    };
     checkKnownHosts(hostname, port, keyBlob)
       .then(async (verdict) => {
         switch (verdict) {
           case 'known-match':
-            callback(true);
+            accept();
             return;
           case 'unknown':
             // Trust On First Use: accept, and record best-effort. Recording
             // failure must never fail the connection it accepted.
             await learnKnownHost(hostname, port, keyBlob);
-            callback(true);
+            accept();
             return;
           case 'key-changed':
           case 'unreadable':
+            onRefused(verdict);
             callback(false);
         }
       })
-      .catch(() => callback(false));
+      .catch(() => {
+        onRefused('unreadable');
+        callback(false);
+      });
   };
 }
 

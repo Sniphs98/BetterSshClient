@@ -144,10 +144,26 @@ export function reduceNodeResult(run: AutomationRun | null, automationName: stri
 }
 
 /** Fold an `automation-node-progress` line into the active run. */
+/** Where an upload's status line is: still sending (with its percentage), sent but the
+ *  host still writing the file, or done — null for any other line. */
+export type UploadStatus = { kind: 'sending'; percent: number } | { kind: 'finishing' } | { kind: 'done' };
+
+export function uploadStatus(line: string): UploadStatus | null {
+  const m = /^Uploading .+ — (\d{1,3})% \(/.exec(line);
+  if (m) return { kind: 'sending', percent: Number(m[1]) };
+  if (/^Finishing .+ on the host — /.test(line)) return { kind: 'finishing' };
+  if (/^Uploaded .+ \(/.test(line)) return { kind: 'done' };
+  return null;
+}
+
 export function reduceNodeProgress(run: AutomationRun | null, automationName: string, nodeId: string, message: string): AutomationRun | null {
   if (!run || run.automationName !== automationName) return run;
   const progress = { ...(run.progress ?? {}) };
-  progress[nodeId] = [...(progress[nodeId] ?? []), message];
+  const lines = progress[nodeId] ?? [];
+  // An upload's status replaces its previous one, so the bar moves (and then says it's
+  // finishing, then done) instead of the list growing by a line every half second.
+  const replaces = uploadStatus(message) !== null && lines.length > 0 && uploadStatus(lines[lines.length - 1]) !== null;
+  progress[nodeId] = replaces ? [...lines.slice(0, -1), message] : [...lines, message];
   return { ...run, progress };
 }
 

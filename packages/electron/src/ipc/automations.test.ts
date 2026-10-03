@@ -88,4 +88,12 @@ describe('removeAutomation', () => {
     removeAutomation(automations, 'ghost');
     expect(automations).toHaveLength(1);
   });
+
+  it('refuses while another automation runs it', () => {
+    const caller = automation({ name: 'ship' });
+    caller.nodes = [{ id: 'c', snippetId: '', label: 'run deploy', continueOnError: false, target: 'local', call: { automation: 'deploy', params: {} } }];
+    const automations = [automation({ name: 'deploy' }), caller];
+    expect(() => removeAutomation(automations, 'deploy')).toThrow("cannot delete: run by automation 'ship'");
+    expect(automations).toHaveLength(2);
+  });
 });

@@ -5,7 +5,8 @@
 
 import type { Host, HostSource, MonitorMode } from './core/ssh/client.js';
 import { normalizeMonitorMode } from './core/ssh/client.js';
-import type { Snippet, NodeTarget, GitHubStep, IfBranch, IfCondition, Automation, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
+import { jumpValue } from './core/ssh/jump.js';
+import type { Snippet, NodeTarget, GitHubStep, IfBranch, IfCondition, Automation, AutomationCall, AutomationParam, AutomationParamKind, NodeResult, NodeStatus } from './core/automation/types.js';
 import type { ImportResult } from './core/automation/bundle.js';
 import type { ImportAction, ImportEntryPreview } from './core/config/sshHostBundle.js';
 import { rdpSettingsFrom, type RdpSettings, type RemoteDesktopConnection, type RemoteDesktopProtocol } from './core/config/remoteDesktop.js';
@@ -36,6 +37,8 @@ export interface HostDto {
   passwordRef?: string;
   /** The port's 1Password reference, likewise. */
   portRef?: string;
+  /** The jump host(s) it connects through (ProxyJump), if any. */
+  proxyJump?: string;
 }
 
 /** Inbound host form payload for `save_host`. Always builds a manual `Host`:
@@ -97,7 +100,8 @@ export function hostToDto(host: Host): HostDto {
     defaultPath: host.defaultPath,
     startupCommand: host.startupCommand,
     passwordRef: host.passwordRef,
-    portRef: host.portRef
+    portRef: host.portRef,
+    proxyJump: jumpValue(host)
   };
 }
 
@@ -154,6 +158,8 @@ export interface AutomationNodeDto {
   github?: GitHubStep;
   /** Set for an If node: what it asks. */
   condition?: IfCondition;
+  /** Set for a "run automation" node: which automation, and the values for its parameters. */
+  call?: AutomationCall;
   /** For a `'wsl'` node: the WSL distribution; unset means the default one. */
   wslDistro?: string;
   label: string;

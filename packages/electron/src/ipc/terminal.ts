@@ -1,6 +1,7 @@
 import type { IpcMain } from 'electron';
 
 import { listTerminalProfiles } from '../core/local/profiles.js';
+import { withConnectProgress } from '../core/ssh/connectProgress.js';
 import { toCommandError } from '../dto.js';
 import type { GuiState } from '../state/guiState.js';
 
@@ -12,12 +13,16 @@ import type { GuiState } from '../state/guiState.js';
  * response — see `packages/ui/src/lib/bindings.ts`'s `Channel` class.
  */
 export function registerTerminalIpc(ipcMain: IpcMain, state: GuiState): void {
-  ipcMain.handle('terminal_open', async (_event, hostName: string, cols: number, rows: number) => {
+  ipcMain.handle('terminal_open', async (_event, hostName: string, cols: number, rows: number, progressKey?: string) => {
     const host = state.hostByName(hostName);
     if (host === undefined) throw toCommandError(new Error(`unknown host: ${hostName}`));
     try {
       const id = state.allocateSessionId();
-      return await state.pty.open(id, host, cols, rows, (e) => state.emitCoreEvent(e));
+      // Each step of connecting, for the tab's "connecting" screen (`progressKey` names the tab).
+      const report = (stage: object): void => {
+        if (progressKey) state.emit('ssh-connect-progress', { key: progressKey, ...stage });
+      };
+      return await withConnectProgress(report, () => state.pty.open(id, host, cols, rows, (e) => state.emitCoreEvent(e)));
     } catch (err) {
       throw toCommandError(err);
     }

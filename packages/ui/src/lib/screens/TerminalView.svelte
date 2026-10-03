@@ -14,7 +14,12 @@
   import { sessions, type Session } from '$lib/stores/sessions';
   import { hosts } from '$lib/stores/hosts';
   import { isOnePasswordReference } from './onePasswordRef';
-  import { closeSession } from '$lib/stores/navigation';
+  import { closeSession, spawnSession } from '$lib/stores/navigation';
+  import { events, type SshConnectStageDto } from '$lib/bindings';
+  import { streamerMode, displayHostname } from '$lib/stores/streamer';
+  import { Icon } from '$lib/theme';
+  import { displayReference } from './onePasswordRef';
+  import { advance, sshConnectSteps, stageOfError, stepStatus, suggestedCommand } from './sshConnectSteps';
   import { terminalDidExit } from '$lib/ipc/router';
   import { lastError } from '$lib/stores/notifications';
   import { terminalOpen, terminalOpenLocal, terminalWrite, terminalResize, terminalClose } from '$lib/ipc/commands';
@@ -28,6 +33,45 @@
   import { Channel, type TerminalBytes } from '$lib/bindings';
 
   let { session, active }: { session: Session; active: boolean } = $props();
+
+  const btn =
+    'inline-flex items-center gap-1.5 rounded-full border border-default px-2.5 py-1 text-xs font-medium text-muted ' +
+    'transition hover:border-strong hover:bg-accent hover:text-accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus';
+
+  // Connecting an SSH tab, step by step (the main process reports each as it's reached),
+  // and where it stopped if it failed — shown over the terminal until the shell is open.
+  // Shown only once connecting takes a moment, so a quick connection doesn't flash it.
+  let connectPhase = $state<'connecting' | 'failed' | 'open'>('connecting');
+  let connectStage = $state<SshConnectStageDto | null>(null);
+  let connectError = $state('');
+  let showConnecting = $state(false);
+  let copied = $state(false);
+  // A tab keeps its session for its whole life.
+  // svelte-ignore state_referenced_locally
+  const progressKey = `terminal-${session.id}`;
+  const connectHost = $derived(session.localProfileId ? undefined : $hosts.find((h) => h.name === session.hostName));
+  const connectSteps = $derived(
+    connectHost
+      ? sshConnectSteps(
+          connectHost,
+          `${displayHostname(connectHost.hostname, $streamerMode)}:${connectHost.portRef ? '…' : connectHost.port}`,
+          displayReference(connectHost.user)
+        )
+      : []
+  );
+  const keygen = $derived(suggestedCommand(connectError));
+
+  function tryAgain(): void {
+    closeSession(session.id);
+    spawnSession('terminal', session.hostName);
+  }
+
+  async function copyCommand(): Promise<void> {
+    if (!keygen) return;
+    await navigator.clipboard.writeText(keygen);
+    copied = true;
+    setTimeout(() => (copied = false), 1500);
+  }
 
   // The Nerd Font families come after the generic `monospace`, not merely after the
   // named system ones: the named list is macOS/Windows-only, so on a Linux desktop a
@@ -169,6 +213,18 @@
   }
 
   onMount(() => {
+    let stopProgress: (() => void) | undefined;
+    const showTimer = setTimeout(() => (showConnecting = true), 400);
+    if (!session.localProfileId) {
+      events.sshConnectProgress
+        .listen((e) => {
+          if (e.payload.key === progressKey) connectStage = advance(connectSteps, connectStage, e.payload.stage);
+        })
+        .then((off) => (destroyed ? off() : (stopProgress = off)))
+        .catch(() => {
+          // No Electron bridge (tests): the steps just don't advance on their own.
+        });
+    }
     void (async () => {
       const [{ Terminal }, { FitAddon }] = await Promise.all([
         import('@xterm/xterm'),
@@ -212,7 +268,10 @@
       // A local tab is a shell on this machine (its profile), not a host.
       const id = session.localProfileId
         ? await terminalOpenLocal(session.localProfileId, term.cols || 80, term.rows || 24, channel)
-        : await terminalOpen(session.hostName, term.cols || 80, term.rows || 24, channel);
+        : await terminalOpen(session.hostName, term.cols || 80, term.rows || 24, channel, progressKey);
+      connectPhase = 'open';
+      clearTimeout(showTimer);
+      stopProgress?.();
       if (destroyed) {
         void terminalClose(id).catch(() => {});
         return;
@@ -252,10 +311,25 @@
       if (active) term.focus();
     })().catch((err) => {
       // `terminal_open` itself failed (e.g. the session could not be spawned): no
-      // PtyExited follows, so mark the tab failed here instead of leaving it hung.
-      lastError.set(err instanceof Error ? err.message : String(err));
+      // PtyExited follows, so mark the tab failed here instead of leaving it hung. An SSH
+      // tab says where and why on its own screen; a local one in the status bar.
+      const message = err instanceof Error ? err.message : String(err);
+      if (session.localProfileId) lastError.set(message);
+      connectError = message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+      // The error says where it stopped, also when no step was reported (the tab joined a
+      // connection the dashboard was already making).
+      const failedAt = stageOfError(connectError);
+      if (failedAt) connectStage = advance(connectSteps, connectStage, failedAt);
+      connectPhase = 'failed';
+      showConnecting = true;
+      clearTimeout(showTimer);
+      stopProgress?.();
       sessions.setStatus(session.id, 'failed');
     });
+    return () => {
+      clearTimeout(showTimer);
+      stopProgress?.();
+    };
   });
 
   onDestroy(() => {
@@ -299,6 +373,53 @@
   >
     <div bind:this={container} class="h-full w-full" class:term-fade={scrolled}></div>
   </div>
+
+  {#if !session.localProfileId && connectPhase !== 'open' && showConnecting}
+    <div class="absolute inset-0 z-20 grid place-items-center bg-surface p-6" style="padding-top: var(--titlebar-h);">
+      <div class="w-full max-w-md space-y-3 text-center">
+        <p class="font-medium">
+          {connectPhase === 'failed' ? `Could not connect to ${session.hostName}` : `Connecting to ${session.hostName}`}
+        </p>
+        {#if connectPhase === 'connecting'}
+          <div class="connect-bar mx-auto h-1 w-56 overflow-hidden rounded-full bg-surface-inset" aria-hidden="true"></div>
+        {/if}
+        <ol class="mx-auto w-72 space-y-2 pt-2 text-left text-sm" aria-label="Connection steps">
+          {#each connectSteps as step, i (step.stage)}
+            {@const status = stepStatus(connectSteps, connectStage, i, connectPhase === 'failed')}
+            <li class="flex items-center gap-2.5 {status === 'pending' ? 'text-faint' : status === 'done' ? 'text-muted' : 'text-fg'}" data-status={status}>
+              <span class="grid h-4 w-4 shrink-0 place-items-center">
+                {#if status === 'done'}
+                  <span class="step-in text-status-ok"><Icon name="check" size={14} /></span>
+                {:else if status === 'active'}
+                  <span class="spinner h-3.5 w-3.5 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)]"></span>
+                {:else if status === 'failed'}
+                  <span class="step-in text-status-crit"><Icon name="close" size={14} /></span>
+                {:else}
+                  <span class="h-1.5 w-1.5 rounded-full bg-[var(--border)]"></span>
+                {/if}
+              </span>
+              <span class="min-w-0 flex-1 truncate">{step.label}</span>
+            </li>
+          {/each}
+        </ol>
+        {#if connectPhase === 'failed'}
+          <p class="rounded-lg bg-surface-inset px-3 py-2 text-left text-sm text-muted" role="alert">{connectError}</p>
+          <div class="flex flex-wrap justify-center gap-2 pt-1">
+            {#if keygen}
+              <button type="button" class={btn} onclick={() => void copyCommand()} title={keygen}>
+                {copied ? 'Copied' : 'Copy the ssh-keygen command'}
+              </button>
+            {/if}
+            <button type="button" class={btn} onclick={tryAgain}>
+              <Icon name="refresh" size={12} />
+              Try again
+            </button>
+            <button type="button" class={btn} onclick={() => closeSession(session.id)}>Close tab</button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 {#if terminalMenu}
   <ContextMenu
@@ -314,6 +435,50 @@
 {/if}
 
 <style>
+  .spinner {
+    animation: spin 0.8s linear infinite;
+  }
+  .step-in {
+    animation: pop 0.25s ease-out;
+  }
+  .connect-bar {
+    position: relative;
+  }
+  .connect-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    border-radius: 9999px;
+    background: var(--accent);
+    animation: sweep 1.4s ease-in-out infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes pop {
+    from {
+      transform: scale(0.4);
+      opacity: 0;
+    }
+  }
+  @keyframes sweep {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner,
+    .step-in,
+    .connect-bar::after {
+      animation: none;
+    }
+  }
   /* Scrolled output dissolves into the top edge instead of hard-clipping (on only while
      scrolled, so the first line stays crisp). black/transparent are mask alphas. */
   .term-fade {

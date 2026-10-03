@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/svelte';
-import type { NodeTargetDto, AutomationParamDto, AutomationParamKindDto, GitHubStepDto, IfConditionDto } from '$lib/bindings';
+import type { NodeTargetDto, AutomationParamDto, AutomationParamKindDto, GitHubStepDto, IfConditionDto, AutomationCallDto } from '$lib/bindings';
 
 // The svelte-flow canvas's node/edge shapes for the Automation graph editor — denormalized
 // from AutomationNodeDto/AutomationEdgeDto (see AutomationEditor.svelte) so the canvas never has to look
@@ -61,8 +61,18 @@ export interface IfNodeData extends Record<string, unknown> {
 
 export type IfNode = Node<IfNodeData, 'if'>;
 
+/** A built-in "run automation" step (no snippet): runs another automation as a whole,
+ *  with the values it asks for. Runs on this machine, so no target switch. */
+export interface CallNodeData extends Record<string, unknown> {
+  label: string;
+  continueOnError: boolean;
+  call: AutomationCallDto;
+}
+
+export type CallNode = Node<CallNodeData, 'call'>;
+
 /** A node that becomes an `AutomationNode` when saved — everything but Start. */
-export type StepNode = SnippetNode | UploadNode | GitHubNode | IfNode;
+export type StepNode = SnippetNode | UploadNode | GitHubNode | IfNode | CallNode;
 export type AutomationCanvasEdge = Edge;
 
 /** The one, permanent "Start" node — the automation's parameters, drawn as a node instead of
@@ -85,7 +95,7 @@ export const START_NODE_ID = '__start__';
 export type StartNodeData = Record<string, never>;
 export type StartNode = Node<StartNodeData, 'start'>;
 
-export type AnyCanvasNode = SnippetNode | UploadNode | GitHubNode | IfNode | StartNode;
+export type AnyCanvasNode = SnippetNode | UploadNode | GitHubNode | IfNode | CallNode | StartNode;
 
 /** Passed via `setContext(AUTOMATION_PARAMS_CONTEXT, …)` from AutomationEditor.svelte down to the
  *  Start node so it can read/mutate `params` without that state needing to travel
@@ -117,6 +127,10 @@ export interface AutomationNodeActionsContext {
   /** The WSL distributions a node can run in — [] where there is no WSL, in which case
    *  a node offers no WSL option (unless it already runs in WSL). */
   wslDistros: () => string[];
+  /** The automation being edited, as named right now — a "run automation" node can't run it. */
+  automationName: () => string;
+  /** Opens automation `name` in the editor instead (asking first if this one has unsaved changes). */
+  openAutomation: (name: string) => void;
 }
 
 export const AUTOMATION_NODE_ACTIONS_CONTEXT = 'automation-node-actions';
