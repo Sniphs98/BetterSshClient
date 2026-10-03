@@ -1076,3 +1076,51 @@ test('the run panel follows the newest step to the bottom', async ({ page }) => 
   expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
   expect(gap).toBeLessThanOrEqual(24);
 });
+
+test('a new automation runs its branches in parallel; it can be switched off, and existing ones keep one after the other', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() =>
+    (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations.push({
+      name: 'old-one',
+      params: [],
+      nodes: [{ id: 'i', snippetId: '', label: 'if', continueOnError: false, target: 'local', condition: { kind: 'compare', left: 'a', op: 'equals', right: 'a' }, position: { x: 0, y: 0 } }],
+      edges: []
+    })
+  );
+  const saved = (name: string) =>
+    page.evaluate(
+      (n) => (window as unknown as { __automationState: { automations: Array<{ name: string; maxParallel?: number }> } }).__automationState.automations.find((a) => a.name === n),
+      name
+    );
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+
+  // New: on, up to 4.
+  await page.getByRole('button', { name: 'New automation' }).first().click();
+  await page.getByLabel('Automation name').fill('fan-out');
+  const parallel = page.getByLabel('Run branches in parallel');
+  await expect(parallel).toBeChecked();
+  await expect(page.getByLabel('Steps at once')).toHaveValue('4');
+  await page.getByLabel('Steps at once').fill('3');
+  await page.getByLabel('Steps at once').blur();
+  await page.getByRole('button', { name: 'Add a snippet to this automation' }).click();
+  await page.getByRole('dialog', { name: 'Pick a snippet' }).getByRole('button', { name: /If…/ }).click();
+  await page.getByRole('button', { name: 'Create automation' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  expect((await saved('fan-out'))?.maxParallel).toBe(3);
+
+  // Existing without the setting: off — and switching it on is a change to save.
+  await page.getByTitle('Open old-one').click();
+  await expect(parallel).not.toBeChecked();
+  await expect(page.getByLabel('Steps at once')).toHaveCount(0);
+  await parallel.check();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  expect((await saved('old-one'))?.maxParallel).toBe(4);
+
+  // Off again: saved without it.
+  await page.getByTitle('Open fan-out').click();
+  await parallel.uncheck();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  expect((await saved('fan-out'))?.maxParallel).toBeUndefined();
+});

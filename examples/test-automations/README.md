@@ -28,7 +28,7 @@ Their snippets are all named `Test: …`, so they're easy to find and remove aft
 | Test: ship (runs release) | a host | Runs *Test: release (called by ship)* on the host it was given, then uses its output. Double-click the *release* node to open the one it runs. |
 | Test: fixed variable | — | A variable set in the automation, never asked for. |
 | Test: many steps (scrolling) | — | 25 steps: the run panel follows them to the bottom. |
-| Test: parallel branches | WSL | Two branches of 5 s each. They run one after the other today (~10 s in all). |
+| Test: parallel branches | WSL | Two branches of 5 s each, run in parallel: ~5 s in all. Switch *Run branches in parallel* off on its Start node to see ~10 s. |
 
 ## Changing them
 

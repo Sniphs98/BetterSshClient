@@ -112,6 +112,9 @@ export interface AutomationParamsContext {
    *  that's what's stable within one edit (see AutomationStartNode.svelte's index-keyed
    *  `{#each}`, which is what actually keeps the input focused across keystrokes). */
   updateParam: (name: string, patch: { name?: string; kind?: AutomationParamKindDto; value?: string }) => void;
+  /** How many steps may run at once: 1 is one after the other, more lets branches run in parallel. */
+  maxParallel: () => number;
+  setMaxParallel: (n: number) => void;
 }
 
 export const AUTOMATION_PARAMS_CONTEXT = 'automation-params';

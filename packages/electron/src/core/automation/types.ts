@@ -156,6 +156,10 @@ export interface Automation {
    *  `AutomationParam`'s doc comment); this is round-tripped only so the line the user drew
    *  is still there next time the automation opens, the same way `AutomationNode.position` is. */
   startLinks?: string[];
+  /** How many nodes may run at once. Unset or 1: one after the other, as always. More:
+   *  nodes whose predecessors are all done run side by side, up to this many — so two
+   *  independent branches run in parallel. */
+  maxParallel?: number;
 }
 
 export type NodeStatus = 'success' | 'failed' | 'skipped';

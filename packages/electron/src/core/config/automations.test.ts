@@ -146,6 +146,13 @@ describe('saveAutomations / loadAutomations round trip', () => {
     expect(await loadAutomations(path)).toEqual(original);
   });
 
+  it('round-trips how many nodes may run at once, and leaves it out when one after the other', async () => {
+    const original = [automation({ name: 'par', maxParallel: 4 }), automation({ name: 'seq' })];
+    await saveAutomations(original, path);
+    expect(await loadAutomations(path)).toEqual(original);
+    expect(await readFile(path, 'utf8')).toContain('maxParallel = 4');
+  });
+
   it('round-trips a WSL node with its distribution', async () => {
     const original = [
       automation({

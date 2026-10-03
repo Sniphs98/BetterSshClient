@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AutomationCycleError,
+  CANCELED,
   missingParamValues,
   runAutomation,
   substituteTemplate,
@@ -1191,5 +1192,139 @@ describe('run-automation nodes', () => {
     const results = await runAutomation(self, snippets, {}, deps([], byName(self)));
     expect(results[0].status).toBe('failed');
     expect(results[0].error).toMatch(/loop/);
+  });
+});
+
+describe('parallel branches', () => {
+  /** runLocal whose commands finish only when the test says so — to see what runs at once. */
+  function controlled() {
+    const running = new Set<string>();
+    const finish = new Map<string, (r: { output: string; ok: boolean; error?: string }) => void>();
+    let most = 0;
+    const deps: RunAutomationDeps = {
+      runLocal: (command, _t, signal) =>
+        new Promise((resolve) => {
+          running.add(command);
+          most = Math.max(most, running.size);
+          const done = (r: { output: string; ok: boolean; error?: string }) => {
+            running.delete(command);
+            resolve(r);
+          };
+          finish.set(command, done);
+          signal?.addEventListener('abort', () => done({ output: '', ok: false, error: 'killed' }));
+        }),
+      runWsl: async () => ({ output: '', ok: true }),
+      wslUploadSource: async (_d, p) => p,
+      runGitHub: async () => '',
+      connectHost: async () => ({ runShell: async () => ({ output: '', ok: true }), upload: async () => {}, disconnect: () => {} })
+    };
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+    return { deps, running, finish, most: () => most, tick };
+  }
+
+  // start → left, right → join, with each node's label as its command.
+  function diamond(maxParallel?: number): Automation {
+    const ids = ['start', 'left', 'right', 'join'];
+    return {
+      name: 'diamond',
+      params: [],
+      maxParallel,
+      nodes: ids.map((id) => node({ id, snippetId: 'x', label: id })),
+      edges: [
+        { from: 'start', to: 'left' },
+        { from: 'start', to: 'right' },
+        { from: 'left', to: 'join' },
+        { from: 'right', to: 'join' }
+      ]
+    };
+  }
+  const byCommand = new Map<string, Snippet>(['start', 'left', 'right', 'join'].map((id) => [id, snippet({ id, name: id, command: id })]));
+  const withCommands = (a: Automation): Automation => ({ ...a, nodes: a.nodes.map((n) => ({ ...n, snippetId: n.id })) });
+
+  it('runs two independent branches at the same time, and what joins them after both', async () => {
+    const c = controlled();
+    const run = runAutomation(withCommands(diamond(4)), byCommand, {}, c.deps);
+    await c.tick();
+    expect([...c.running]).toEqual(['start']);
+    c.finish.get('start')!({ output: '', ok: true });
+    await c.tick();
+    expect([...c.running].sort()).toEqual(['left', 'right']);
+    c.finish.get('left')!({ output: '', ok: true });
+    await c.tick();
+    expect([...c.running]).toEqual(['right']); // join waits for both
+    c.finish.get('right')!({ output: '', ok: true });
+    await c.tick();
+    c.finish.get('join')!({ output: '', ok: true });
+    const results = await run;
+    expect(results.map((r) => [r.label, r.status])).toEqual([
+      ['start', 'success'],
+      ['left', 'success'],
+      ['right', 'success'],
+      ['join', 'success']
+    ]);
+  });
+
+  it('without it, one after the other — as always', async () => {
+    const c = controlled();
+    const run = runAutomation(withCommands(diamond()), byCommand, {}, c.deps);
+    for (const step of ['start', 'left', 'right', 'join']) {
+      await c.tick();
+      expect([...c.running]).toEqual([step]);
+      c.finish.get(step)!({ output: '', ok: true });
+    }
+    await run;
+    expect(c.most()).toBe(1);
+  });
+
+  it('never runs more at once than allowed', async () => {
+    const wide: Automation = {
+      name: 'wide',
+      params: [],
+      maxParallel: 2,
+      nodes: ['a', 'b', 'c', 'd', 'e'].map((id) => node({ id, snippetId: id, label: id })),
+      edges: []
+    };
+    const cmds = new Map<string, Snippet>(['a', 'b', 'c', 'd', 'e'].map((id) => [id, snippet({ id, name: id, command: id })]));
+    const c = controlled();
+    const run = runAutomation(wide, cmds, {}, c.deps);
+    for (let i = 0; i < 5; i++) {
+      await c.tick();
+      expect(c.running.size).toBeLessThanOrEqual(2);
+      c.finish.get([...c.running][0])!({ output: '', ok: true });
+    }
+    await run;
+    expect(c.most()).toBe(2);
+  });
+
+  it('a failing branch skips only what depends on it; the other branch carries on', async () => {
+    const c = controlled();
+    const run = runAutomation(withCommands(diamond(4)), byCommand, {}, c.deps);
+    await c.tick();
+    c.finish.get('start')!({ output: '', ok: true });
+    await c.tick();
+    c.finish.get('left')!({ output: '', ok: false, error: 'boom' });
+    await c.tick();
+    expect([...c.running]).toEqual(['right']);
+    c.finish.get('right')!({ output: '', ok: true });
+    const results = await run;
+    expect(results.map((r) => r.status)).toEqual(['success', 'failed', 'success', 'skipped']);
+  });
+
+  it('a cancel stops every branch that is running', async () => {
+    const c = controlled();
+    const ctl = new AbortController();
+    const run = runAutomation(withCommands(diamond(4)), byCommand, {}, c.deps, undefined, ctl.signal);
+    await c.tick();
+    c.finish.get('start')!({ output: '', ok: true });
+    await c.tick();
+    expect(c.running.size).toBe(2);
+    ctl.abort();
+    const results = await run;
+    expect(results.map((r) => [r.label, r.status, r.error])).toEqual([
+      ['start', 'success', undefined],
+      ['left', 'failed', CANCELED],
+      ['right', 'failed', CANCELED],
+      ['join', 'skipped', CANCELED]
+    ]);
   });
 });

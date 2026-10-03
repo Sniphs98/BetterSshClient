@@ -154,7 +154,8 @@ function parseAutomation(raw: unknown, ctx: string): Automation {
     startLinks:
       o.startLinks === undefined
         ? undefined
-        : arr(o.startLinks, `${ctx}.startLinks`).map((s, i) => str(s, `${ctx}.startLinks[${i}]`))
+        : arr(o.startLinks, `${ctx}.startLinks`).map((s, i) => str(s, `${ctx}.startLinks[${i}]`)),
+    ...(typeof o.maxParallel === 'number' && o.maxParallel > 1 ? { maxParallel: Math.floor(o.maxParallel) } : {})
   };
 }
 

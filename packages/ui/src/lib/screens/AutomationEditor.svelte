@@ -65,6 +65,9 @@
   const existing = automationName ? $automations.find((f) => f.name === automationName) : undefined;
   const mode: 'add' | 'edit' = existing ? 'edit' : 'add';
   const initial: AutomationDto = existing ?? { name: '', params: [], nodes: [], edges: [] };
+  /** Steps at once: an existing automation keeps what it had (one after the other unless
+   *  set); a new one lets its branches run in parallel, up to 4. */
+  const PARALLEL_DEFAULT = 4;
   // A name was passed but no longer matches anything in the store (deleted from
   // elsewhere between listing and opening) — surface that instead of silently
   // presenting an empty "new automation" draft under the old name.
@@ -112,6 +115,8 @@
 
   let name = $state(initial.name);
   let params = $state<AutomationParamDto[]>(initial.params.map((p) => ({ ...p })));
+  // svelte-ignore state_referenced_locally
+  let maxParallel = $state(existing ? (existing.maxParallel ?? 1) : PARALLEL_DEFAULT);
   let canvasNodes = $state<AnyCanvasNode[]>([
     startNode,
     ...initial.nodes.map((n, i): StepNode => {
@@ -373,6 +378,10 @@
 
   setContext(AUTOMATION_PARAMS_CONTEXT, {
     params: () => params,
+    maxParallel: () => maxParallel,
+    setMaxParallel: (n: number) => {
+      maxParallel = Math.max(1, Math.min(16, Math.floor(n) || 1));
+    },
     addParam: (paramName: string, kind: AutomationParamKindDto) => {
       const trimmed = paramName.trim();
       if (!trimmed || params.some((p) => p.name === trimmed)) return;
@@ -408,6 +417,7 @@
     return JSON.stringify({
       name: name.trim(),
       params,
+      maxParallel,
       nodes: canvasNodes
         .filter(isStepNode)
         .map((n) => {
@@ -630,7 +640,8 @@
         const branch = e.sourceHandle === 'yes' || e.sourceHandle === 'no' ? e.sourceHandle : undefined;
         return fromIf && branch ? { from: e.source, to: e.target, branch } : { from: e.source, to: e.target };
       }),
-      startLinks: startLinks.length > 0 ? startLinks : undefined
+      startLinks: startLinks.length > 0 ? startLinks : undefined,
+      maxParallel: maxParallel > 1 ? maxParallel : undefined
     };
     error = null;
     saving = true;
