@@ -320,7 +320,7 @@ async function executeAutomationRun(
         return {
           runShell: (cmd, timeoutMs, runSignal) => session.runShell(cmd, timeoutMs, runSignal),
           // Over the same connection as the commands: one login, one 1Password prompt.
-          upload: (from, to, runSignal) => uploadOverSession(session, hostName, from, to, runSignal),
+          upload: (from, to, runSignal, onProgress) => uploadOverSession(session, hostName, from, to, runSignal, onProgress),
           disconnect: () => session.disconnect()
         };
       }

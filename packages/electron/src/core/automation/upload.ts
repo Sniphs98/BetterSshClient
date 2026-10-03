@@ -1,4 +1,5 @@
 import type { SshSession } from '../ssh/session.js';
+import { throttleProgress } from '../ssh/sftp.js';
 import { checkUploadSource, localUploadPath } from './localExec.js';
 
 /**
@@ -11,7 +12,9 @@ export async function uploadOverSession(
   hostName: string,
   from: string,
   to: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** Bytes sent so far of the file's size, a couple of times a second at most. */
+  onProgress?: (done: number, total: number) => void
 ): Promise<void> {
   const local = localUploadPath(from);
   await checkUploadSource(local);
@@ -21,8 +24,14 @@ export async function uploadOverSession(
   signal?.addEventListener('abort', onAbort, { once: true });
   try {
     if (signal?.aborted) throw new Error('canceled');
+    const report = onProgress ? throttleProgress(onProgress, 500) : undefined;
     await new Promise<void>((resolve, reject) =>
-      sftp.fastPut(local, to, (err) => (err ? reject(new Error(`could not write ${to} on ${hostName}: ${err.message}`)) : resolve()))
+      sftp.fastPut(
+        local,
+        to,
+        { step: (done, _chunk, total) => report?.(done, total) },
+        (err) => (err ? reject(new Error(`could not write ${to} on ${hostName}: ${err.message}`)) : resolve())
+      )
     );
   } finally {
     signal?.removeEventListener('abort', onAbort);

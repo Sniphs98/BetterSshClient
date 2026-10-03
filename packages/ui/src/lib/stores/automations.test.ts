@@ -10,7 +10,9 @@ import {
   automationRun,
   reduceAutomationCompleted,
   reduceAutomationFailed,
+  reduceNodeProgress,
   reduceNodeResult,
+  uploadProgress,
   reduceNodeStarted,
   type AutomationRun
 } from './automations';
@@ -140,5 +142,23 @@ describe('activeRuns', () => {
     expect(get(activeRuns)).toEqual({ deploy: { stopping: false } });
     endActiveRun('deploy');
     expect(get(activeRuns)).toEqual({});
+  });
+});
+
+describe('upload progress lines', () => {
+  const running = (): AutomationRun => ({ automationName: 'ship', phase: { kind: 'running', nodes: new Map() } }) as AutomationRun;
+
+  it('reads the percentage of an upload line, nothing from others', () => {
+    expect(uploadProgress('Uploading image.tar.gz — 45% (120 MB of 266 MB, 11 MB/s)')).toBe(45);
+    expect(uploadProgress('Running automation "x"')).toBeNull();
+  });
+
+  it("an upload's next line replaces its last one; other lines are added", () => {
+    let run: AutomationRun | null = running();
+    run = reduceNodeProgress(run, 'ship', 'u', 'Uploading a — 10% (1 MB of 10 MB)');
+    run = reduceNodeProgress(run, 'ship', 'u', 'Uploading a — 60% (6 MB of 10 MB)');
+    expect(run?.progress?.u).toEqual(['Uploading a — 60% (6 MB of 10 MB)']);
+    run = reduceNodeProgress(run, 'ship', 'u', 'done');
+    expect(run?.progress?.u).toEqual(['Uploading a — 60% (6 MB of 10 MB)', 'done']);
   });
 });

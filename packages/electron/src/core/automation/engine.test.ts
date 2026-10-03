@@ -6,6 +6,8 @@ import {
   substituteTemplate,
   topoOrder,
   uploadDestination,
+  uploadProgressLine,
+  formatSize,
   compareTexts,
   validateAutomation,
   type RunAutomationDeps
@@ -634,6 +636,51 @@ describe('upload nodes reading from WSL', () => {
     });
     expect(results.map((r) => r.status)).toEqual(['success', 'failed']);
     expect(results[1].error).toBe('no such file in WSL: /tmp/frontend.tar.gz');
+  });
+});
+
+describe('upload progress', () => {
+  it('reports how far the upload is, as lines the panel turns into a bar', async () => {
+    const lines: string[] = [];
+    const f = automation(
+      [node({ id: 'u', snippetId: '', label: 'upload', target: 'remote', upload: { from: 'C:\\builds\\image.tar.gz', to: '/tmp/' } })],
+      [],
+      hostParam
+    );
+    await runAutomation(
+      f,
+      new Map(),
+      { host: 'web-1' },
+      {
+        runLocal: async () => ({ output: '', ok: true }),
+        runWsl: async () => ({ output: '', ok: true }),
+        wslUploadSource: async (_d, p) => p,
+        runGitHub: async () => '',
+        connectHost: async () => ({
+          runShell: async () => ({ output: '', ok: true }),
+          upload: async (_from, _to, _signal, onProgress) => {
+            onProgress?.(0, 4 * 1024 * 1024);
+            onProgress?.(1024 * 1024, 4 * 1024 * 1024);
+            onProgress?.(4 * 1024 * 1024, 4 * 1024 * 1024);
+          },
+          disconnect: () => {}
+        })
+      },
+      (e) => {
+        if (e.kind === 'nodeProgress') lines.push(e.message.replace(/, [\d.]+ \w+\/s\)$/, ')'));
+      }
+    );
+    expect(lines).toEqual([
+      'Uploading image.tar.gz — 0% (0 B of 4.0 MB)',
+      'Uploading image.tar.gz — 25% (1.0 MB of 4.0 MB)',
+      'Uploading image.tar.gz — 100% (4.0 MB of 4.0 MB)'
+    ]);
+  });
+
+  it('adds the speed once it has been going a second', () => {
+    expect(uploadProgressLine('a.tgz', 50 * 1024 * 1024, 100 * 1024 * 1024, 5000)).toBe('Uploading a.tgz — 50% (50 MB of 100 MB, 10 MB/s)');
+    expect(formatSize(1536)).toBe('1.5 KB');
+    expect(formatSize(3 * 1024 ** 3)).toBe('3.0 GB');
   });
 });
 

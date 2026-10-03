@@ -153,6 +153,12 @@ async function boot(page: Page): Promise<void> {
                   continue;
                 }
                 fire('automation-node-started', { automationName, nodeId: node.id, label: node.label });
+                if ((node as { upload?: unknown }).upload) {
+                  // An upload: its progress, as the engine reports it.
+                  for (const p of ['Uploading image.tar.gz — 20% (53 MB of 266 MB)', 'Uploading image.tar.gz — 65% (173 MB of 266 MB, 11 MB/s)']) {
+                    fire('automation-node-progress', { automationName, nodeId: node.id, message: p });
+                  }
+                }
                 const github = (node as { github?: { action: string } }).github;
                 if (github) {
                   // A GitHub step: news while it runs, then the release's tag.
@@ -914,4 +920,28 @@ test('the snippet editor: placeholders suggested after {{, inserted by a click, 
   await editor.getByRole('textbox', { name: 'Command' }).press('ControlOrMeta+S');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByText('Deploy', { exact: true })).toBeVisible();
+});
+
+test('an upload shows how far it is: one line with a bar, not a line per step', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() =>
+    (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations.push({
+      name: 'ship-image',
+      params: [{ name: 'host', kind: 'host' }],
+      nodes: [{ id: 'u', snippetId: '', label: 'upload', continueOnError: false, target: 'remote', upload: { from: 'image.tar.gz', to: '/tmp/' } }],
+      edges: []
+    })
+  );
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Run ship-image' }).click();
+  const runDialog = page.getByRole('dialog', { name: 'Run automation' });
+  await runDialog.getByRole('button', { name: 'Choose a host…' }).click();
+  await page.getByRole('dialog', { name: 'Pick a host' }).getByRole('button', { name: /web-1/ }).click();
+  await runDialog.getByRole('button', { name: 'Run', exact: true }).click();
+
+  const panel = page.getByRole('dialog', { name: 'Automation run' });
+  await expect(panel.getByText('Uploading image.tar.gz — 65% (173 MB of 266 MB, 11 MB/s)')).toBeVisible();
+  await expect(panel.getByText(/Uploading image\.tar\.gz — 20%/)).toHaveCount(0);
+  await expect(panel.getByRole('progressbar', { name: 'Upload progress' })).toHaveAttribute('aria-valuenow', '65');
+  await panel.screenshot({ path: 'test-results/upload-progress.png', animations: 'disabled' });
 });

@@ -141,6 +141,26 @@ export function uploadDestination(from: string, to: string): string {
   return `${dest}${name}`;
 }
 
+/** "1.4 GB" — a size for a progress line. */
+export function formatSize(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${unit === 0 ? value : value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+/** An upload's progress line: `Uploading image.tar.gz — 45% (120 MB of 266 MB, 11 MB/s)`.
+ *  The panel draws a bar from it and replaces the previous one rather than adding a line. */
+export function uploadProgressLine(name: string, done: number, total: number, elapsedMs: number): string {
+  const percent = total > 0 ? Math.min(100, Math.floor((done / total) * 100)) : 0;
+  const speed = elapsedMs >= 1000 ? `, ${formatSize(done / (elapsedMs / 1000))}/s` : '';
+  return `Uploading ${name} — ${percent}% (${formatSize(done)} of ${formatSize(total)}${speed})`;
+}
+
 /** Save-time structural validation — not execution. Returns a list of problem
  *  strings (empty means valid): an unknown `snippetId`, a duplicate label or
  *  parameter name, more than one `'host'`-kind parameter, a remote node with no host
@@ -296,8 +316,9 @@ export const CANCELED = 'canceled';
 export interface RunAutomationConnection {
   /** `signal` stops the command (the run was canceled); it resolves then all the same. */
   runShell(cmd: string, timeoutMs: number, signal?: AbortSignal): Promise<{ output: string; ok: boolean; error?: string }>;
-  /** Copies the local file `from` to `to` on the host; rejects with why it failed. */
-  upload(from: string, to: string, signal?: AbortSignal): Promise<void>;
+  /** Copies the local file `from` to `to` on the host; rejects with why it failed.
+   *  `onProgress` hears how far it is (bytes sent, of the file's size). */
+  upload(from: string, to: string, signal?: AbortSignal, onProgress?: (done: number, total: number) => void): Promise<void>;
   disconnect(): void;
 }
 
@@ -482,7 +503,13 @@ export async function runAutomation(
           // A file in WSL is read where WSL keeps it, not looked up by name on Windows.
           const local = node.upload.source === 'wsl' ? await untilCanceled(deps.wslUploadSource(node.upload.wslDistro || undefined, from)) : from;
           const connection = await untilCanceled(connectionFor(nodeHostName!));
-          await untilCanceled(connection.upload(local, to, signal));
+          const fileName = from.split(/[\\/]/).filter(Boolean).pop() ?? from;
+          const uploadStarted = Date.now();
+          await untilCanceled(
+            connection.upload(local, to, signal, (done, total) =>
+              onProgress?.({ kind: 'nodeProgress', nodeId, message: uploadProgressLine(fileName, done, total, Date.now() - uploadStarted) })
+            )
+          );
           // The output is where it landed, so the next node can use it as is:
           // `docker load < {{nodes.upload.output}}`.
           exec = { output: to, ok: true };
