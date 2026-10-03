@@ -89,13 +89,21 @@ async function boot(page: Page): Promise<void> {
           case 'list_automations':
             return Promise.resolve([...state.automations]);
           case 'save_automation': {
+            // Keyed by the name it was opened under (args[1]; null for a new one), so a
+            // rename replaces it — as the real handler does.
             const f = args[0] as Rec & { name: string };
-            const i = state.automations.findIndex((x) => x.name === f.name);
+            const key = typeof args[1] === 'string' ? args[1] : f.name;
+            const i = state.automations.findIndex((x) => x.name === key);
             if (i >= 0) state.automations[i] = f;
             else state.automations.push(f);
             return Promise.resolve(null);
           }
           case 'delete_automation': {
+            // Refused like the real handler refuses one another automation still runs.
+            const caller = state.automations.find((f) =>
+              (f.nodes as Array<{ call?: { automation: string } }>).some((n) => n.call?.automation === args[0])
+            );
+            if (caller) return Promise.reject({ message: `cannot delete: run by automation '${caller.name}'` });
             state.automations = state.automations.filter((x) => x.name !== args[0]);
             return Promise.resolve(null);
           }
@@ -1205,4 +1213,45 @@ test('breadcrumbs lead back from an automation opened through a "run automation"
   await expect(crumbs).toHaveCount(0);
   await page.getByRole('button', { name: 'Back to Automations' }).click();
   await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+});
+
+test('renaming an automation replaces it rather than leaving the old one behind', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() =>
+    (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations.push({
+      name: 'old-name',
+      params: [],
+      nodes: [{ id: 'i', snippetId: '', label: 'if', continueOnError: false, target: 'local', condition: { kind: 'compare', left: 'a', op: 'equals', right: 'a' }, position: { x: 0, y: 0 } }],
+      edges: []
+    })
+  );
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByTitle('Open old-name').click();
+  await page.getByLabel('Automation name').fill('new-name');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Automations' })).toBeVisible();
+  await expect(page.getByTitle('Open new-name')).toBeVisible();
+  await expect(page.getByTitle('Open old-name')).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __automationState: { automations: Array<{ name: string }> } }).__automationState.automations.map((f) => f.name)
+    )
+  ).toEqual(['new-name']);
+});
+
+test('a delete that is refused says why in the dialog, which stays open', async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    const step = { continueOnError: false, target: 'local', position: { x: 0, y: 0 } };
+    (window as unknown as { __automationState: { automations: unknown[] } }).__automationState.automations.push(
+      { name: 'callee', params: [], nodes: [{ ...step, id: 'i', snippetId: '', label: 'if', condition: { kind: 'compare', left: 'a', op: 'equals', right: 'a' } }], edges: [] },
+      { name: 'caller', params: [], nodes: [{ ...step, id: 'c', snippetId: '', label: 'run', call: { automation: 'callee', params: {} } }], edges: [] }
+    );
+  });
+  await page.getByRole('button', { name: 'Automations', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete callee' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Delete automation' });
+  await dialog.getByRole('button', { name: 'Delete' }).click();
+  await expect(dialog.getByRole('alert')).toHaveText("cannot delete: run by automation 'caller'");
+  await expect(page.getByTitle('Open callee')).toBeVisible();
 });

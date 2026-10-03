@@ -54,9 +54,27 @@ export function removeSnippet(snippets: Snippet[], automations: Automation[], id
   if (i !== -1) snippets.splice(i, 1);
 }
 
-/** Upserts `input` into the Automation list by name. Exported for unit testing. */
-export function upsertAutomation(automations: Automation[], input: AutomationDto): void {
+/** Saves `input` into the Automation list. `previousName` is the name the editor opened it
+ *  under: a string for an existing automation (which a rename replaces in place, pointing every
+ *  "run automation" step that called the old name at the new one, rather than leaving the old
+ *  one behind as a copy), `null` for a new one (which must not take a name already in use).
+ *  Omitted, it's a plain upsert by name. Exported for unit testing. */
+export function upsertAutomation(automations: Automation[], input: AutomationDto, previousName?: string | null): void {
   const automation = automationFromDto(input);
+  const taken = automations.some((f) => f.name === automation.name);
+  if (previousName === null && taken) throw new Error(`an automation named '${automation.name}' already exists`);
+  if (typeof previousName === 'string' && previousName !== automation.name) {
+    if (taken) throw new Error(`an automation named '${automation.name}' already exists`);
+    const i = automations.findIndex((f) => f.name === previousName);
+    if (i !== -1) automations[i] = automation;
+    else automations.push(automation);
+    for (const f of automations) {
+      for (const n of f.nodes) {
+        if (n.call && n.call.automation.trim() === previousName) n.call.automation = automation.name;
+      }
+    }
+    return;
+  }
   const i = automations.findIndex((f) => f.name === automation.name);
   if (i !== -1) automations[i] = automation;
   else automations.push(automation);
@@ -119,16 +137,17 @@ export function registerAutomationsIpc(ipcMain: IpcMain, state: GuiState): void 
     }
   });
 
-  ipcMain.handle('save_automation', async (_event, input: AutomationDto) => {
+  ipcMain.handle('save_automation', async (_event, input: AutomationDto, previousName?: string | null) => {
     try {
       const [automations, snippets] = await Promise.all([loadAutomations(), loadSnippets()]);
       const automation = automationFromDto(input);
       // Checked against the others as they'll be once this one is saved.
       const byName = new Map(automations.map((f) => [f.name, f]));
+      if (typeof previousName === 'string' && previousName !== automation.name) byName.delete(previousName);
       byName.set(automation.name, automation);
       const problems = validateAutomation(automation, new Map(snippets.map((a) => [a.id, a])), byName);
       if (problems.length > 0) throw new Error(problems.join('; '));
-      upsertAutomation(automations, input);
+      upsertAutomation(automations, input, previousName);
       await saveAutomations(automations);
     } catch (err) {
       throw toCommandError(err);

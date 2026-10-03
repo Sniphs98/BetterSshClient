@@ -653,7 +653,8 @@
     error = null;
     saving = true;
     try {
-      await saveAutomation(automation);
+      // The name it was opened under, so a rename replaces it rather than adding a copy.
+      await saveAutomation(automation, existing?.name ?? null);
       automations.set(await listAutomations());
       // Off to wherever the "unsaved changes" question was holding up, or back.
       const leave = pendingLeave ?? back;
